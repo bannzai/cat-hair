@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- OGP 画像 (docs/og.png) の元。rsvg-convert -w 1200 -h 630 docs/og.svg -o docs/og.png で書き出す -->
+  <rect width="1200" height="630" fill="#16181d"/>
+  <g fill="none" stroke="#f4f1ea" stroke-width="2" stroke-linecap="round" opacity="0.55">
+    <path d="M820 70 q30 -18 52 6"/><path d="M1010 130 q-12 30 14 48"/><path d="M930 250 q26 10 30 38"/>
+    <path d="M1100 300 q-28 8 -40 34"/><path d="M780 380 q18 24 48 20"/><path d="M1000 450 q-10 -30 -40 -34"/>
+    <path d="M1120 520 q-26 14 -22 44"/><path d="M860 540 q34 6 44 36"/><path d="M700 200 q-30 -10 -52 12"/>
+    <path d="M1130 90 q8 30 38 36"/><path d="M690 520 q24 -20 54 -8"/>
+  </g>
+  <text x="80" y="130" font-family="Hiragino Sans, Noto Sans JP, sans-serif" font-size="32" font-weight="700" fill="#b4b7bf">cat-hair (仮称)</text>
+  <text x="80" y="240" font-family="Hiragino Sans, Noto Sans JP, sans-serif" font-size="84" font-weight="700" fill="#f4f1ea">猫の毛を</text>
+  <text x="80" y="345" font-family="Hiragino Sans, Noto Sans JP, sans-serif" font-size="84" font-weight="700" fill="#f4f1ea">まず手で 1 本</text>
+  <rect x="80" y="410" width="8" height="140" fill="#e3c14b"/>
+  <text x="112" y="450" font-family="Hiragino Sans, Noto Sans JP, sans-serif" font-size="26" fill="#b4b7bf">屋敷の残り</text>
+  <text x="112" y="510" font-family="Hiragino Sans, Noto Sans JP, sans-serif" font-size="56" font-weight="700" fill="#f4f1ea">3,482,116 本</text>
+  <text x="112" y="548" font-family="Hiragino Sans, Noto Sans JP, sans-serif" font-size="26" font-weight="700" fill="#e3c14b">1 本 取れた</text>
+</svg>

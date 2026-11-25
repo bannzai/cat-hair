@@ -14,6 +14,7 @@
 - このマシンで実行してよいのは `make lint` (gdlint) だけ。ユーザーが明示的に頼んだ時と、人が遊んで確かめる `make run` (= 引数なしの `make`。人が手で動作確認するための入口で、検査・テストは含まず CI が行う) はこの限りでない
 - 変更は push して PR を開き、CI の結果で成否を判断する。`gh pr checks <PR 番号> --watch` で完了を待ち、失敗したら `gh run view <run ID> --log-failed` と artifact `cat-hair-check-logs` の `tmp/*.log` を読む
 - 見た目の確認は artifact `cat-hair-screenshot-and-movie` を `gh run download <run ID> -n cat-hair-screenshot-and-movie -D tmp/artifact` で取得し、PNG と、mp4 の末尾のフレーム (`ffmpeg -sseof -1 -i tmp/artifact/movie.mp4 -frames:v 1 tmp/artifact/movie-last.png`) を目視してから完了報告する
+- 紹介ページ (`docs/index.html`) を変えた時は、`.github/workflows/docs-screenshot.yml` が撮る artifact `cat-hair-docs-screenshot` (幅 1280 と 390 の PNG) を `gh run download` で取得して目視する
 - CI の描画は GPU の無いランナーのソフトウェア描画 (Mesa llvmpipe) で、fps は実機の性能を示さない。毛の本数のように性能で決まる値は、CI では「描けること」だけを確かめ、実機の fps は人が `make run` で確かめる項目として「ユーザー作業の一覧」issue に書く
 
 各 target の内容と成功条件 (CI が実行する。`GODOT` 未指定時の既定は macOS の `/Applications/Godot.app/Contents/MacOS/Godot`、CI では Linux バイナリを渡す):

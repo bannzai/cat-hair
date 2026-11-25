@@ -1,0 +1,41 @@
+name: docs-screenshot
+
+# 紹介ページ (docs/index.html) の見た目を、開発マシンのブラウザを使わずに確かめるための撮影
+# (AGENTS.md「検証方法」。開発マシンでブラウザを起動しない)。docs/ を変えた PR でだけ動く
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs-screenshot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  screenshot:
+    # ci.yml と同じく ubuntu-24.04 に固定する (ランナーに入っている Chrome と apt のパッケージ名に依存するため)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # ランナーには日本語のフォントが無く、入れないと文字が四角になる
+      - name: Install Japanese fonts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk
+      # 幅 1280 (デスクトップ) と 390 (モバイル) でページ全体を撮る。高さはページの全体が入る値
+      - name: Screenshot docs/index.html
+        run: |
+          mkdir -p tmp
+          google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=1280,1800 \
+            --screenshot=tmp/docs-desktop.png "file://$GITHUB_WORKSPACE/docs/index.html"
+          google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=390,2600 \
+            --screenshot=tmp/docs-mobile.png "file://$GITHUB_WORKSPACE/docs/index.html"
+          ls -l tmp/docs-desktop.png tmp/docs-mobile.png
+      - name: Upload screenshots
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cat-hair-docs-screenshot
+          path: tmp/docs-*.png
+          if-no-files-found: error
+          retention-days: 7
