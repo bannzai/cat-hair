@@ -51,6 +51,8 @@ jobs:
         run: |
           stylesheet=$(grep -o 'href="[^"]*/assets/css/style\.css[^"]*"' tmp/site/Terms-ja.html | head -n 1 | cut -d'"' -f2 | cut -d'?' -f1)
           echo "stylesheet: $stylesheet"
+          # CSS の URL を読めなかった時に、空の URL (サイトの先頭) が取れることで下の確認が通ってしまわないようにする
+          test -n "$stylesheet"
           baseurl="${stylesheet%/assets/css/style.css}"
           mkdir -p shots
           if [ -n "$baseurl" ]; then
