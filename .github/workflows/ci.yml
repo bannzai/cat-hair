@@ -24,7 +24,9 @@ jobs:
       - name: gdlint
         run: make lint
       - name: Test CI scripts
-        run: bash scripts/ci/test/test-check-human-verification.sh
+        run: |
+          bash scripts/ci/test/test-check-human-verification.sh
+          bash scripts/ci/test/test-list-uncommitted-generated.sh
 
   check-and-export:
     runs-on: ubuntu-24.04
@@ -60,8 +62,7 @@ jobs:
         id: generated
         if: always()
         run: |
-          # 未追跡のものに加え、commit 済みで Godot が書き換えたもの (版の更新で中身が変わる等) も対象にする
-          untracked=$(git ls-files --others --modified --exclude-standard -- '*.uid' '*.import' | sort -u)
+          untracked=$(bash scripts/ci/list-uncommitted-generated.sh)
           if [ -z "$untracked" ]; then
             echo "未 commit の .uid / .import はありません"
             exit 0
@@ -127,6 +128,9 @@ jobs:
           [ -S /tmp/.X11-unix/X99 ] || { cat "$RUNNER_TEMP/xvfb.log"; exit 1; }
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
           echo "LIBGL_ALWAYS_SOFTWARE=1" >> "$GITHUB_ENV"
+      # ffmpeg が要るため、ffmpeg を入れたこの job で回す
+      - name: Test the movie brightness check
+        run: bash scripts/ci/test/test-check-movie-brightness.sh
       - name: Screenshot
         run: make screenshot GODOT="${{ steps.godot.outputs.godot }}"
       - name: Movie

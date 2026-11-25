@@ -4,6 +4,7 @@ extends SceneTree
 ## 全部の撮影を終えたら「screenshot OK」の行を出して quit(0) する (Makefile はこの行と PNG の存在で判定する)。
 ## 画面や状態を増やす時は _capture_scenes() に撮影を足す。
 
+## 音の解放を待つ時間 (AUDIO_RELEASE_TIME) を借りる、headless の検証の土台
 const HeadlessCheck := preload("res://scripts/dev/headless_check.gd")
 
 ## 撮影するメインシーン

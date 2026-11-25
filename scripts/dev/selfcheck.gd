@@ -2,7 +2,9 @@ extends "res://scripts/dev/headless_check.gd"
 ## 純粋なロジックとプロジェクト設定の検証 (headless)。ゲームのルールの計算を足したら、ここに検証を足す。
 ## 実行方法は AGENTS.md「検証方法」を参照。
 
+## プロジェクト設定のメインシーンに入っているべきパス
 const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
+## プロジェクト設定の名前に入っているべき値 (題名が決まるまではリポジトリ名)
 const PROJECT_NAME: String = "cat-hair"
 
 

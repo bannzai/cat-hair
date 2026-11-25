@@ -22,7 +22,7 @@
 | 目的 | コマンド | 成功条件 |
 |---|---|---|
 | lint | `make lint` (`gdlint scripts/`) | exit 0 |
-| CI が使うシェルスクリプト (`scripts/ci/`) のテスト | `bash scripts/ci/test/test-check-human-verification.sh` | exit 0 (全件 PASS) |
+| CI が使うシェルスクリプト (`scripts/ci/`) のテスト | `bash scripts/ci/test/<名前>.sh` (`scripts/ci/test/` の各ファイル) | exit 0 (全件 PASS) |
 | アセットインポート (初回・素材追加後) | `make import` | exit 0 かつ `tmp/import.log` に WARNING / ERROR 行がない |
 | 起動検証 (メインシーン・スクリプトのロード) | `make check` | exit 0 かつ `tmp/check.log` に `cat-hair boot` が出力され、WARNING / ERROR 行がない |
 | ロジック検証 (ゲームのルールの計算・プロジェクト設定・メインシーンのロード。一覧は `scripts/dev/selfcheck.gd`) | `make selfcheck` | exit 0 かつ `tmp/selfcheck.log` に `selfcheck OK` が出力され、WARNING / ERROR 行がない |

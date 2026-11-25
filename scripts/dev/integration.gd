@@ -2,6 +2,7 @@ extends "res://scripts/dev/headless_check.gd"
 ## メインシーンを tree に置いて動かす入力統合テスト (headless)。画面の遷移や入力で変わる振る舞いを足したら、
 ## ここに検証を足す。実行方法は AGENTS.md「検証方法」を参照。
 
+## 動かして確かめるメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 
 
