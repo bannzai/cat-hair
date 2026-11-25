@@ -42,22 +42,22 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-noto-cjk
       # 紹介ページは幅 1280 (デスクトップ) と 390 (モバイル) でページ全体を撮り、利用規約は組み立てた HTML の先頭を撮る。
-      # 高さはページの全体 (利用規約は先頭の数条) が入る値。撮影の出力先は、Jekyll の action が root で作る tmp/site と
-      # 分けて tmp/shots にする
+      # 高さはページの全体 (利用規約は先頭の数条) が入る値。撮影の出力先は、Jekyll の action が root の所有で作る tmp/ (書き込めない) と
+      # 分けて shots にする
       - name: Screenshot built pages
         run: |
-          mkdir -p tmp/shots
+          mkdir -p shots
           google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=1280,1800 \
-            --screenshot=tmp/shots/docs-desktop.png "file://$GITHUB_WORKSPACE/tmp/site/index.html"
+            --screenshot=shots/docs-desktop.png "file://$GITHUB_WORKSPACE/tmp/site/index.html"
           google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=390,2600 \
-            --screenshot=tmp/shots/docs-mobile.png "file://$GITHUB_WORKSPACE/tmp/site/index.html"
+            --screenshot=shots/docs-mobile.png "file://$GITHUB_WORKSPACE/tmp/site/index.html"
           google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=1280,1800 \
-            --screenshot=tmp/shots/docs-terms-ja.png "file://$GITHUB_WORKSPACE/tmp/site/Terms-ja.html"
-          ls -l tmp/shots
+            --screenshot=shots/docs-terms-ja.png "file://$GITHUB_WORKSPACE/tmp/site/Terms-ja.html"
+          ls -l shots
       - name: Upload screenshots
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cat-hair-docs-screenshot
-          path: tmp/shots/
+          path: shots/
           if-no-files-found: error
           retention-days: 7
