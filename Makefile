@@ -133,21 +133,25 @@ run: import
 	"$(GODOT)" $(ENGINE_LOG) --path .
 
 # デスクトップ向けエクスポート。プリセット名は export_presets.cfg と一致させる。
-# 実行には Godot 4.7 の export templates が必要 (AGENTS.md「検証方法」参照)
+# 実行には Godot 4.7 の export templates が必要 (AGENTS.md「検証方法」参照)。
+# エクスポートは WARNING / ERROR を出しても exit 0 で終わることがあるため、エンジンのログ (ENGINE_LOG) も検査する
 build-macos: import build/.gdignore
 	@mkdir -p build/macos
 	"$(GODOT)" --headless $(ENGINE_LOG) --path . --export-release "macOS" build/macos/cat-hair.zip
+	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/$@.godot.log
 	test -f build/macos/cat-hair.zip
 
 build-windows: import build/.gdignore
 	@mkdir -p build/windows
 	"$(GODOT)" --headless $(ENGINE_LOG) --path . --export-release "Windows Desktop" build/windows/cat-hair.exe
+	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/$@.godot.log
 	test -f build/windows/cat-hair.exe
 	test -f build/windows/cat-hair.pck
 
 build-linux: import build/.gdignore
 	@mkdir -p build/linux
 	"$(GODOT)" --headless $(ENGINE_LOG) --path . --export-release "Linux" build/linux/cat-hair.x86_64
+	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/$@.godot.log
 	test -f build/linux/cat-hair.x86_64
 	test -f build/linux/cat-hair.pck
 
