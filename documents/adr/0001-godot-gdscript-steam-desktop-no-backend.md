@@ -23,7 +23,7 @@ Accepted
 - Steamworks SDK の連携 (GodotSteam 等による実績・クラウドセーブ・協力プレイの通信) は、Steamworks のパートナー登録とアプリ登録の後に別 ADR で決める
 - 特定商取引法に基づく表記は用意しない。Steam での販売は購入者の契約相手が Valve のため。Steam 以外で直接販売する判断をした時に見直す
 - 法務ドキュメント (プライバシーポリシー・利用規約) と紹介ページは GitHub Pages (`docs/`) に置く
-- ビルド・Godot の起動 (headless を含む)・エクスポート・描画付きの撮影と録画は GitHub Actions の Linux ランナー (`.github/workflows/ci.yml`) で行う。public リポジトリのため、ブラウザでの確認は webtunnel skill、macOS / iOS の画面を操作する確認は macos-simtunnel skill / simtunnel (ios-simulator skill) を使う。private に変える場合は Devin のセッション (devin-macos-e2e skill) に切り替える。開発マシンで実行してよいのは `make lint` だけで、ユーザーが明示的に頼んだ時と、人が遊んで確かめる `make run` はこの限りでない
+- ビルド・Godot の起動 (headless を含む)・エクスポート・描画付きの撮影と録画は GitHub Actions の Linux ランナー (`.github/workflows/ci.yml`) で行う。public リポジトリのため、ブラウザでの確認は webtunnel skill、macOS / iOS の画面を操作する確認は macos-simtunnel skill / simtunnel (ios-simulator skill) を使う。private に変える場合は Devin のセッション (devin-macos-e2e skill) に切り替える。開発マシンで実行してよいのは Godot もブラウザも起動しないコマンド (一覧は AGENTS.md「検証方法」) だけで、ユーザーが明示的に頼んだ時と、人が遊んで確かめる `make run` はこの限りでない
 - 本番へ配布する CD (Steam へのアップロード) は、bannzai が公開に進むと指示するまで作らない。CI のエクスポートは artifact に残すだけにする
 
 ## Consequences

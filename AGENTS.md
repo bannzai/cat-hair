@@ -11,7 +11,7 @@
 
 ビルド・Godot の起動 (headless を含む)・描画付きの撮影・ブラウザやシミュレーターでの動作確認は、開発マシンの負荷を避けるため、このマシンでは実行せず外部のマシンに任せる (ユーザーの指示 2026-11-25。`~/.claude/documents/rules/cloud-verification-keeps-agent-local.md`)。本リポジトリは public のため GitHub Actions のランナー (`.github/workflows/ci.yml`。ubuntu-24.04) を使う。Web エクスポートをブラウザで確かめる時は webtunnel skill (GitHub Actions の Linux ランナー上の Chromium)、iOS 版を作った時は simtunnel (ios-simulator skill)、macOS 版の画面を操作して確かめる時は macos-simtunnel skill を使う。private リポジトリへ変える場合は、描画・ブラウザ・シミュレーターを伴う動作確認を Devin のセッションで行う (devin-macos-e2e skill)。
 
-- このマシンで実行してよいのは `make lint` (gdlint) だけ。ユーザーが明示的に頼んだ時と、人が遊んで確かめる `make run` (= 引数なしの `make`。人が手で動作確認するための入口で、検査・テストは含まず CI が行う) はこの限りでない
+- このマシンで実行してよいのは、Godot もブラウザも起動しない `make lint` (gdlint)・`make clean`・`scripts/ci/test/` のシェルのテストだけ。ユーザーが明示的に頼んだ時と、人が遊んで確かめる `make run` (= 引数なしの `make`。人が手で動作確認するための入口で、検査・テストは含まず CI が行う) はこの限りでない
 - 変更は push して PR を開き、CI の結果で成否を判断する。`gh pr checks <PR 番号> --watch` で完了を待ち、失敗したら `gh run view <run ID> --log-failed` と artifact `cat-hair-check-logs` の `tmp/*.log` を読む
 - 見た目の確認は artifact `cat-hair-screenshot-and-movie` を `gh run download <run ID> -n cat-hair-screenshot-and-movie -D tmp/artifact` で取得し、PNG と、mp4 の末尾のフレーム (`ffmpeg -sseof -1 -i tmp/artifact/movie.mp4 -frames:v 1 tmp/artifact/movie-last.png`) を目視してから完了報告する
 - 紹介ページ (`docs/index.html`) を変えた時は、`.github/workflows/docs-screenshot.yml` が撮る artifact `cat-hair-docs-screenshot` (幅 1280 と 390 の PNG) を `gh run download` で取得して目視する
@@ -22,6 +22,7 @@
 | 目的 | コマンド | 成功条件 |
 |---|---|---|
 | lint | `make lint` (`gdlint scripts/`) | exit 0 |
+| CI が使うシェルスクリプト (`scripts/ci/`) のテスト | `bash scripts/ci/test/test-check-human-verification.sh` | exit 0 (全件 PASS) |
 | アセットインポート (初回・素材追加後) | `make import` | exit 0 かつ `tmp/import.log` に WARNING / ERROR 行がない |
 | 起動検証 (メインシーン・スクリプトのロード) | `make check` | exit 0 かつ `tmp/check.log` に `cat-hair boot` が出力され、WARNING / ERROR 行がない |
 | ロジック検証 (ゲームのルールの計算・プロジェクト設定・メインシーンのロード。一覧は `scripts/dev/selfcheck.gd`) | `make selfcheck` | exit 0 かつ `tmp/selfcheck.log` に `selfcheck OK` が出力され、WARNING / ERROR 行がない |

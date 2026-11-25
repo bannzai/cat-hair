@@ -23,6 +23,8 @@ jobs:
         run: pip install "gdtoolkit==4.*"
       - name: gdlint
         run: make lint
+      - name: Test CI scripts
+        run: bash scripts/ci/test/test-check-human-verification.sh
 
   check-and-export:
     runs-on: ubuntu-24.04
