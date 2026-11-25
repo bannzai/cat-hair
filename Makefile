@@ -39,7 +39,7 @@ WINDOWED_LOG_NOISE := -e 'Could not set V-Sync mode' -e 'IMKCFRunLoopWakeUpRelia
 # 数秒あれば足り、CI の録画時間と artifact のサイズを抑えるため
 MOVIE_FRAMES ?= 150
 
-.PHONY: import check selfcheck integration lint test verify screenshot movie run build-macos build-windows build-linux build-all clean
+.PHONY: import check selfcheck integration failure-path lint test verify screenshot movie run build-macos build-windows build-linux build-all clean
 
 # ログ・撮影の出力先。.gdignore を置き、撮影した PNG を Godot に import させない
 $(LOG_DIR)/.gdignore:
@@ -82,13 +82,22 @@ integration: import
 	tail -n 1 $(LOG_DIR)/integration.log | grep -q '^exit=0$$'
 	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/integration.log
 
+# 検証の土台 (scripts/dev/headless_check.gd) の失敗の経路の検証。わざと失敗する検証を動かし、exit code 1・FAIL の行・
+# 完了の行が出ないことを確かめる (土台が常に OK を返すようになると selfcheck / integration では気づけないため)
+failure-path: import
+	"$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/failure_path_check.gd > $(LOG_DIR)/failure-path.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/failure-path.log; \
+	tail -n 1 $(LOG_DIR)/failure-path.log | grep -q '^exit=1$$'
+	grep -q 'failure_path_check FAIL' $(LOG_DIR)/failure-path.log
+	! grep -q '^failure_path_check OK$$' $(LOG_DIR)/failure-path.log
+
 # GDScript の lint (gdtoolkit の gdlint。設定は ./gdlintrc)
 lint:
 	gdlint scripts/
 
 # headless 検証の一括実行 (CI の lint job と、check-and-export job のうちエクスポートを除いた部分。描画付きの
 # screenshot / movie は含まない)
-test: lint check selfcheck integration
+test: lint check selfcheck integration failure-path
 
 # 人の操作なしで終わる検査・テスト・ビルドの一括実行
 verify: test build-all
@@ -149,7 +158,7 @@ build-all: build-macos build-windows build-linux
 # ディレクトリごとや *.log をまとめては消さない)。ログは target ごとの <target>.log と、ENGINE_LOG の <target>.godot.log
 clean:
 	rm -rf build
-	rm -f $(foreach target,import check selfcheck integration screenshot movie run build-macos build-windows build-linux,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
+	rm -f $(foreach target,import check selfcheck integration failure-path screenshot movie run build-macos build-windows build-linux,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
 	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4
 
 # 引数なしの make で run を実行する (人が手で動作確認するための入口。検査・テストは CI が行う)

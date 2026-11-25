@@ -28,13 +28,16 @@ func _capture_scenes() -> bool:
 	var main: Control = MAIN_SCENE.instantiate()
 	root.add_child(main)
 	current_scene = main
-	# 最初の撮影だけ、フォントの読み込みと最初の描画を時間で待つ
+	# 最初の撮影だけ、フォントの読み込みと最初の描画を時間で待つ。0.3 秒は bannzai/goki-hunter の撮影から引き継いだ値で、
+	# CI の llvmpipe でこの画面が描画し終わることを PR #1 の artifact で確かめた (下限は測っていない)
 	await create_timer(0.3).timeout
 	return await _capture("tmp/screenshot-title.png")
 
 
 ## フレームを数フレーム進めて描画を安定させてから、現在の画面を path に保存する。保存できたら true
 func _capture(path: String) -> bool:
+	# 4 フレームは bannzai/goki-hunter の撮影から引き継いだ値 (レイアウトの確定と描画の反映に数フレームかかるため、
+	# 1 フレームでは足りない。下限は測っていない)。Makefile の SCRIPT_FRAME_LIMIT の見積もりはこの値を前提にしている
 	for _i: int in range(4):
 		await process_frame
 	var status: Error = root.get_viewport().get_texture().get_image().save_png(path)

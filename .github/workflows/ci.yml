@@ -43,6 +43,8 @@ jobs:
         run: make selfcheck GODOT="${{ steps.godot.outputs.godot }}"
       - name: Integration
         run: make integration GODOT="${{ steps.godot.outputs.godot }}"
+      - name: Failure path of the check base
+        run: make failure-path GODOT="${{ steps.godot.outputs.godot }}"
       - name: Export desktop builds
         run: make build-all GODOT="${{ steps.godot.outputs.godot }}"
       # upload-artifact はファイルの実行権限を保持しないため、Linux のバイナリと PCK は権限を保持する tar にまとめる

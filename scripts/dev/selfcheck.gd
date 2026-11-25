@@ -29,5 +29,7 @@ func _check_project_settings() -> void:
 
 ## メインシーンがロードでき、PackedScene が返るか
 func _check_main_scene_loads() -> void:
-	var loaded: Resource = load(MAIN_SCENE_PATH)
-	_check(loaded is PackedScene, "%s が PackedScene としてロードできる" % MAIN_SCENE_PATH)
+	_check(
+		load(MAIN_SCENE_PATH) is PackedScene,
+		"%s が PackedScene としてロードできる" % MAIN_SCENE_PATH
+	)
