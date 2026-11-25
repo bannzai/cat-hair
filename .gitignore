@@ -1,0 +1,26 @@
+# Godot
+.godot/
+*.translation
+
+# ビルド成果物
+build/
+
+# 作業用
+tmp/
+var/
+
+# direnv (ローカルの環境変数・secret)
+.envrc
+
+# Godot 管理外ディレクトリに生成された .import は不要
+documents/**/*.import
+docs/**/*.import
+build/**/*.import
+
+# Firebase のクライアント設定ファイル (API キーを含む。Firebase を使わない間も、後から繋いだ時に commit しないため)
+lib/firebase_options.dart
+**/GoogleService-Info.plist
+**/google-services.json
+
+# macOS
+.DS_Store
