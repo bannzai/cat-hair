@@ -8,9 +8,9 @@ bannzai ("we" or "the Provider") sets out this Privacy Policy ("this Policy") fo
 
 ## Information we collect and how
 
-### Game data (stored only on your device)
+### Game data (never sent to our servers)
 
-The Game's settings and progress are **stored only on your device and are never sent to our servers**. The Game does not communicate with any server operated by us and does not require an account. The Game does not include any third-party service for advertising or usage analytics.
+The Game's settings and progress are **stored on your device (and on Valve Corporation's servers if you use Steam Cloud) and are never sent to our servers**. The Game does not communicate with any server operated by us and does not require an account. The Game does not include any third-party service for advertising or usage analytics.
 
 ### Information handled by Steam
 
@@ -43,7 +43,7 @@ We do not provide personal information to third parties (including those outside
 
 When you request disclosure, correction, suspension of use, or deletion of your personal information under the Act on the Protection of Personal Information, we will respond without delay after confirming that the request comes from you (if no such personal information exists, we will notify you of that). This does not apply where the law does not impose such obligations on us. Please send requests by email to the contact below.
 
-Game data stored only on your device is not held by us, so you can delete it yourself by uninstalling the Game or deleting its save folder. For information related to your Steam account, please contact Valve Corporation.
+Game data is not held by us, so you can delete the data on your device yourself by uninstalling the Game or deleting its save folder. For information related to your Steam account, please contact Valve Corporation.
 
 ## Contact
 
