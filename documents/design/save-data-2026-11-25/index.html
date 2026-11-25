@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cat-hair 保存データの形の案 (2026-11-25)</title>
+<style>
+  :root { --text: #1c1b1a; --sub: #5c5852; --line: #d8d3ca; --bg: #fbfaf7; --code: #f1eee8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --text: #ecebe8; --sub: #a9a59d; --line: #3a3833; --bg: #171614; --code: #24221f; }
+  }
+  body { margin: 0; padding: 32px 16px 64px; background: var(--bg); color: var(--text); font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; line-height: 1.8; }
+  main { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; line-height: 1.4; margin: 0 0 8px; }
+  h2 { font-size: 1.2rem; margin: 48px 0 12px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+  p, li { color: var(--text); }
+  .note { color: var(--sub); }
+  pre { background: var(--code); padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.6; border-radius: 6px; }
+  code { font-family: "SF Mono", Menlo, monospace; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 0.9rem; }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--code); }
+</style>
+</head>
+<body>
+<main>
+<h1>cat-hair 保存データの形の案</h1>
+<aside class="session-origin" style="font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid #d0d7de;border-radius:6px;padding:8px 12px;margin:0 0 16px">
+<div>tmux window: 2.1.332 (cat-hair:0)</div>
+<div>セッション再開:</div>
+<pre style="margin:4px 0 0;white-space:pre-wrap">cd /Users/bannzai/ghq/github.com/bannzai/cat-hair
+claude --resume b895ce2d-082d-4a4f-aed0-7624ea8a972c</pre>
+</aside>
+<p class="note">2026-11-25 に agent が書いた案。作るかの判断の issue で、必要な機能の一覧と一緒に見てもらうための資料。実装はまだ無い。</p>
+
+<h2>見てほしい点</h2>
+<ul>
+  <li>毛は 1 本ずつの位置を保存せず、面ごと・色ごとの本数だけを保存する。読み込むと、同じ本数の毛が面の上に並び直る (数百万本の位置を保存しないため)</li>
+  <li>お金・道具・掃除ロボットの巡回は、今いる建物の進行 (<code>BuildingProgress</code>) に置く。次の建物へ進むと、この進行を新しく作り直すので、お金と道具は置いていく形になる</li>
+  <li>次の建物へ持ち越すのは、手の強化 (<code>hand_upgrade_levels</code>)・図鑑 (<code>found_rare_hair_ids</code>)・終えた建物の成績 (<code>building_records</code>) の 3 つ</li>
+  <li>協力プレイを後で足す時も、お金と手の強化は参加者ごとには持たず、この 1 つの保存データに置く (起票元の issue の「お金は全員で 1 つ」「手の強化は全員で共有」に合わせた)</li>
+  <li>道具ごとの違い (どの表面が得意か・レベルごとの取りこぼし・探し物を傷めるか・消耗品) は、道具の定義 (<code>ToolDef</code>) が道具 1 つずつに持つ。同じ系統の道具でも別の値にできる</li>
+</ul>
+
+<h2>保存する型 (GDScript。<code>user://</code> に 1 ファイル)</h2>
+<pre><code>## セーブデータ全体。建物をまたいで残る物と、今いる建物の進行を持つ
+class_name SaveData
+extends Resource
+
+## 持ち越す手の強化。強化の種類 (指先の器用さ・一度につまめる本数等) ごとのレベル
+@export var hand_upgrade_levels: Dictionary[StringName, int]
+## 図鑑に載った珍しい毛の種類
+@export var found_rare_hair_ids: Array[StringName]
+## 終えた建物の成績 (終えた順)
+@export var building_records: Array[BuildingRecord]
+## 今いる建物の進行。次の建物へ進むと新しく作り直す
+@export var building_progress: BuildingProgress
+
+
+## 終えた建物 1 つの成績
+class_name BuildingRecord
+extends Resource
+
+## どの建物か (屋敷・ホテル・猫島・街全体)
+@export var building_id: StringName
+## 住人全員がご機嫌になるまでにかかった時間 (秒)。表示するだけで報酬には効かない
+@export var clear_seconds: float
+## 住人に返した探し物の数。持ち越す手の強化の量に効く
+@export var returned_found_item_count: int
+
+
+## 今いる建物の進行。お金と道具は建物ごとに持つ
+class_name BuildingProgress
+extends Resource
+
+## どの建物か
+@export var building_id: StringName
+## この建物で遊んだ時間 (秒)
+@export var elapsed_seconds: float
+## 所持金
+@export var money: int
+## 面ごとに残っている毛
+@export var surface_hairs: Array[SurfaceHair]
+## 取ってまだ売っていない毛と、加工した物
+@export var hair_stocks: Array[HairStock]
+## 買った道具
+@export var owned_tools: Array[OwnedTool]
+## 掃除ロボットごとの巡回の順
+@export var robot_routes: Array[RobotRoute]
+## 住人ごとの機嫌 (0.0 = 不機嫌 〜 1.0 = ご機嫌)
+@export var resident_moods: Dictionary[StringName, float]
+## 探し物ごとの状態
+@export var found_items: Array[FoundItemProgress]
+
+
+## 建物の中の 1 つの面 (居間の床・ソファ・住人のスーツ等) に残っている毛
+class_name SurfaceHair
+extends Resource
+
+## 建物のどの面か
+@export var surface_id: StringName
+## 色 (白・黒・三毛) ごとの残り本数
+@export var hair_counts: Dictionary[StringName, int]
+
+
+## 取ってまだ売っていない毛、または加工した物の在庫 1 種類
+class_name HairStock
+extends Resource
+
+## 毛の色 (白・黒・三毛・混ざった物)
+@export var hair_color: StringName
+## 形 (毛のまま・毛玉・フェルト・人形)
+@export var form: StringName
+## 数 (毛のままなら本数、加工した物なら個数)
+@export var count: int
+
+
+## 買った道具 1 つ
+class_name OwnedTool
+extends Resource
+
+## どの道具か (ToolDef の id)
+@export var tool_id: StringName
+## 道具のレベル。上げると取りこぼしが減る
+@export var level: int
+## 消耗品の残り (粘着ローラーの紙の枚数等)。消耗品の無い道具は 0
+@export var consumable_count: int
+
+
+## 掃除ロボット 1 台の巡回
+class_name RobotRoute
+extends Resource
+
+## どの掃除ロボットか (OwnedTool の tool_id)
+@export var tool_id: StringName
+## 回る部屋 (回る順)
+@export var room_ids: Array[StringName]
+
+
+## 探し物 1 つの状態
+class_name FoundItemProgress
+extends Resource
+
+## 探し物の状態
+enum Condition {
+	## 毛の山の中にあり、まだ見つけていない
+	HIDDEN,
+	## 見つけたが、毛が付いたまま
+	FOUND,
+	## 合う道具で毛を取り切った
+	CLEAN,
+	## 合わない道具で取って傷めた
+	DAMAGED,
+}
+
+## どの探し物か (FoundItemDef の id)
+@export var found_item_id: StringName
+## 今の状態
+@export var condition: Condition
+## 持ち主の住人に返したか
+@export var is_returned: bool
+</code></pre>
+
+<h2>保存しない定義 (ゲームに同梱する。道具 1 つずつに <code>.tres</code> を置く)</h2>
+<pre><code>## 道具 1 つの定義
+class_name ToolDef
+extends Resource
+
+## 道具の系統
+enum Kind { PICK, FIND, CARRY, CAT, PROCESS }
+
+## 道具の id
+@export var id: StringName
+## 系統 (取る・見つける・運ぶ・猫に使う・加工する)
+@export var kind: Kind
+## レベルごとの値段 (0 番目が買う値段、以降がレベルを上げる値段)
+@export var prices: Array[int]
+## レベルごとの取りこぼしの割合 (0.0〜1.0。レベルが上がるほど小さい)
+@export var miss_rates: Array[float]
+## 表面の種類ごとの得意さ (取りこぼしの割合に掛ける。1.0 より小さいほど得意)
+@export var surface_miss_multipliers: Dictionary[StringName, float]
+## 1 回かけた時に範囲に入る毛の本数の上限
+@export var hairs_per_use: int
+## 消耗品 1 つの値段 (消耗品の無い道具は 0)
+@export var consumable_price: int
+## 探し物をまとめて取ると傷めるか (掃除機・吸引車は true)
+@export var damages_found_items: bool
+
+
+## 探し物 1 つの定義
+class_name FoundItemDef
+extends Resource
+
+## 探し物の id
+@export var id: StringName
+## 持ち主の住人
+@export var owner_resident_id: StringName
+## 傷めずに毛を取れる道具 (ToolDef の id)
+@export var safe_tool_ids: Array[StringName]
+## きれいな状態で返した時に掃除代へ上乗せされる額
+@export var clean_reward: int
+## 傷めて返した時に上乗せされる額
+@export var damaged_reward: int
+</code></pre>
+
+<h2>利用者の操作と、読み書きするデータ</h2>
+<div class="scroll">
+<table>
+<thead><tr><th>操作</th><th>読むデータ</th><th>書くデータ</th></tr></thead>
+<tbody>
+<tr><td>屋敷に入る (続きから)</td><td><code>SaveData</code> 全体</td><td>なし</td></tr>
+<tr><td>毛を 1 本つまんで抜く</td><td>その面の <code>SurfaceHair.hair_counts</code>、<code>hand_upgrade_levels</code></td><td><code>SurfaceHair.hair_counts</code> を 1 減らす。<code>HairStock</code> (その色・毛のまま) を 1 増やす。珍しい毛なら <code>found_rare_hair_ids</code> に足す</td></tr>
+<tr><td>道具を 1 回かける</td><td><code>OwnedTool.level</code>、<code>ToolDef</code> の取りこぼしと得意さ、その面の <code>SurfaceHair</code></td><td>取れた分だけ <code>SurfaceHair.hair_counts</code> を減らし <code>HairStock</code> を増やす。消耗品のある道具は <code>OwnedTool.consumable_count</code> を減らす</td></tr>
+<tr><td>猫が横切る (操作ではなく時間で起きる)</td><td>猫の通り道 (建物の定義)</td><td>通った面の <code>SurfaceHair.hair_counts</code> を増やす</td></tr>
+<tr><td>買取業者に毛を売る</td><td><code>hair_stocks</code></td><td>売った <code>HairStock</code> を消す。<code>money</code> を増やす</td></tr>
+<tr><td>掃除代を受け取る (時間で起きる)</td><td><code>resident_moods</code>、部屋の面の <code>SurfaceHair</code></td><td><code>resident_moods</code> を更新する。<code>money</code> を増やす</td></tr>
+<tr><td>道具を買う</td><td><code>money</code>、<code>ToolDef.prices</code></td><td><code>money</code> を減らす。<code>owned_tools</code> に足す</td></tr>
+<tr><td>道具のレベルを上げる</td><td><code>money</code>、<code>ToolDef.prices</code></td><td><code>money</code> を減らす。<code>OwnedTool.level</code> を 1 増やす</td></tr>
+<tr><td>粘着ローラーの紙を買い足す</td><td><code>money</code>、<code>ToolDef.consumable_price</code></td><td><code>money</code> を減らす。<code>OwnedTool.consumable_count</code> を増やす</td></tr>
+<tr><td>掃除ロボットを置いて回る順を決める</td><td><code>owned_tools</code></td><td><code>robot_routes</code> を書き換える</td></tr>
+<tr><td>毛を加工する</td><td><code>hair_stocks</code></td><td>元の <code>HairStock</code> を減らし、加工した形の <code>HairStock</code> を増やす</td></tr>
+<tr><td>探し物の毛を取る</td><td><code>FoundItemDef.safe_tool_ids</code>、使った道具</td><td><code>FoundItemProgress.condition</code> を CLEAN か DAMAGED にする</td></tr>
+<tr><td>探し物を住人に返す</td><td><code>FoundItemProgress.condition</code>、<code>FoundItemDef</code> のお礼の額</td><td><code>is_returned</code> を true にする。<code>money</code> を増やす</td></tr>
+<tr><td>手の強化を買う</td><td><code>money</code></td><td><code>money</code> を減らす。<code>hand_upgrade_levels</code> を上げる</td></tr>
+<tr><td>次の建物へ進む</td><td><code>resident_moods</code> (全員がご機嫌か)、<code>found_items</code></td><td><code>building_records</code> に成績を足す。<code>hand_upgrade_levels</code> に持ち越す分を足す。<code>building_progress</code> を次の建物で作り直す</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>当てた設計の問い</h2>
+<ul>
+  <li>利用者が頼んだ言葉に無い概念を足していないか: 起票元の issue に無い名詞は <code>form</code> (毛玉・フェルト・人形の形) だけで、これは issue の「毛の加工」の例から取った。レベル・消耗品・機嫌・成績は issue にある</li>
+  <li>保存する値は必要な値そのものか: 本数・お金・レベルをそのまま保存し、段階やランクに置き換えていない</li>
+  <li>個々の物ごとの違いを表せるか: 道具ごとの違いは <code>ToolDef</code> が道具 1 つずつに持つ。吸引車・ダンプカーのように動き方が違う道具の動きは、定義の値ではなく道具ごとのシーンとスクリプトで作る</li>
+</ul>
+</main>
+</body>
+</html>
