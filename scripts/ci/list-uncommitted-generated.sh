@@ -8,4 +8,6 @@
 # 出力: 該当のパス (重複なし・辞書順)。無ければ何も出さない
 # exit code: git の exit code (該当の有無では変わらない)
 set -u
-git ls-files --others --modified --exclude-standard -- '*.uid' '*.import' | sort -u
+# core.quotePath=false: 既定のままだと、日本語などのファイル名が引用符と 8 進の表記で出て、呼び出し側が
+# そのパスのファイルを見つけられない
+git -c core.quotePath=false ls-files --others --modified --exclude-standard -- '*.uid' '*.import' | sort -u

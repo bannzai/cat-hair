@@ -17,7 +17,8 @@ repo_git() {
 
 # 名前と期待する出力を受け取り、一時リポジトリでの検査の出力が期待と違えば FAIL として記録する
 expect() {
-  actual=$(cd "$work" && bash "$target")
+  # CI のランナーと同じく、利用者の git の設定 (core.quotePath 等) が無い状態で実行する
+  actual=$(cd "$work" && GIT_CONFIG_GLOBAL=/dev/null bash "$target")
   if [ "$actual" = "$2" ]; then
     echo "PASS: $1"
   else
@@ -56,5 +57,8 @@ expect "commit 済みで書き換わった .uid も出し、辞書順に並ぶ" 
 repo_git add -A
 repo_git commit -q -m update
 expect "commit すると何も出さない" ""
+
+printf 'uid://ddd\n' > "$work/scripts/猫.gd.uid"
+expect "日本語のファイル名は、引用符や 8 進の表記にせずそのまま出す" "scripts/猫.gd.uid"
 
 exit "$failed"

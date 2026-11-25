@@ -1,7 +1,7 @@
 name: docs-screenshot
 
-# 紹介ページ (docs/index.html) の見た目を、開発マシンのブラウザを使わずに確かめるための撮影
-# (AGENTS.md「検証方法」。開発マシンでブラウザを起動しない)。docs/ を変えた PR でだけ動く
+# 紹介ページと法務ドキュメント (docs/) を、GitHub Pages と同じ Jekyll で組み立てて検査し、見た目を撮影する。
+# 開発マシンのブラウザを使わずに確かめるためのもの (AGENTS.md「検証方法」)。docs/ を変えた PR でだけ動く
 on:
   pull_request:
     paths:
@@ -18,24 +18,46 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # GitHub Pages が使うのと同じ Jekyll の構成で docs/ を tmp/site に組み立てる
+      - uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697 # v1.0.13
+        with:
+          source: ./docs
+          destination: ./tmp/site
+      # Pages は <名前>.html を拡張子なしの URL (/Terms-ja 等) でも配信するため、紹介ページのリンク先の HTML が
+      # 組み立てられていることと、ページごとの lang (日本語版は _config.yml の ja、英語版は front matter の en) を確かめる
+      - name: Check built pages
+        run: |
+          for page in index Terms-ja Terms-en PrivacyPolicy-ja PrivacyPolicy-en; do
+            test -s "tmp/site/$page.html"
+          done
+          grep -q '<html lang="ja">' tmp/site/Terms-ja.html
+          grep -q '<html lang="ja">' tmp/site/PrivacyPolicy-ja.html
+          grep -q '<html lang="en">' tmp/site/Terms-en.html
+          grep -q '<html lang="en">' tmp/site/PrivacyPolicy-en.html
+          grep -q '第1条' tmp/site/Terms-ja.html
+          ! grep -q '{{' tmp/site/Terms-ja.html
       # ランナーには日本語のフォントが無く、入れないと文字が四角になる
       - name: Install Japanese fonts
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-noto-cjk
-      # 幅 1280 (デスクトップ) と 390 (モバイル) でページ全体を撮る。高さはページの全体が入る値
-      - name: Screenshot docs/index.html
+      # 紹介ページは幅 1280 (デスクトップ) と 390 (モバイル) でページ全体を撮り、利用規約は組み立てた HTML の先頭を撮る。
+      # 高さはページの全体 (利用規約は先頭の数条) が入る値。撮影の出力先は、Jekyll の action が root で作る tmp/site と
+      # 分けて tmp/shots にする
+      - name: Screenshot built pages
         run: |
-          mkdir -p tmp
+          mkdir -p tmp/shots
           google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=1280,1800 \
-            --screenshot=tmp/docs-desktop.png "file://$GITHUB_WORKSPACE/docs/index.html"
+            --screenshot=tmp/shots/docs-desktop.png "file://$GITHUB_WORKSPACE/tmp/site/index.html"
           google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=390,2600 \
-            --screenshot=tmp/docs-mobile.png "file://$GITHUB_WORKSPACE/docs/index.html"
-          ls -l tmp/docs-desktop.png tmp/docs-mobile.png
+            --screenshot=tmp/shots/docs-mobile.png "file://$GITHUB_WORKSPACE/tmp/site/index.html"
+          google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=1280,1800 \
+            --screenshot=tmp/shots/docs-terms-ja.png "file://$GITHUB_WORKSPACE/tmp/site/Terms-ja.html"
+          ls -l tmp/shots
       - name: Upload screenshots
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cat-hair-docs-screenshot
-          path: tmp/docs-*.png
+          path: tmp/shots/
           if-no-files-found: error
           retention-days: 7
