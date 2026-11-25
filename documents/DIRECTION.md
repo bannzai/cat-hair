@@ -23,7 +23,7 @@ Steam で 300〜900 円の短編インクリメンタルを買って数時間で
 | 最初の屋敷の所要時間 (bot が手で取る段階から全自動まで進める時間) | `make simulate` (ロードマップで作る。CI の artifact の集計 JSON を `gh run download` で取得) | 手で取る段階 10〜15 分、次の建物へ進めるまで 60〜120 分 | 2 回調整しても 30 分未満か 240 分超 | 短い → 毛の総本数か道具の値段を上げる。長い → 中盤の道具の取れる本数を上げる |
 | 触れる版 (屋敷を手で取る段階から最初の自動化まで遊べる版) での bannzai の感想 | 触れる版の報告の issue への bannzai のコメント (`gh issue view <番号> -R bannzai/cat-hair --json comments`) | 「手で取るのが気持ちいい・アホらしい」 | 2 回続けて「作業なだけで面白くない」 | 「手触りが弱い」→ 抜ける時の伸び・音・カウントの演出を変える。「自動化が気持ちよくない」→ 自動化の前後の差の見せ方を変える |
 | ストアページ公開後 28 日のウィッシュリスト数 | Steamworks の画面 (コマンドで読む経路が無い。ストアページを出す時に経路と一緒に決め直す) | 2,000 件以上 | 200 件未満 | 訪問はあるがウィッシュリストに入らない → ストアの最初の画像と動画を、猫と取りこぼしが伝わるものに変える |
-| 発売後 28 日のレビュー数 (全言語・全購入種別) | `curl -sS 'https://api.steampowered.com/IUserReviewsService/GetAppReviews/v1/?appid=<appid>&review_type=0&purchase_type=1&num_per_page=0'` の `response.query_summary.total_reviews` | 50 件以上 | 2 回連続 (56 日) で 10 件未満 | レビュー数はあるが好評率 70% 未満 → 否定レビューの上位の不満を直す |
+| 発売後 28 日のレビュー数 (全言語・全購入種別) | `curl -sS -G 'https://api.steampowered.com/IUserReviewsService/GetAppReviews/v1/' --data-urlencode 'input_json={"appid":<appid>,"review_type":0,"purchase_type":1,"num_per_page":1,"languages":["all"]}'` の `response.query_summary.total_reviews` (`languages` を省くと英語のレビューだけを数える。appid 3244220 で 2026-11-25 に実測: 省略 12,292 件、`["all"]` 20,461 件) | 50 件以上 | 2 回連続 (56 日) で 10 件未満 | レビュー数はあるが好評率 70% 未満 → 否定レビューの上位の不満を直す |
 
 ## 必要な機能
 

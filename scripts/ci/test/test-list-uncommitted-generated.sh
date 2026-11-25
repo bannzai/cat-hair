@@ -5,6 +5,8 @@
 # 使い方: bash scripts/ci/test/test-list-uncommitted-generated.sh (リポジトリのどこからでも実行できる)
 # exit code: 0 = 全件 PASS / 1 = FAIL あり
 set -u
+# 呼び出し元が GIT_DIR 等を持っていると、一時リポジトリではなく呼び出し元のリポジトリに init・commit してしまうため外す
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 target="$(cd "$(dirname "$0")/.." && pwd)/list-uncommitted-generated.sh"
 failed=0
 work=$(mktemp -d)
@@ -60,5 +62,15 @@ expect "commit すると何も出さない" ""
 
 printf 'uid://ddd\n' > "$work/scripts/猫.gd.uid"
 expect "日本語のファイル名は、引用符や 8 進の表記にせずそのまま出す" "scripts/猫.gd.uid"
+
+not_a_repo=$(mktemp -d)
+trap 'rm -rf "$work" "$not_a_repo"' EXIT
+(cd "$not_a_repo" && GIT_CONFIG_GLOBAL=/dev/null GIT_CEILING_DIRECTORIES="$(dirname "$not_a_repo")" bash "$target" > /dev/null 2>&1)
+if [ "$?" -ne 0 ]; then
+  echo "PASS: git のリポジトリでない場所では失敗する (該当なしと取り違えない)"
+else
+  echo "FAIL: git のリポジトリでない場所では失敗する (exit 0 で終わった)"
+  failed=1
+fi
 
 exit "$failed"

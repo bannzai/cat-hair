@@ -84,10 +84,8 @@ extends Resource
 @export var surface_hairs: Array[SurfaceHair]
 ## 取ってまだ売っていない毛と、加工した物
 @export var hair_stocks: Array[HairStock]
-## 買った道具
+## 買った道具 (同じ道具を 2 つ買うと 2 件になる)
 @export var owned_tools: Array[OwnedTool]
-## 掃除ロボットごとの巡回の順
-@export var robot_routes: Array[RobotRoute]
 ## 住人ごとの機嫌 (0.0 = 不機嫌 〜 1.0 = ご機嫌)
 @export var resident_moods: Dictionary[StringName, float]
 ## 探し物ごとの状態
@@ -110,6 +108,8 @@ extends Resource
 
 ## 毛の色 (白・黒・三毛・混ざった物)
 @export var hair_color: StringName
+## 珍しい毛の種類 (ヒゲ・金色の毛等)。ふつうの毛は空。売る時の値段が種類で変わるため、在庫でも種類を分けて持つ
+@export var rare_hair_id: StringName
 ## 形 (毛のまま・毛玉・フェルト・人形)
 @export var form: StringName
 ## 数 (毛のままなら本数、加工した物なら個数)
@@ -126,16 +126,9 @@ extends Resource
 @export var level: int
 ## 消耗品の残り (粘着ローラーの紙の枚数等)。消耗品の無い道具は 0
 @export var consumable_count: int
-
-
-## 掃除ロボット 1 台の巡回
-class_name RobotRoute
-extends Resource
-
-## どの掃除ロボットか (OwnedTool の tool_id)
-@export var tool_id: StringName
-## 回る部屋 (回る順)
-@export var room_ids: Array[StringName]
+## 掃除ロボットが回る部屋 (回る順)。掃除ロボットでない道具は空。同じ掃除ロボットを 2 台買った時に 1 台ずつ別の順を
+## 持てるよう、買った道具 1 つずつに置く
+@export var robot_room_ids: Array[StringName]
 
 
 ## 探し物 1 つの状態
@@ -210,15 +203,15 @@ extends Resource
 <thead><tr><th>操作</th><th>読むデータ</th><th>書くデータ</th></tr></thead>
 <tbody>
 <tr><td>屋敷に入る (続きから)</td><td><code>SaveData</code> 全体</td><td>なし</td></tr>
-<tr><td>毛を 1 本つまんで抜く</td><td>その面の <code>SurfaceHair.hair_counts</code>、<code>hand_upgrade_levels</code></td><td><code>SurfaceHair.hair_counts</code> を 1 減らす。<code>HairStock</code> (その色・毛のまま) を 1 増やす。珍しい毛なら <code>found_rare_hair_ids</code> に足す</td></tr>
+<tr><td>毛を 1 本つまんで抜く</td><td>その面の <code>SurfaceHair.hair_counts</code>、<code>hand_upgrade_levels</code></td><td><code>SurfaceHair.hair_counts</code> を 1 減らす。<code>HairStock</code> (その色・毛のまま。珍しい毛ならその種類) を 1 増やす。珍しい毛なら <code>found_rare_hair_ids</code> にも足す</td></tr>
 <tr><td>道具を 1 回かける</td><td><code>OwnedTool.level</code>、<code>ToolDef</code> の取りこぼしと得意さ、その面の <code>SurfaceHair</code></td><td>取れた分だけ <code>SurfaceHair.hair_counts</code> を減らし <code>HairStock</code> を増やす。消耗品のある道具は <code>OwnedTool.consumable_count</code> を減らす</td></tr>
 <tr><td>猫が横切る (操作ではなく時間で起きる)</td><td>猫の通り道 (建物の定義)</td><td>通った面の <code>SurfaceHair.hair_counts</code> を増やす</td></tr>
-<tr><td>買取業者に毛を売る</td><td><code>hair_stocks</code></td><td>売った <code>HairStock</code> を消す。<code>money</code> を増やす</td></tr>
+<tr><td>買取業者に毛を売る</td><td><code>hair_stocks</code> (色・珍しい毛の種類・形で値段が決まる)</td><td>売った <code>HairStock</code> を消す。<code>money</code> を増やす</td></tr>
 <tr><td>掃除代を受け取る (時間で起きる)</td><td><code>resident_moods</code>、部屋の面の <code>SurfaceHair</code></td><td><code>resident_moods</code> を更新する。<code>money</code> を増やす</td></tr>
 <tr><td>道具を買う</td><td><code>money</code>、<code>ToolDef.prices</code></td><td><code>money</code> を減らす。<code>owned_tools</code> に足す</td></tr>
 <tr><td>道具のレベルを上げる</td><td><code>money</code>、<code>ToolDef.prices</code></td><td><code>money</code> を減らす。<code>OwnedTool.level</code> を 1 増やす</td></tr>
 <tr><td>粘着ローラーの紙を買い足す</td><td><code>money</code>、<code>ToolDef.consumable_price</code></td><td><code>money</code> を減らす。<code>OwnedTool.consumable_count</code> を増やす</td></tr>
-<tr><td>掃除ロボットを置いて回る順を決める</td><td><code>owned_tools</code></td><td><code>robot_routes</code> を書き換える</td></tr>
+<tr><td>掃除ロボットを置いて回る順を決める</td><td><code>owned_tools</code></td><td>その掃除ロボットの <code>OwnedTool.robot_room_ids</code> を書き換える</td></tr>
 <tr><td>毛を加工する</td><td><code>hair_stocks</code></td><td>元の <code>HairStock</code> を減らし、加工した形の <code>HairStock</code> を増やす</td></tr>
 <tr><td>探し物の毛を取る</td><td><code>FoundItemDef.safe_tool_ids</code>、使った道具</td><td><code>FoundItemProgress.condition</code> を CLEAN か DAMAGED にする</td></tr>
 <tr><td>探し物を住人に返す</td><td><code>FoundItemProgress.condition</code>、<code>FoundItemDef</code> のお礼の額</td><td><code>is_returned</code> を true にする。<code>money</code> を増やす</td></tr>
