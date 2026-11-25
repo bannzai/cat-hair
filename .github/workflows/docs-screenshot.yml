@@ -43,23 +43,26 @@ jobs:
           sudo apt-get install -y -qq fonts-noto-cjk
       # 紹介ページは幅 1280 (デスクトップ) と 390 (モバイル) でページ全体を撮り、利用規約は組み立てた HTML の先頭を撮る。
       # 高さはページの全体 (利用規約は先頭の数条) が入る値。撮影の出力先は、Jekyll の action が root の所有で作る tmp/ (書き込めない) と
-      # 分けて shots にする。レイアウトはテーマの CSS を / から始まる URL (Pages の配信先と同じ /<リポジトリ名>/ の下) で
-      # 読むため、file:// ではなく、組み立てたサイトを Pages と同じパスで HTTP で配って撮る (file:// だと CSS が当たらない)。
-      # 組み立てた HTML が指す CSS の URL が実際に取れることも確かめる
+      # 分けて shots にする。レイアウトはテーマの CSS を、サイトの置き場所 (baseurl) から始まる URL で読むため、file:// では
+      # CSS が当たらない。baseurl は組み立てる環境が決める (この action は /pages/<owner>/<リポジトリ名>、Pages の配信では
+      # /<リポジトリ名>) ので、組み立てた HTML が指す CSS の URL から baseurl を読み、その下でサイトを HTTP で配って撮る。
+      # HTML が指す CSS の URL が実際に取れることも確かめる
       - name: Screenshot built pages
-        env:
-          REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |
-          mkdir -p shots "$RUNNER_TEMP/serve"
-          ln -s "$GITHUB_WORKSPACE/tmp/site" "$RUNNER_TEMP/serve/$REPOSITORY_NAME"
+          stylesheet=$(grep -o 'href="[^"]*/assets/css/style\.css[^"]*"' tmp/site/Terms-ja.html | head -n 1 | cut -d'"' -f2 | cut -d'?' -f1)
+          echo "stylesheet: $stylesheet"
+          baseurl="${stylesheet%/assets/css/style.css}"
+          mkdir -p shots
+          if [ -n "$baseurl" ]; then
+            mkdir -p "$RUNNER_TEMP/serve$(dirname "$baseurl")"
+          fi
+          ln -s "$GITHUB_WORKSPACE/tmp/site" "$RUNNER_TEMP/serve$baseurl"
           nohup python3 -m http.server 8000 --bind 127.0.0.1 --directory "$RUNNER_TEMP/serve" > "$RUNNER_TEMP/http.log" 2>&1 &
-          site="http://127.0.0.1:8000/$REPOSITORY_NAME"
+          site="http://127.0.0.1:8000$baseurl"
           for _ in $(seq 1 30); do
             curl -sf -o /dev/null "$site/index.html" && break
             sleep 1
           done
-          stylesheet=$(grep -o 'href="[^"]*style\.css[^"]*"' tmp/site/Terms-ja.html | head -n 1 | cut -d'"' -f2)
-          echo "stylesheet: $stylesheet"
           curl -sf -o /dev/null "http://127.0.0.1:8000$stylesheet"
           google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=1280,1800 \
             --screenshot=shots/docs-desktop.png "$site/index.html"
