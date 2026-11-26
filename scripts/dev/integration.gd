@@ -840,7 +840,7 @@ func _verify_resume_and_new_game_from_saved_state(game_state: Node) -> void:
 		and saved_after_reset.tuning.hair_count == 500
 		and saved_after_reset.tuning.object_count == 6
 		and saved_after_reset.tuning.found_item_count == 2
-		and is_equal_approx(saved_after_reset.tuning.room_size_m, 7.5),
+		and is_equal_approx(saved_after_reset.tuning.room_size_m, 8.0),
 		"『はじめから』で現在の調整値を引き継ぎ初期化した進行を保存ファイルへ書き出す",
 	)
 

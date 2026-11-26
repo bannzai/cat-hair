@@ -55,7 +55,7 @@ const TABLE_MIN_LEG_HEIGHT_M: float = 0.1
 const TABLE_LEG_OFFSET_X_RATIO: float = 0.42
 ## テーブル四隅の脚を天板端からわずかに内側へ寄せる Z 方向配置比率 (奥行の半分 0.5 より内側)
 const TABLE_LEG_OFFSET_Z_RATIO: float = 0.40
-## テーブル脚の断面一辺の幅 (m)
+## テーブル脚の断面一辺の幅 (m。天板を支える見た目として細すぎずかさばらない一般的な木製脚幅)
 const TABLE_LEG_WIDTH_M: float = 0.07
 ## 仮の毛片を表面の端 6% を避けて内側へ散らす半幅比率
 const VISUAL_HAIR_EXTENT_HALF_RATIO: float = 0.44

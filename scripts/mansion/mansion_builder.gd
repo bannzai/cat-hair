@@ -248,6 +248,11 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		obj.size = Vector3(raw_size.x * fit_scale, raw_size.y, raw_size.z * fit_scale)
 
 		var slot: Dictionary = ROOM_SLOTS[local_idx % ROOM_SLOTS.size()]
+		var rot_y: float = float(slot["rot"])
+		var abs_cos: float = absf(cos(rot_y))
+		var abs_sin: float = absf(sin(rot_y))
+		var rotated_size_x: float = abs_cos * obj.size.x + abs_sin * obj.size.z
+		var rotated_size_z: float = abs_sin * obj.size.x + abs_cos * obj.size.z
 		var ring: int = local_idx / ROOM_SLOTS.size()
 		var ring_shrink: float = pow(RING_SHRINK_FACTOR, float(ring))
 		var offset_x: float = float(slot["rx"]) * room.size.x * ring_shrink
@@ -257,17 +262,17 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 			offset_z += RING_STAGGER_Z_M if ((local_idx % 2) == 0) else -RING_STAGGER_Z_M
 		var limit_x: float = maxf(
 			MIN_OBJECT_OFFSET_LIMIT_M,
-			room.size.x * 0.5 - maxf(MIN_WALL_MARGIN_M, obj.size.x * 0.5 + WALL_CLEARANCE_M),
+			room.size.x * 0.5 - maxf(MIN_WALL_MARGIN_M, rotated_size_x * 0.5 + WALL_CLEARANCE_M),
 		)
 		var limit_z: float = maxf(
 			MIN_OBJECT_OFFSET_LIMIT_M,
-			room.size.z * 0.5 - maxf(MIN_WALL_MARGIN_M, obj.size.z * 0.5 + WALL_CLEARANCE_M),
+			room.size.z * 0.5 - maxf(MIN_WALL_MARGIN_M, rotated_size_z * 0.5 + WALL_CLEARANCE_M),
 		)
 		offset_x = clampf(offset_x, -limit_x, limit_x)
 		offset_z = clampf(offset_z, -limit_z, limit_z)
 
 		obj.position = Vector3(room.center.x + offset_x, 0.0, room.center.z + offset_z)
-		obj.rotation_y = float(slot["rot"])
+		obj.rotation_y = rot_y
 		layout.objects.append(obj)
 
 		var surface: MansionLayout.SurfaceDef = MansionLayoutScript.SurfaceDef.new()
@@ -285,8 +290,8 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 			obj.position.z,
 		)
 		surface.extents = Vector2(
-			maxf(MIN_SURFACE_EXTENT_M, obj.size.x * SURFACE_HAIR_EXTENT_RATIO),
-			maxf(MIN_SURFACE_EXTENT_M, obj.size.z * SURFACE_HAIR_EXTENT_RATIO),
+			maxf(MIN_SURFACE_EXTENT_M, rotated_size_x * SURFACE_HAIR_EXTENT_RATIO),
+			maxf(MIN_SURFACE_EXTENT_M, rotated_size_z * SURFACE_HAIR_EXTENT_RATIO),
 		)
 		surface.hair_weight = float(preset["weight"])
 		layout.surfaces.append(surface)

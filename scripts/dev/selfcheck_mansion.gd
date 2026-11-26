@@ -107,6 +107,29 @@ func _check_mansion_builder_default() -> void:
 		and layout.find_surface(&"missing_surface") == null,
 		"MansionLayout.find_surface が一致面と不在面を返す",
 	)
+	var rotated_checked: bool = false
+	for obj: MansionLayout.ObjectDef in layout.objects:
+		if absf(sin(obj.rotation_y)) > 0.5 and not is_equal_approx(obj.size.x, obj.size.z):
+			var obj_surface: MansionLayout.SurfaceDef = layout.find_surface(
+				StringName("%s_surface" % String(obj.object_id))
+			)
+			var expected_x: float = maxf(
+				MansionBuilderScript.MIN_SURFACE_EXTENT_M,
+				obj.size.z * MansionBuilderScript.SURFACE_HAIR_EXTENT_RATIO,
+			)
+			var expected_z: float = maxf(
+				MansionBuilderScript.MIN_SURFACE_EXTENT_M,
+				obj.size.x * MansionBuilderScript.SURFACE_HAIR_EXTENT_RATIO,
+			)
+			_check(
+				obj_surface != null
+				and is_equal_approx(obj_surface.extents.x, expected_x)
+				and is_equal_approx(obj_surface.extents.y, expected_z),
+				"90 度回転した家具 %s の表面範囲に回転後の幅・奥行が反映される" % String(obj.object_id),
+			)
+			rotated_checked = true
+			break
+	_check(rotated_checked, "既定レイアウトに 90 度回転かつ非正方形の家具が存在し検証できた")
 
 
 ## 調整値変更・最大部屋数 (16 部屋・9 部屋目以降の連番 ID)・内側リング配置 (ring > 0)・物 200 個を検証する
