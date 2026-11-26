@@ -20,12 +20,18 @@ const SURFACE_LIFT_M: float = 0.0012
 const HAIR_LENGTH_M: float = 0.048
 ## 1 本の毛の根元幅 (m。1280x720 でカメラから約 1 m の距離で 2〜3 px になり視認できる太さ)
 const HAIR_BASE_WIDTH_M: float = 0.0028
-## 白・黒・三毛の 3 系統をほぼ均等 (約 1/3 ずつ) に出現させる累積確率の境界
+## 白系統の累積確率境界 (白 34% / 黒 33% / 三毛 33% のほぼ均等 3 分割にする)
 const COLOR_WHITE_THRESHOLD: float = 0.34
+## 黒系統の累積確率境界 (0.34〜0.67 の 33% を黒系統に割り当てる)
 const COLOR_BLACK_THRESHOLD: float = 0.67
-## 三毛系統内での茶オレンジ (55%)・こげ茶 (30%)・クリーム (15%) の累積確率の境界 (茶系を主役にする)
+## 三毛系統内での茶オレンジの累積確率境界 (55% を茶オレンジにし、三毛らしさを際立たせる)
 const CALICO_ORANGE_THRESHOLD: float = 0.55
+## 三毛系統内でのこげ茶の累積確率境界 (0.55〜0.85 の 30% をこげ茶、残り 15% をクリームにする)
 const CALICO_BROWN_THRESHOLD: float = 0.85
+## 色分類で三毛 (有彩色) と判定する最小彩度差 (pick_hair_color の白 0.03・黒 0.02 と三毛最小 0.18 の中間)
+const CALICO_MIN_CHROMA: float = 0.08
+## 色分類で白と判定する最小最大チャンネル値 (pick_hair_color の黒最大 0.16 と白最小 0.89 の中間より白寄り)
+const WHITE_MIN_CHANNEL: float = 0.75
 ## 削除済み・未登録の毛 ID を表すスロット番号の番兵値
 const INVALID_SLOT: int = -1
 
@@ -106,9 +112,10 @@ static func pick_hair_color(rng: RandomNumberGenerator) -> Color:
 		# 黒 (影と完全に同化しないよう明度 0.07〜0.14 の濃いチャコールにする)
 		var brightness: float = rng.randf_range(0.07, 0.14)
 		return Color(brightness, brightness, brightness + 0.02, 1.0)
-	# 三毛 (茶オレンジ・こげ茶・クリームの混在)
+	# 三毛 (茶オレンジ・こげ茶・クリームの混在。床の茶・ソファの紺の両方で視認できる彩度帯を採用)
 	var calico_roll: float = rng.randf()
 	if calico_roll < CALICO_ORANGE_THRESHOLD:
+		# 茶トラ寄りの暖色オレンジ (R 0.72〜0.84, G 0.38〜0.49, B 0.14〜0.22)
 		return Color(
 			rng.randf_range(0.72, 0.84),
 			rng.randf_range(0.38, 0.49),
@@ -116,33 +123,38 @@ static func pick_hair_color(rng: RandomNumberGenerator) -> Color:
 			1.0
 		)
 	if calico_roll < CALICO_BROWN_THRESHOLD:
+		# 濃い焦げ茶 (R 0.32〜0.42, G 0.18〜0.25, B 0.09〜0.14)
 		return Color(
 			rng.randf_range(0.32, 0.42),
 			rng.randf_range(0.18, 0.25),
 			rng.randf_range(0.09, 0.14),
 			1.0
 		)
+	# クリーム白 (純白より黄味を帯びさせ、三毛の明るい毛と白猫の毛を区別しやすくする)
 	return Color(0.93, 0.86, 0.74, 1.0)
 
 
-## 色が白・黒・三毛のどの系統に属するかを判定する (テスト用)
+## 色が白・黒・三毛のどの系統に属するかを判定する (テスト用。pick_hair_color の値域に対応)
 static func classify_hair_color(color: Color) -> int:
 	var max_channel: float = maxf(color.r, maxf(color.g, color.b))
 	var min_channel: float = minf(color.r, minf(color.g, color.b))
-	if max_channel - min_channel >= 0.08:
+	if max_channel - min_channel >= CALICO_MIN_CHROMA:
 		return HairColorGroup.CALICO
-	if max_channel >= 0.75:
+	if max_channel >= WHITE_MIN_CHANNEL:
 		return HairColorGroup.WHITE
 	return HairColorGroup.BLACK
 
 
 ## 1 本の猫の毛のメッシュ (3 セグメント・7 頂点・5 三角形の細い曲がった先細り形状) を作る
 static func build_hair_mesh() -> ArrayMesh:
+	# 根元 (p0) から先端 (p3) へ横最大 8 mm・高さ最大 5.6 mm の緩やかな弧を描く制御点
+	# (直線ではなく曲がった抜け毛として 1 本ずつ視認でき、先端は床近くへ戻る形状)
 	var p0: Vector3 = Vector3(0.0, 0.0, 0.0)
 	var p1: Vector3 = Vector3(0.0045, 0.0042, HAIR_LENGTH_M * 0.35)
 	var p2: Vector3 = Vector3(0.0080, 0.0056, HAIR_LENGTH_M * 0.70)
 	var p3: Vector3 = Vector3(0.0042, 0.0018, HAIR_LENGTH_M)
 
+	# 根元半幅 0.50 → 1/3 で 0.44 → 2/3 で 0.30 → 先端 0.0 の段階的テーパーで先細りにする
 	var w0: float = HAIR_BASE_WIDTH_M * 0.5
 	var w1: float = HAIR_BASE_WIDTH_M * 0.44
 	var w2: float = HAIR_BASE_WIDTH_M * 0.30
@@ -196,6 +208,7 @@ static func build_hair_material() -> StandardMaterial3D:
 	var material: StandardMaterial3D = StandardMaterial3D.new()
 	material.vertex_color_use_as_albedo = true
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# 獣毛の控えめな艶 (完全マット 1.0 を避け、鏡面ギラつきを抑える 0.72)
 	material.roughness = 0.72
 	material.metallic = 0.0
 	return material
@@ -357,6 +370,37 @@ func get_surface_visible_instance_count(surface_index: int) -> int:
 		return 0
 	var multimesh: MultiMesh = _buckets[surface_index]["multimesh"]
 	return multimesh.visible_instance_count
+
+
+## 指定した表面の指定スロットにある毛 ID を返す (範囲外は INVALID_SLOT = -1)
+func get_hair_id_at_slot(surface_index: int, slot: int) -> int:
+	if surface_index < 0 or surface_index >= _buckets.size():
+		return INVALID_SLOT
+	var bucket: Dictionary = _buckets[surface_index]
+	if slot < 0 or slot >= int(bucket["active_count"]):
+		return INVALID_SLOT
+	var hair_ids: PackedInt32Array = bucket["hair_ids"]
+	return hair_ids[slot]
+
+
+## 指定した表面の MultiMesh 本体から指定スロットの Transform3D を直接読む (描画付き検証用)
+func get_multimesh_slot_transform(surface_index: int, slot: int) -> Transform3D:
+	if surface_index < 0 or surface_index >= _buckets.size():
+		return Transform3D.IDENTITY
+	var multimesh: MultiMesh = _buckets[surface_index]["multimesh"]
+	if slot < 0 or slot >= multimesh.visible_instance_count:
+		return Transform3D.IDENTITY
+	return multimesh.get_instance_transform(slot)
+
+
+## 指定した表面の MultiMesh 本体から指定スロットの色を直接読む (描画付き検証用)
+func get_multimesh_slot_color(surface_index: int, slot: int) -> Color:
+	if surface_index < 0 or surface_index >= _buckets.size():
+		return Color(0.0, 0.0, 0.0, 0.0)
+	var multimesh: MultiMesh = _buckets[surface_index]["multimesh"]
+	if slot < 0 or slot >= multimesh.visible_instance_count:
+		return Color(0.0, 0.0, 0.0, 0.0)
+	return multimesh.get_instance_color(slot)
 
 
 ## 指定した毛 ID が現在存在していれば true

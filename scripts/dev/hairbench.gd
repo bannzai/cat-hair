@@ -23,16 +23,19 @@ const WARMUP_FRAMES_FIRST: int = 4
 const WARMUP_FRAMES_NEXT: int = 2
 ## 通常時のフレーム時間計測フレーム数 (CI 実行時間と平均値の安定のバランスで 5 フレーム)
 const MEASURE_FRAMES_MAX: int = 5
-## 1 フレームがこの ms 以上の重い条件では計測フレーム数を減らして CI タイムアウトを防ぐ
+## 重い条件を判定する 1 フレーム所要時間の閾値 (ms。CI の 100 万本実測 ~1.8 秒に対し 2.0 秒超で短縮)
 const SLOW_FRAME_THRESHOLD_MS: float = 2000.0
 ## 重い条件 (SLOW_FRAME_THRESHOLD_MS 以上) での計測フレーム数 (平均と最小・最大を取る最小 2)
 const MEASURE_FRAMES_SLOW: int = 2
-## 輝度サンプリングの横・縦格子数 (16:9 画面を 576 点で等間隔計測し全画素走査を避ける)
+## 輝度サンプリングの横格子数 (16:9 画面を横 32 × 縦 18 = 576 点で等間隔計測し全画素走査を避ける)
 const LUMINANCE_GRID_COLS: int = 32
+## 輝度サンプリングの縦格子数 (16:9 の縦横比を保つ 18 行)
 const LUMINANCE_GRID_ROWS: int = 18
-## 画面が真っ黒 (0)・真っ白 (1)・単色塗り潰し (差 0) でないことを判定する輝度閾値
+## 画面が真っ黒 (0.0) でないと判定する平均輝度の下限 (実測 0.32〜0.38 に対し完全暗転を弾く 2% 余裕)
 const MIN_MEAN_LUMINANCE: float = 0.02
+## 画面が真っ白 (1.0) でないと判定する平均輝度の上限 (実測 0.32〜0.38 に対し完全白飛びを弾く 2% 余裕)
 const MAX_MEAN_LUMINANCE: float = 0.98
+## 画面が単色塗り潰しでないと判定する輝度差の下限 (実測 0.61 に対し 8bit 量子化誤差を除外する 3%)
 const MIN_LUMINANCE_CONTRAST: float = 0.03
 
 
@@ -72,10 +75,10 @@ static func sample_luminance(image: Image) -> Dictionary:
 	var max_lum: float = 0.0
 	var samples: int = 0
 
-	for r: int in range(LUMINANCE_GRID_ROWS):
-		var y: int = int(float(r + 0.5) * float(height) / float(LUMINANCE_GRID_ROWS))
-		for c: int in range(LUMINANCE_GRID_COLS):
-			var x: int = int(float(c + 0.5) * float(width) / float(LUMINANCE_GRID_COLS))
+	for row: int in range(LUMINANCE_GRID_ROWS):
+		var y: int = int(float(row + 0.5) * float(height) / float(LUMINANCE_GRID_ROWS))
+		for column: int in range(LUMINANCE_GRID_COLS):
+			var x: int = int(float(column + 0.5) * float(width) / float(LUMINANCE_GRID_COLS))
 			var lum: float = image.get_pixel(x, y).get_luminance()
 			sum_lum += lum
 			min_lum = minf(min_lum, lum)
@@ -96,11 +99,24 @@ static func sample_luminance(image: Image) -> Dictionary:
 	}
 
 
-## 1 本削除の結果がすべて期待どおり (戻り値 true・本数 1 減・対象 ID 消滅) かを判定する
+## 初回フレームの所要時間に応じて、重い条件なら計測フレーム数を短縮する目標値を返す
+static func select_measure_frame_target(
+	frame_idx: int, elapsed_ms: float, current_target: int
+) -> int:
+	if frame_idx == 0 and elapsed_ms >= SLOW_FRAME_THRESHOLD_MS:
+		return MEASURE_FRAMES_SLOW
+	return current_target
+
+
+## 1 本削除の結果がすべて期待どおり (戻り値 true・本数 1 減・対象 ID 消滅・MultiMesh 反映) かを判定する
 static func evaluate_single_remove(
-	removed: bool, before_count: int, after_count: int, still_exists: bool
+	removed: bool,
+	before_count: int,
+	after_count: int,
+	still_exists: bool,
+	multimesh_synced: bool = true
 ) -> bool:
-	return removed and after_count == before_count - 1 and not still_exists
+	return removed and after_count == before_count - 1 and not still_exists and multimesh_synced
 
 
 ## 1 本数分の計測が描画成功の条件をすべて満たしたかを判定する
@@ -198,8 +214,7 @@ func _measure_count(
 	var placed: int = prototype.populate_hairs(target_count)
 	var setup_ms: float = float(Time.get_ticks_usec() - setup_start) / 1000.0
 
-	var warmup: int = WARMUP_FRAMES_FIRST if is_first else WARMUP_FRAMES_NEXT
-	for _w: int in range(warmup):
+	for _w: int in range(WARMUP_FRAMES_FIRST if is_first else WARMUP_FRAMES_NEXT):
 		await process_frame
 
 	var frame_times: Array[float] = []
@@ -210,8 +225,7 @@ func _measure_count(
 		await process_frame
 		var elapsed_ms: float = float(Time.get_ticks_usec() - frame_start_usec) / 1000.0
 		frame_times.append(elapsed_ms)
-		if frame_idx == 0 and elapsed_ms >= SLOW_FRAME_THRESHOLD_MS:
-			target_frames = MEASURE_FRAMES_SLOW
+		target_frames = select_measure_frame_target(frame_idx, elapsed_ms, target_frames)
 		frame_idx += 1
 
 	var png_path: String = "%s/%s-%d.png" % [png_dir, png_prefix, target_count]
@@ -219,12 +233,28 @@ func _measure_count(
 	var save_status: Error = image.save_png(png_path)
 	var lum_stats: Dictionary = sample_luminance(image)
 
+	var field: Node3D = prototype.get_hair_field()
+	var surface0_count: int = field.get_surface_remaining_count(0)
+	var tail_id: int = field.get_hair_id_at_slot(0, surface0_count - 1) if surface0_count >= 2 else -1
+	var tail_xform_before: Transform3D = (
+		field.get_hair_transform(tail_id) if tail_id >= 0 else Transform3D.IDENTITY
+	)
+	var tail_color_before: Color = (
+		field.get_hair_color(tail_id) if tail_id >= 0 else Color(0.0, 0.0, 0.0, 0.0)
+	)
 	var before_remove: int = prototype.get_remaining_count()
 	var removed: bool = prototype.remove_hair(0) if before_remove > 0 else false
 	var after_remove: int = prototype.get_remaining_count()
 	await process_frame
+	# 描画付き実行で swap-remove が MultiMesh 本体の Transform/Color へ反映されたことも検証する
+	var multimesh_synced: bool = true
+	if tail_id >= 0:
+		multimesh_synced = (
+			field.get_multimesh_slot_transform(0, 0).is_equal_approx(tail_xform_before)
+			and field.get_multimesh_slot_color(0, 0).is_equal_approx(tail_color_before)
+		)
 	var single_remove_ok: bool = evaluate_single_remove(
-		removed, before_remove, after_remove, prototype.get_hair_field().has_hair(0)
+		removed, before_remove, after_remove, field.has_hair(0), multimesh_synced
 	)
 
 	var frame_sum: float = 0.0
@@ -234,7 +264,6 @@ func _measure_count(
 		frame_sum += frame_time_ms
 		frame_min = minf(frame_min, frame_time_ms)
 		frame_max = maxf(frame_max, frame_time_ms)
-	var frame_avg: float = frame_sum / float(frame_times.size())
 
 	var rendered: bool = evaluate_rendered(
 		placed, target_count, save_status, bool(lum_stats["not_blank"]), single_remove_ok
@@ -247,7 +276,7 @@ func _measure_count(
 		"placed_count": placed,
 		"rendered": rendered,
 		"setup_ms": snappedf(setup_ms, 0.01),
-		"frame_ms_avg": snappedf(frame_avg, 0.01),
+		"frame_ms_avg": snappedf(frame_sum / float(frame_times.size()), 0.01),
 		"frame_ms_min": snappedf(frame_min, 0.01),
 		"frame_ms_max": snappedf(frame_max, 0.01),
 		"measured_frames": frame_times.size(),

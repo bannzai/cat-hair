@@ -8,8 +8,10 @@ const HairFieldScript := preload("res://scripts/hair_field.gd")
 const ROOM_SIZE_M: float = 5.0
 ## 部屋の壁の高さ (m。一人称視点で天井付近まで映る高さ)
 const WALL_HEIGHT_M: float = 2.8
-## ソファ座面の高さ (m。一般的なソファ座面 44 cm)
+## ソファ座面の上面高さ (m。一般的なソファ座面 44 cm)
 const SOFA_SEAT_Y_M: float = 0.44
+## ソファ座面クッションの厚み (m。座面箱の中心 Y は SOFA_SEAT_Y_M から計算する)
+const SOFA_SEAT_HEIGHT_M: float = 0.24
 ## 床とソファへの毛の本数配分 (床面積 18.4 m²・ソファ座面 1.25 m² に対し、
 ## 猫の昼寝場所であるソファをやや高密度にして両表面の識別性を確かめる配分)
 const FLOOR_WEIGHT: float = 0.82
@@ -102,10 +104,10 @@ func _build_room_geometry() -> void:
 		Vector3(0.0, 0.07, -half_room + 0.07), _make_material(Color(0.20, 0.14, 0.10), 0.60)
 	)
 
-	# ソファ (座面の上面が SOFA_SEAT_Y_M = 0.44)
+	# ソファ (座面の上面を SOFA_SEAT_Y_M に一致させる)
 	_add_box(
-		room, "SofaSeat", Vector3(1.94, 0.24, 0.76),
-		Vector3(0.0, 0.32, -1.12), sofa_material
+		room, "SofaSeat", Vector3(1.94, SOFA_SEAT_HEIGHT_M, 0.76),
+		Vector3(0.0, SOFA_SEAT_Y_M - SOFA_SEAT_HEIGHT_M * 0.5, -1.12), sofa_material
 	)
 	_add_box(
 		room, "SofaBack", Vector3(1.94, 0.58, 0.20),

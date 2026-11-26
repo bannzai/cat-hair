@@ -40,8 +40,8 @@ WINDOWED_LOG_NOISE := -e 'Could not set V-Sync mode' -e 'IMKCFRunLoopWakeUpRelia
 # movie target が録画するフレーム数 (30 fps 固定。150 = 5 秒)。操作なしの起動〜メインシーン表示の確認には
 # 数秒あれば足り、CI の録画時間と artifact のサイズを抑えるため
 MOVIE_FRAMES ?= 150
-# hairbench target が計測する毛の本数 (カンマ区切り)
-HAIRBENCH_COUNTS ?= 1000,10000,100000,1000000
+# hairbench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/hairbench.gd の DEFAULT_COUNTS が SSOT)
+HAIRBENCH_COUNTS ?=
 
 .PHONY: import check selfcheck integration failure-path lint test verify screenshot movie hairbench run build-macos build-windows build-linux build-all clean
 
@@ -86,14 +86,19 @@ integration: import
 	tail -n 1 $(LOG_DIR)/integration.log | grep -q '^exit=0$$'
 	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/integration.log
 
-# 検証の土台 (scripts/dev/headless_check.gd) の失敗の経路の検証。わざと失敗する検証を動かし、exit code 1・FAIL の行・
-# 完了の行が出ないことを確かめる (土台が常に OK を返すようになると selfcheck / integration では気づけないため)
+# 検証の土台 (scripts/dev/headless_check.gd) と hairbench.gd の失敗の経路の検証。わざと失敗する条件で動かし、
+# exit code 1 で終わり、完了の行が出ないことを確かめる (失敗を握り潰して常に OK を返す退行を検出する)
 failure-path: import
 	"$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/failure_path_check.gd > $(LOG_DIR)/failure-path.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/failure-path.log; \
 	tail -n 1 $(LOG_DIR)/failure-path.log | grep -q '^exit=1$$'
 	grep -q 'failure_path_check FAIL' $(LOG_DIR)/failure-path.log
 	! grep -q '^failure_path_check OK$$' $(LOG_DIR)/failure-path.log
+	HAIRBENCH_COUNTS="10" HAIRBENCH_JSON="$(LOG_DIR)/hairbench-fail.json" HAIRBENCH_PNG_PREFIX="hairbench-fail" "$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/hairbench.gd > $(LOG_DIR)/hairbench-failure-path.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/hairbench-failure-path.log; \
+	rm -f $(LOG_DIR)/hairbench-fail.json $(LOG_DIR)/hairbench-fail-*.png; \
+	tail -n 1 $(LOG_DIR)/hairbench-failure-path.log | grep -q '^exit=1$$'
+	! grep -q '^hairbench OK$$' $(LOG_DIR)/hairbench-failure-path.log
 
 # GDScript の lint (gdtoolkit の gdlint。設定は ./gdlintrc)
 lint:
@@ -177,7 +182,7 @@ build-all: build-macos build-windows build-linux
 # ディレクトリごとや *.log をまとめては消さない)。ログは target ごとの <target>.log と、ENGINE_LOG の <target>.godot.log
 clean:
 	rm -rf build
-	rm -f $(foreach target,import check selfcheck integration failure-path screenshot movie hairbench run build-macos build-windows build-linux,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
+	rm -f $(foreach target,import check selfcheck integration failure-path hairbench-failure-path screenshot movie hairbench run build-macos build-windows build-linux,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
 	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4
 
 # 引数なしの make で run を実行する (人が手で動作確認するための入口。検査・テストは CI が行う)

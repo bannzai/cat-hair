@@ -76,16 +76,21 @@ func _check_hair_allocate_counts() -> void:
 		"1000 本を 0.82:0.18 で配分すると [820, 180] (実際: %s)" % [str(normal)]
 	)
 
-	var frac: PackedInt32Array = HairFieldScript.allocate_counts(7, weights)
+	var fractional_counts: PackedInt32Array = HairFieldScript.allocate_counts(7, weights)
 	_check(
-		frac.size() == 2 and frac[0] + frac[1] == 7 and frac[0] == 6 and frac[1] == 1,
-		"端数のある 7 本の合計が 7 で [6, 1] (実際: %s)" % [str(frac)]
+		fractional_counts.size() == 2
+		and fractional_counts[0] + fractional_counts[1] == 7
+		and fractional_counts[0] == 6
+		and fractional_counts[1] == 1,
+		"端数のある 7 本の合計が 7 で [6, 1] (実際: %s)" % [str(fractional_counts)]
 	)
 
-	var one: PackedInt32Array = HairFieldScript.allocate_counts(1, weights)
+	var single_hair_counts: PackedInt32Array = HairFieldScript.allocate_counts(1, weights)
 	_check(
-		one.size() == 2 and one[0] == 1 and one[1] == 0,
-		"1 本の時は重みが大きい面に配分され合計 1 (実際: %s)" % [str(one)]
+		single_hair_counts.size() == 2
+		and single_hair_counts[0] == 1
+		and single_hair_counts[1] == 0,
+		"1 本の時は重みが大きい面に配分され合計 1 (実際: %s)" % [str(single_hair_counts)]
 	)
 
 	var zero: PackedInt32Array = HairFieldScript.allocate_counts(0, weights)
@@ -155,8 +160,10 @@ func _check_hair_mesh_shape() -> void:
 	)
 	var mesh_aabb: AABB = HairFieldScript.compute_mesh_aabb(mesh)
 	_check(
-		mesh_aabb.size.z > 0.03 and HairFieldScript.compute_mesh_aabb(null) == AABB(),
-		"compute_mesh_aabb が頂点配列から非空の AABB を計算し null で空 AABB を返す"
+		mesh_aabb.size.z > 0.03
+		and HairFieldScript.compute_mesh_aabb(null) == AABB()
+		and HairFieldScript.compute_mesh_aabb(ArrayMesh.new()) == AABB(),
+		"compute_mesh_aabb が頂点配列から非空の AABB を計算し null と 0 サーフェスで空 AABB を返す"
 	)
 	_check(
 		HairFieldScript.compute_aabb_min_transformed_y(
@@ -209,8 +216,7 @@ func _check_hair_field_populate_and_remove() -> void:
 	_check(not field.remove_hair(0), "0 本の状態で remove_hair(0) は false")
 
 	# 10 本配置 (floor 7 本: ID 0..6, sofa 3 本: ID 7..9)
-	var placed: int = field.populate(10, 12345)
-	_check(placed == 10 and field.get_remaining_count() == 10, "10 本配置できる")
+	_check(field.populate(10, 12345) == 10 and field.get_remaining_count() == 10, "10 本配置できる")
 	# 配置した毛が Identity ではなく実座標と非透明色を持ち、全 7 頂点が表面高さ以上に収まること
 	var hair_vertices: PackedVector3Array = HairFieldScript.build_hair_mesh().surface_get_arrays(0)[
 		Mesh.ARRAY_VERTEX
@@ -250,8 +256,13 @@ func _check_hair_field_populate_and_remove() -> void:
 		field.get_hair_transform(-1) == Transform3D.IDENTITY
 		and field.get_hair_transform(99) == Transform3D.IDENTITY
 		and field.get_hair_color(-1) == Color(0.0, 0.0, 0.0, 0.0)
-		and field.get_hair_color(99) == Color(0.0, 0.0, 0.0, 0.0),
-		"存在しない ID の Transform/Color 照会は Identity / 透明黒"
+		and field.get_hair_color(99) == Color(0.0, 0.0, 0.0, 0.0)
+		and field.get_hair_slot(-1) == -1
+		and field.get_hair_slot(10) == -1
+		and field.get_hair_id_at_slot(0, 6) == 6
+		and field.get_hair_id_at_slot(-1, 0) == -1
+		and field.get_hair_id_at_slot(0, 7) == -1,
+		"存在しない ID・スロットの照会が既定値 / -1 を返す"
 	)
 
 	# swap される末尾の毛 (ID 6) と次末尾 (ID 5) の位置・色を控え、中間の ID 2 を削除する
@@ -306,9 +317,8 @@ func _check_hair_field_populate_and_remove() -> void:
 	_check(field.get_remaining_count() == 8, "失敗した削除で本数が変わらない")
 
 	# 毛が残っている状態から再 populate して古い MultiMeshInstance3D が解放・置換されること
-	var repopulated: int = field.populate(4, 999)
 	_check(
-		repopulated == 4
+		field.populate(4, 999) == 4
 		and field.get_remaining_count() == 4
 		and field.get_child_count() == 2,
 		"再 populate で子ノードが増えず 2 表面・4 本に置き換わる"
@@ -381,6 +391,24 @@ func _check_hairbench_helpers() -> void:
 		"sample_luminance は単色中間グレー画像をコントラスト不足で not_blank=false と判定する"
 	)
 
+	# コントラストはあるのに平均輝度だけが下限 0.02 以下の画像 (576 サンプル中 1 点だけ白: mean ≈ 0.0017)
+	var mostly_black_img: Image = Image.create(64, 36, false, Image.FORMAT_RGB8)
+	mostly_black_img.fill(Color(0.0, 0.0, 0.0))
+	mostly_black_img.fill_rect(Rect2i(0, 0, 2, 2), Color(1.0, 1.0, 1.0))
+	_check(
+		not bool(HairbenchScript.sample_luminance(mostly_black_img)["not_blank"]),
+		"sample_luminance はコントラスト有でも平均輝度 <= 0.02 で not_blank=false"
+	)
+
+	# コントラストはあるのに平均輝度だけが上限 0.98 以上の画像 (576 サンプル中 1 点だけ黒: mean ≈ 0.998)
+	var mostly_white_img: Image = Image.create(64, 36, false, Image.FORMAT_RGB8)
+	mostly_white_img.fill(Color(1.0, 1.0, 1.0))
+	mostly_white_img.fill_rect(Rect2i(0, 0, 2, 2), Color(0.0, 0.0, 0.0))
+	_check(
+		not bool(HairbenchScript.sample_luminance(mostly_white_img)["not_blank"]),
+		"sample_luminance はコントラスト有でも平均輝度 >= 0.98 で not_blank=false"
+	)
+
 	var varied_img: Image = Image.create(64, 36, false, Image.FORMAT_RGB8)
 	varied_img.fill(Color(0.2, 0.2, 0.2))
 	varied_img.fill_rect(Rect2i(32, 0, 32, 36), Color(0.8, 0.8, 0.8))
@@ -395,22 +423,49 @@ func _check_hairbench_helpers() -> void:
 		"sample_luminance は 0x0 画像と null を not_blank=false と判定する"
 	)
 
-	# evaluate_single_remove: 3 条件それぞれの単一偽
+	# select_measure_frame_target: 閾値ちょうど・直前・2 フレーム目以降
 	_check(
-		HairbenchScript.evaluate_single_remove(true, 10, 9, false),
+		HairbenchScript.select_measure_frame_target(
+			0, HairbenchScript.SLOW_FRAME_THRESHOLD_MS, HairbenchScript.MEASURE_FRAMES_MAX
+		)
+		== HairbenchScript.MEASURE_FRAMES_SLOW,
+		"初回フレームが閾値ちょうどで計測フレーム数を MEASURE_FRAMES_SLOW に減らす"
+	)
+	_check(
+		HairbenchScript.select_measure_frame_target(
+			0, HairbenchScript.SLOW_FRAME_THRESHOLD_MS - 0.01, HairbenchScript.MEASURE_FRAMES_MAX
+		)
+		== HairbenchScript.MEASURE_FRAMES_MAX,
+		"初回フレームが閾値未満なら計測フレーム数を維持する"
+	)
+	_check(
+		HairbenchScript.select_measure_frame_target(
+			1, HairbenchScript.SLOW_FRAME_THRESHOLD_MS + 500.0, HairbenchScript.MEASURE_FRAMES_MAX
+		)
+		== HairbenchScript.MEASURE_FRAMES_MAX,
+		"2 フレーム目以降が遅くても計測フレーム数は減らさない"
+	)
+
+	# evaluate_single_remove: 4 条件それぞれの単一偽
+	_check(
+		HairbenchScript.evaluate_single_remove(true, 10, 9, false, true),
 		"evaluate_single_remove は全条件成立で true"
 	)
 	_check(
-		not HairbenchScript.evaluate_single_remove(false, 10, 9, false),
+		not HairbenchScript.evaluate_single_remove(false, 10, 9, false, true),
 		"evaluate_single_remove は removed=false で false"
 	)
 	_check(
-		not HairbenchScript.evaluate_single_remove(true, 10, 10, false),
+		not HairbenchScript.evaluate_single_remove(true, 10, 10, false, true),
 		"evaluate_single_remove は本数が減っていなければ false"
 	)
 	_check(
-		not HairbenchScript.evaluate_single_remove(true, 10, 9, true),
+		not HairbenchScript.evaluate_single_remove(true, 10, 9, true, true),
 		"evaluate_single_remove は対象 ID が残っていれば false"
+	)
+	_check(
+		not HairbenchScript.evaluate_single_remove(true, 10, 9, false, false),
+		"evaluate_single_remove は multimesh_synced=false で false"
 	)
 
 	# evaluate_rendered: 4 条件それぞれの単一偽
