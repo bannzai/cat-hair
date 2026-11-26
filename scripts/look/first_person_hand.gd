@@ -66,7 +66,8 @@ var _stretched_hair: MeshInstance3D = null
 func _init() -> void:
 	name = "FirstPersonHand"
 	_build_hand()
-	set_pinch_pose(false)
+	# 平常の構図では伸びた毛を出さないため、床の高さは使わない
+	set_pinch_pose(false, 0.0)
 
 
 ## つまんでいる間、伸びた毛を指先と床の間に張り直す (手がカメラと一緒に動くため毎フレーム)
@@ -76,7 +77,7 @@ func _process(_delta: float) -> void:
 
 
 ## 毛をつまんで引いている途中の構図 (true) と平常の構図 (false) を切り替える。floor_y は伸びた毛の根元の床の高さ
-func set_pinch_pose(enabled: bool, floor_y: float = 0.0) -> void:
+func set_pinch_pose(enabled: bool, floor_y: float) -> void:
 	_is_pinching = enabled
 	_floor_y = floor_y
 	position = PINCH_POSITION if enabled else IDLE_POSITION
@@ -175,6 +176,7 @@ func _build_hand() -> void:
 
 	var sleeve_mesh: CylinderMesh = CylinderMesh.new()
 	sleeve_mesh.top_radius = SLEEVE_RADIUS_M
+	# 袖は肘の側へ 8% 太くし、腕が先細りに見えるようにする
 	sleeve_mesh.bottom_radius = SLEEVE_RADIUS_M * 1.08
 	sleeve_mesh.height = SLEEVE_LENGTH_M
 	_add_mesh(
@@ -182,14 +184,17 @@ func _build_hand() -> void:
 		"Sleeve",
 		sleeve_mesh,
 		make_material(SLEEVE_COLOR, 0.95),
+		# 袖口を手首から 1 cm 肘の側へ離し、手のひらの付け根と重ならないようにする
 		Vector3(0.0, 0.0, SLEEVE_LENGTH_M * 0.5 + 0.01),
 		Vector3(PI * 0.5, 0.0, 0.0),
 	)
 
 	var hair_mesh: CylinderMesh = CylinderMesh.new()
+	# 毛は指先の側を 7 割の太さにして、毛先へ細くなる形にする
 	hair_mesh.top_radius = STRETCHED_HAIR_RADIUS_M * 0.7
 	hair_mesh.bottom_radius = STRETCHED_HAIR_RADIUS_M
 	hair_mesh.height = 1.0
+	# 2〜3 px の太さでは断面の角が見えないため、6 角形・途中の輪なしの最少の頂点にする
 	hair_mesh.radial_segments = 6
 	hair_mesh.rings = 1
 	_stretched_hair = MeshInstance3D.new()

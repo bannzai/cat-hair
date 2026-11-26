@@ -58,8 +58,9 @@ const PROTOTYPE_AMBIENT_ENERGY: float = 0.45
 const PROTOTYPE_EXPOSURE: float = 1.25
 ## 試作の部屋の家具の陰の濃さ (SSAO の強さ)。家具の足元と壁の隅に陰が付く値
 const PROTOTYPE_SSAO_INTENSITY: float = 1.6
-## 木目のテクスチャの 1 辺の画素数。床の 1 枚の板が 1280x720 で潰れない最小の解像度
-const WOOD_TEXTURE_SIZE: int = 128
+## 生成するテクスチャ (木目・壁紙・ノイズ) の 1 辺の画素数。木目と壁紙はノイズの画像を同じ画素の位置で読むため
+## 全部同じ大きさにする。128 は床の 1 枚の板 (32 画素) が 1280x720 で潰れない最小の解像度
+const GENERATED_TEXTURE_SIZE: int = 128
 ## 1 枚の板の幅 (画素)。テクスチャ 1 枚に 4 枚の板を並べる
 const WOOD_PLANK_PX: int = 32
 ## 床のテクスチャが 1 回繰り返す長さ (m)。1 枚の板の幅を 15 cm (洋館の床板の標準) にする長さ
@@ -68,8 +69,6 @@ const FLOOR_TEXTURE_REPEAT_M: float = 0.6
 const FABRIC_TEXTURE_REPEAT_M: float = 0.25
 ## 壁紙のテクスチャが 1 回繰り返す長さ (m)。縦の縞が 8 cm 間隔に見える長さ
 const WALLPAPER_TEXTURE_REPEAT_M: float = 0.5
-## 布の凹凸のテクスチャの 1 辺の画素数
-const FABRIC_TEXTURE_SIZE: int = 128
 ## 生成するテクスチャの画素の形式。RGB8 は Vulkan (CI の lavapipe) が受け付けず、読み込みのたびに RGBA8 へ変換して
 ## WARNING を出す (PR #30 の CI の --verbose の実行で観測) ため、最初から RGBA8 で作る
 const TEXTURE_IMAGE_FORMAT: Image.Format = Image.FORMAT_RGBA8
@@ -206,6 +205,7 @@ func show_automation_props() -> int:
 ## 毛をつまんで引いている途中の手の構図を切り替える (手で抜く操作はまだ無いため、手と毛の位置を置いただけの構図)
 func set_pinch_pose(enabled: bool) -> void:
 	if _hand != null:
+		# 屋敷の床の面の高さは 0 (MansionWorld が床を y = 0 に置く)
 		_hand.set_pinch_pose(enabled, 0.0)
 
 
@@ -416,6 +416,8 @@ func _build_window(window_root: Node3D) -> void:
 	glass.emission = DAYLIGHT_COLOR
 	# 外の昼の明るさが室内より明るく見え、ACES の色調で白く飛びすぎない強さ
 	glass.emission_energy_multiplier = 2.2
+	# 窓は壁の内側の面 (z = 0) から外 (+z は部屋の外) へ少し奥に置く。ガラスを 5 mm、枠と桟を 1.5〜3 cm 奥にし、
+	# 壁の面と重なってちらつかない最小の差にする。窓の下の枠は窓台として幅を 20 cm 広く・奥行を 9 cm にした
 	_add_box(
 		window_root,
 		"Glass",
@@ -438,6 +440,7 @@ func _build_window(window_root: Node3D) -> void:
 		["FrameLeft", Vector3(-half.x, 0.0, -0.02), Vector3(frame_width, WINDOW_SIZE_M.y, 0.05)],
 		["FrameRight", Vector3(half.x, 0.0, -0.02), Vector3(frame_width, WINDOW_SIZE_M.y, 0.05)],
 		["BarVertical", Vector3(0.0, 0.0, -0.015), Vector3(bar_width, WINDOW_SIZE_M.y, 0.03)],
+		# 横の桟は窓の中心より 1 割上 (上下の窓の高さが 4:6 の、洋館の上げ下げ窓の比率)
 		["BarHorizontal", Vector3(0.0, half.y * 0.2, -0.015), Vector3(WINDOW_SIZE_M.x, bar_width, 0.03)],
 	]:
 		_add_box(window_root, frame_def[0], frame_def[1], frame_def[2], frame)
@@ -530,7 +533,9 @@ func _add_robot(parent_node: Node3D, robot_name: String, floor_position: Vector3
 	robot.name = robot_name
 	robot.position = floor_position
 	parent_node.add_child(robot)
-	# 本体は艶を抑えた濃い灰色、上蓋は明るい灰色 (実在の製品の配色と意匠を避けた無地)
+	# 本体は艶を抑えた濃い灰色、上蓋は明るい灰色 (実在の製品の配色と意匠を避けた無地)。
+	# 各部の比率は、家庭用の円盤型の掃除ロボットの一般的な形 (本体の上に一回り小さい蓋、後ろ寄りの小さなセンサーの突起、
+	# 前の縁の緩衝材) を、本体の半径と高さに対する割合で置いたもの
 	var body: StandardMaterial3D = FirstPersonHandScript.make_material(Color(0.15, 0.15, 0.16), 0.55)
 	_add_cylinder(
 		robot,
@@ -630,6 +635,8 @@ func _ensure_materials() -> void:
 	var fine_noise: Image = _make_noise_image(0.32, 7)
 	var coarse_noise: Image = _make_noise_image(0.12, 11)
 
+	# 凹凸の強さ (bump_map_to_normal_map の倍率) は、CI の撮影で凹凸が見え、照明で白く飛ばない範囲から材質ごとに選んだ。
+	# 平らな物 (家具の木 0.6・スーツ 0.8) は弱く、毛足のある物 (カーペット 2.5・ニット 3.0) は強くする
 	# 床: 中くらいの茶の木の床板。板ごとの明るさの差・木目・板の継ぎ目の溝
 	_materials[&"floor"] = _make_textured_material(
 		Color(0.50, 0.33, 0.20), 0.62, wood_height, wood_height, 1.2, FLOOR_TEXTURE_REPEAT_M
@@ -658,6 +665,7 @@ func _ensure_materials() -> void:
 		Color(0.10, 0.22, 0.24), 0.9, coarse_noise, fine_noise, 1.0, FABRIC_TEXTURE_REPEAT_M
 	)
 	sofa.rim_enabled = true
+	# 縁の光の強さ 0.45 は起毛が見え、布が光って見えない上限。0.6 は縁の光に布の色を混ぜ、白い縁取りにしない割合
 	sofa.rim = 0.45
 	sofa.rim_tint = 0.6
 	_materials[&"sofa"] = sofa
@@ -669,6 +677,7 @@ func _ensure_materials() -> void:
 	)
 	# 金属: ハンガーラックの柱。鏡面の艶は避け、つや消しの鉄にする
 	var metal: StandardMaterial3D = FirstPersonHandScript.make_material(Color(0.40, 0.40, 0.42), 0.6)
+	# 0.6 は鉄の色が出て、鏡のように部屋を映さない金属らしさ
 	metal.metallic = 0.6
 	_materials[&"metal"] = metal
 
@@ -677,20 +686,32 @@ func _ensure_materials() -> void:
 static func _make_wood_height_image() -> Image:
 	# 木目の縞の揺らぎ。0.06 は板 1 枚 (32 画素) の中でゆっくり曲がる周波数。種は任意
 	var grain: Image = _make_noise_image(0.06, 3)
-	var image: Image = Image.create(WOOD_TEXTURE_SIZE, WOOD_TEXTURE_SIZE, false, TEXTURE_IMAGE_FORMAT)
-	for y: int in range(WOOD_TEXTURE_SIZE):
+	var image: Image = Image.create(
+		GENERATED_TEXTURE_SIZE, GENERATED_TEXTURE_SIZE, false, TEXTURE_IMAGE_FORMAT
+	)
+	for y: int in range(GENERATED_TEXTURE_SIZE):
 		var plank: int = floori(float(y) / float(WOOD_PLANK_PX))
-		# 板ごとの明るさの差 (0.82〜1.0)。板の番号から決まる擬似乱数
+		# 板ごとの明るさの差 (0.82〜1.0)。板の番号から決まる擬似乱数 (12.9898 と 43758.5453 は、シェーダーで広く使われる
+		# sin を使った擬似乱数の係数で、隣り合う番号で値が大きく変わる)
 		var plank_tint: float = 0.82 + 0.18 * fposmod(sin(float(plank) * 12.9898) * 43758.5453, 1.0)
-		# 板の端の継ぎ目の X 位置。隣の板と揃わないよう板ごとにずらす
-		var joint_x: int = (plank * 53 + 17) % WOOD_TEXTURE_SIZE
-		for x: int in range(WOOD_TEXTURE_SIZE):
-			# 木目は板の長さの方向 (X) に流れる細い縞。板の幅 (Y) の中で 5 本並べ、ノイズで縞を波打たせる
-			var stripe: float = 0.5 + 0.5 * sin(
-				TAU * float(y % WOOD_PLANK_PX) / float(WOOD_PLANK_PX) * 5.0
-				+ grain.get_pixel(x, y).r * 2.5
+		# 板の端の継ぎ目の X 位置。隣の板と揃わないよう板ごとにずらす (53 は 128 と互いに素な素数で、4 枚の板の継ぎ目が
+		# 重ならない。17 は最初の板の継ぎ目をテクスチャの端から離す任意のずれ)
+		var joint_x: int = (plank * 53 + 17) % GENERATED_TEXTURE_SIZE
+		for x: int in range(GENERATED_TEXTURE_SIZE):
+			# 木目は板の長さの方向 (X) に流れる細い縞。板の幅 (Y) の中で 5 本並べ、ノイズで縞を波打たせる。
+			# 揺らぎの 2.5 rad は縞が隣の縞に届かない (半周期 π 未満) 曲がり方。縞の明暗差は板の明るさの 20% で、
+			# 18% の板ごとの差と同じくらいにして、どちらかだけが目立たないようにする
+			var shade: float = plank_tint * (
+				0.80
+				+ 0.20 * (
+					0.5
+					+ 0.5 * sin(
+						TAU * float(y % WOOD_PLANK_PX) / float(WOOD_PLANK_PX) * 5.0
+						+ grain.get_pixel(x, y).r * 2.5
+					)
+				)
 			)
-			var shade: float = plank_tint * (0.80 + 0.20 * stripe)
+			# 継ぎ目の溝は板の明るさの 35%。1280x720 で 1 画素の線として見える暗さ
 			if y % WOOD_PLANK_PX == 0 or x == joint_x:
 				shade *= 0.35
 			image.set_pixel(x, y, Color(shade, shade, shade))
@@ -701,23 +722,27 @@ static func _make_wood_height_image() -> Image:
 static func _make_wallpaper_image() -> Image:
 	# 壁紙の紙の細かいむら。0.2 は数画素で変わる周波数。種は任意
 	var noise: Image = _make_noise_image(0.2, 5)
-	var image: Image = Image.create(WOOD_TEXTURE_SIZE, WOOD_TEXTURE_SIZE, false, TEXTURE_IMAGE_FORMAT)
-	for y: int in range(WOOD_TEXTURE_SIZE):
-		for x: int in range(WOOD_TEXTURE_SIZE):
+	var image: Image = Image.create(
+		GENERATED_TEXTURE_SIZE, GENERATED_TEXTURE_SIZE, false, TEXTURE_IMAGE_FORMAT
+	)
+	for y: int in range(GENERATED_TEXTURE_SIZE):
+		for x: int in range(GENERATED_TEXTURE_SIZE):
 			# 1 枚に 6 本の縞 (0.5 m で繰り返すため 8 cm 間隔)。縞の明暗差は 8% に抑えて目立たせすぎない
-			var stripe_phase: float = fposmod(float(x) / float(WOOD_TEXTURE_SIZE) * 6.0, 1.0)
-			var stripe: float = 1.0 if stripe_phase >= 0.5 else 0.92
-			var shade: float = stripe * (0.94 + 0.06 * noise.get_pixel(x, y).r)
+			# 紙のむらは明るさの 6% に抑え、縞より目立たせない
+			var shade: float = (
+				(1.0 if fposmod(float(x) / float(GENERATED_TEXTURE_SIZE) * 6.0, 1.0) >= 0.5 else 0.92)
+				* (0.94 + 0.06 * noise.get_pixel(x, y).r)
+			)
 			image.set_pixel(x, y, Color(shade, shade, shade))
 	return image
 
 
-## 端で繋がる (タイルにしても継ぎ目が出ない) ノイズの明るさの画像 (FABRIC_TEXTURE_SIZE 四方)
+## 端で繋がる (タイルにしても継ぎ目が出ない) ノイズの明るさの画像 (GENERATED_TEXTURE_SIZE 四方)
 static func _make_noise_image(frequency: float, noise_seed: int) -> Image:
 	var noise: FastNoiseLite = FastNoiseLite.new()
 	noise.seed = noise_seed
 	noise.frequency = frequency
-	var image: Image = noise.get_seamless_image(FABRIC_TEXTURE_SIZE, FABRIC_TEXTURE_SIZE)
+	var image: Image = noise.get_seamless_image(GENERATED_TEXTURE_SIZE, GENERATED_TEXTURE_SIZE)
 	image.convert(TEXTURE_IMAGE_FORMAT)
 	return image
 

@@ -20,9 +20,18 @@ static func verify_look_prototype_room(checker: SceneTree, main: Node3D, game_st
 		"最初の部屋に立つと試作の見た目 (環境と手) が出る",
 	)
 	checker._check(
-		main.get_node_or_null("UILayer/UI/HUD/LookPrototypeHud") != null,
-		"HUD に所持金・道具の枠・案内の表示がある",
+		main.look_hud.get_money_text() == "所持金 1,280 円"
+		and main.look_hud.get_parent() == main.get_node("UILayer/UI/HUD"),
+		"HUD に見本の所持金が 3 桁区切りで出る (%s)" % main.look_hud.get_money_text(),
 	)
+	# 同じプレイヤーで setup をもう一度呼んでも、カメラに付く手は 1 つのまま
+	look_room.setup(player, environment_node)
+	var hand_count: int = 0
+	for child: Node in player.get_camera().get_children():
+		if child is FirstPersonHand:
+			hand_count += 1
+	checker._check(hand_count == 1, "setup を 2 回呼んでもカメラの手は 1 つ (%d)" % hand_count)
+	await checker.process_frame
 
 	player.global_position = Vector3(0.0, 0.05, -MansionTuningScript.DEFAULT_ROOM_SIZE_M)
 	await checker.process_frame
@@ -60,4 +69,18 @@ static func verify_look_prototype_room(checker: SceneTree, main: Node3D, game_st
 		"最初の部屋の中でも、歩いていない間は試作の見た目を出さない",
 	)
 	look_room.set_playing(true)
+	await checker.process_frame
+
+	# 歩いていて最初の部屋の位置にいても、重ねる部屋が無いレイアウトの後は試作の見た目を出さない
+	look_room.apply(null, null, null)
+	await checker.process_frame
+	checker._check(
+		not look_room.is_prototype_active()
+		and not look_room.get_hand().visible
+		and not environment_node.environment.ssao_enabled,
+		"重ねる部屋が無い時は、歩いていても試作の見た目を出さない",
+	)
+	look_room.apply(
+		layout, game_state.save_data.building_progress, main.mansion_world
+	)
 	await checker.process_frame

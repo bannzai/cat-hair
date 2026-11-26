@@ -110,18 +110,41 @@ func _check_apply_to_first_room_only() -> void:
 	look_room.apply(layout, progress, world)
 
 	var first_room_id: StringName = layout.rooms[0].room_id
-	var first_floor: MeshInstance3D = _floor_mesh(world, first_room_id)
-	var second_floor: MeshInstance3D = _floor_mesh(world, layout.rooms[1].room_id)
 	_check(
 		look_room.get_target_room_id() == first_room_id
-		and first_floor.material_override == look_room.get_material_for_kind(&"floor")
-		and second_floor.material_override != look_room.get_material_for_kind(&"floor"),
+		and (
+			_floor_mesh(world, first_room_id).material_override
+			== look_room.get_material_for_kind(&"floor")
+		)
+		and (
+			_floor_mesh(world, layout.rooms[1].room_id).material_override
+			!= look_room.get_material_for_kind(&"floor")
+		),
 		"試作の床の材質は最初の部屋の床だけに付き、2 部屋目の床は元の材質のまま",
 	)
-	var first_light: OmniLight3D = world.get_node("LightsRoot/RoomLight_0")
-	var second_light: OmniLight3D = world.get_node("LightsRoot/RoomLight_1")
+	# 置いた物: 最初の部屋の物のメッシュには試作の材質が付き、2 部屋目の物のメッシュには付かない
+	var prototype_materials: Array = []
+	for kind: StringName in LookPrototypeRoomScript.NODE_MATERIAL_KINDS.values():
+		prototype_materials.append(look_room.get_material_for_kind(kind))
+	var first_room_object_overridden: int = 0
+	var other_room_object_overridden: int = 0
+	for obj: MansionLayout.ObjectDef in layout.objects:
+		for mesh: MeshInstance3D in _meshes_under(
+			world.get_node("ObjectsRoot/%s" % String(obj.object_id))
+		):
+			if prototype_materials.has(mesh.material_override):
+				if obj.room_id == first_room_id:
+					first_room_object_overridden += 1
+				else:
+					other_room_object_overridden += 1
 	_check(
-		first_light.shadow_enabled and not second_light.shadow_enabled,
+		first_room_object_overridden > 0 and other_room_object_overridden == 0,
+		"試作の材質は最初の部屋に置いた物だけに付く (最初の部屋 %d / ほかの部屋 %d)"
+		% [first_room_object_overridden, other_room_object_overridden],
+	)
+	_check(
+		(world.get_node("LightsRoot/RoomLight_0") as OmniLight3D).shadow_enabled
+		and not (world.get_node("LightsRoot/RoomLight_1") as OmniLight3D).shadow_enabled,
 		"影は最初の部屋の灯りだけに付く",
 	)
 
@@ -177,25 +200,31 @@ func _check_automation_props() -> void:
 	)
 	var kept_outside_lanes: bool = true
 	var outside_lane_count: int = 0
+	# 帯の Z 幅に入る床の毛のうち、ロボットがまだ走っていない先 (ロボットの位置より +X) にあるもの。X の上限の境界の側
+	var ahead_of_robot_count: int = 0
 	for hair_id: int in range(origins.size()):
 		var origin: Vector3 = origins[hair_id]
-		var near_lane: bool = false
+		var in_any_lane: bool = false
 		for lane: Dictionary in LookPrototypeRoomScript.ROBOT_LANES:
-			if (
+			var in_lane_z: bool = (
 				absf(origin.z - (room.center.z + float(lane["rz"]) * room.size.z))
 				<= LookPrototypeRoomScript.ROBOT_RADIUS_M
-			):
-				near_lane = true
-		if (
-			origin.y > LookPrototypeRoomScript.ROBOT_CLEAR_MAX_Y_M
-			or not near_lane
-			or origin.x < lane_start_x
-		):
+			)
+			var robot_x: float = room.center.x + float(lane["rx_end"]) * room.size.x
+			if origin.y <= LookPrototypeRoomScript.ROBOT_CLEAR_MAX_Y_M and in_lane_z:
+				if origin.x >= lane_start_x and origin.x <= robot_x:
+					in_any_lane = true
+				elif origin.x > robot_x:
+					ahead_of_robot_count += 1
+		if not in_any_lane:
 			outside_lane_count += 1
 			kept_outside_lanes = kept_outside_lanes and hair_field.has_hair(hair_id)
 	_check(
-		outside_lane_count > 0 and kept_outside_lanes,
-		"帯の外の毛 %d 本 (家具の上・帯の Z 幅の外・走り始めより壁側) は 1 本も消えない" % outside_lane_count,
+		outside_lane_count > 0 and ahead_of_robot_count > 0 and kept_outside_lanes,
+		(
+			"帯の外の毛 %d 本 (家具の上・帯の Z 幅の外・走り始めより壁側・ロボットより先の %d 本) は 1 本も消えない"
+			% [outside_lane_count, ahead_of_robot_count]
+		),
 	)
 	_check(
 		removed > 0
@@ -270,17 +299,15 @@ func _check_textured_material() -> void:
 	var with_both: StandardMaterial3D = LookPrototypeRoomScript._make_textured_material(
 		Color.WHITE, 0.5, null, height, 1.0, 1.0
 	)
-	var zero_strength: StandardMaterial3D = LookPrototypeRoomScript._make_textured_material(
-		Color.WHITE, 0.5, null, height, 0.0, 1.0
-	)
-	var no_height: StandardMaterial3D = LookPrototypeRoomScript._make_textured_material(
-		Color.WHITE, 0.5, null, null, 1.0, 1.0
-	)
 	_check(
 		with_both.normal_enabled
 		and with_both.normal_texture != null
-		and not zero_strength.normal_enabled
-		and not no_height.normal_enabled
+		and not LookPrototypeRoomScript._make_textured_material(
+			Color.WHITE, 0.5, null, height, 0.0, 1.0
+		).normal_enabled
+		and not LookPrototypeRoomScript._make_textured_material(
+			Color.WHITE, 0.5, null, null, 1.0, 1.0
+		).normal_enabled
 		and with_both.uv1_triplanar
 		and with_both.uv1_scale.is_equal_approx(Vector3.ONE),
 		"凹凸は高さの画像があり強さが正の時だけ付き、テクスチャは繰り返しの長さ 1 m で 3 方向から投影する",
@@ -291,9 +318,9 @@ func _check_textured_material() -> void:
 func _check_hand_pose() -> void:
 	var hand: FirstPersonHand = FirstPersonHandScript.new()
 	var idle_visible: bool = hand.is_stretched_hair_visible()
-	hand.set_pinch_pose(true)
+	hand.set_pinch_pose(true, 0.0)
 	var pinch_state: Array = [hand.is_pinching(), hand.is_stretched_hair_visible()]
-	hand.set_pinch_pose(false)
+	hand.set_pinch_pose(false, 0.0)
 	_check(
 		not idle_visible
 		and pinch_state == [true, true]
@@ -328,6 +355,16 @@ func _floor_mesh(world: MansionWorld, room_id: StringName) -> MeshInstance3D:
 		if child is MeshInstance3D:
 			return child
 	return null
+
+
+## node の下の MeshInstance3D をすべて返す
+func _meshes_under(node: Node) -> Array[MeshInstance3D]:
+	var meshes: Array[MeshInstance3D] = []
+	for child: Node in node.get_children():
+		if child is MeshInstance3D:
+			meshes.append(child)
+		meshes.append_array(_meshes_under(child))
+	return meshes
 
 
 ## selfcheck の判定に結果を渡す
