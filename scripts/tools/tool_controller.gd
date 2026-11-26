@@ -303,6 +303,7 @@ func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 	var owned: OwnedTool = _game_state.find_owned_tool(tool_id)
 	var target: Dictionary = _hand.aim_target() if _hand != null else {}
 	if target.is_empty():
+		_game_state.purchase(GameStateScript.PURCHASE_ANDROID_PACK_EXCHANGE, tool_id)
 		result["message"] = "狙いの先に毛の付く表面が無い"
 		return
 	var hair_field: Node3D = _world.get_hair_field()
@@ -315,8 +316,7 @@ func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 		ToolRulesScript.touchable_count(hair_ids.size(), int(tool_def["max_hairs"])) > 0
 	)
 	var exchanged: bool = (
-		has_touchable
-		and _game_state.purchase(GameStateScript.PURCHASE_ANDROID_PACK_EXCHANGE, tool_id)
+		_game_state.purchase(GameStateScript.PURCHASE_ANDROID_PACK_EXCHANGE, tool_id)
 	)
 	if not ToolRulesScript.can_use(tool_id, owned.consumable_count):
 		result["message"] = _pack_not_exchanged_message(tool_def, has_touchable)
@@ -324,9 +324,7 @@ func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 	_use_sweep_tool_on_target(tool_def, owned, target, hair_ids, result)
 	if exchanged:
 		result["exchanged"] = true
-		result["message"] = "アンドロイドが%sを交換した。%s" % [
-			tool_def["consumable_name"], result["message"]
-		]
+		pass
 
 
 ## 消耗品が尽きていて道具を使えない時の文言を返す。パックの道具で、アンドロイドを持っている時は交換しなかった理由
@@ -339,10 +337,6 @@ func _pack_not_exchanged_message(tool_def: Dictionary, has_touchable: bool) -> S
 		or _game_state.find_owned_tool(ToolCatalogScript.TOOL_ANDROID) == null
 	):
 		return ToolRulesScript.consumable_empty_message(tool_id)
-	if not has_touchable:
-		return "%s の%sが一杯。範囲に取れる毛が無いので、アンドロイドは交換しなかった" % [
-			tool_def["name"], tool_def["consumable_name"]
-		]
 	return "%s の%sが一杯。アンドロイドが交換する %d 円が足りない" % [
 		tool_def["name"], tool_def["consumable_name"], int(tool_def["refill_price"])
 	]
