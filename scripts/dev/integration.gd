@@ -5,6 +5,8 @@ extends "res://scripts/dev/headless_check.gd"
 
 ## 動かして確かめるメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
+## 毛の描画の試作シーン
+const HAIR_PROTOTYPE_SCENE: PackedScene = preload("res://scenes/hair_prototype.tscn")
 ## メインシーンのノードパス定数参照用
 const MainScript := preload("res://scripts/main.gd")
 ## 音声カタログ
@@ -93,6 +95,8 @@ func _run() -> void:
 		game_state.free()
 	cleanup_audio_manager(self, audio_handle, settings_path)
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+
+	await _verify_hair_prototype_scene()
 	_finish()
 
 
@@ -106,6 +110,42 @@ func _check_title_screen_basics(main: Node3D) -> void:
 		main.get_ui_theme() != null and main.get_ui_theme().default_font != null,
 		"メインシーンの theme に既定フォントが入っている",
 	)
+
+
+## 毛の描画試作シーンで 2 表面への配置と 1 本削除が連動するか検証する
+func _verify_hair_prototype_scene() -> void:
+	var hair_prototype: Node3D = HAIR_PROTOTYPE_SCENE.instantiate()
+	root.add_child(hair_prototype)
+	await process_frame
+
+	var field: Node3D = hair_prototype.get_hair_field()
+	_check(field != null, "HairPrototype に HairField ノードがある")
+	_check(field.get_surface_count() == 2, "床とソファの 2 表面が登録されている")
+
+	_check(
+		hair_prototype.populate_hairs(100) == 100 and hair_prototype.get_remaining_count() == 100,
+		"試作シーンに 100 本の毛を配置できる"
+	)
+	_check(
+		field.get_surface_visible_instance_count(0)
+		+ field.get_surface_visible_instance_count(1)
+		== 100,
+		"2 表面の visible_instance_count 合計が 100"
+	)
+
+	var removed: bool = hair_prototype.remove_hair(0)
+	await process_frame
+	_check(
+		removed
+		and hair_prototype.get_remaining_count() == 99
+		and field.get_surface_visible_instance_count(0)
+		+ field.get_surface_visible_instance_count(1)
+		== 99,
+		"試作シーンで 1 本だけ抜いて残り本数・visible_instance_count が 99 になる"
+	)
+
+	root.remove_child(hair_prototype)
+	hair_prototype.free()
 
 
 ## 題名画面起動時の BGM 再生、同一曲の継続、停止後の再再生、ループ有効化、効果音の出来事別入口を確認する
