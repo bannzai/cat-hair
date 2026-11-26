@@ -3,7 +3,7 @@ extends CharacterBody3D
 ## 屋敷の中を歩く一人称プレイヤー。WASD / 矢印キーで移動し、マウスで視点を回す。
 
 ## 6m 部屋を約 1.4 秒で横切る一人称の標準歩行速度 (m/s)
-const DEFAULT_MOVE_SPEED: float = 0.0
+const DEFAULT_MOVE_SPEED: float = 4.2
 ## 画面幅の半分 (640px) のマウス移動で約 90 度回転する標準感度 (rad/px)
 const DEFAULT_MOUSE_SENSITIVITY: float = 0.0025
 ## 段差落下時に素早く接地させる重力加速度 (m/s^2)
@@ -108,7 +108,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not controls_enabled:
 		return
 	if should_capture_mouse(event):
-		pass
+		if DisplayServer.get_name() != "headless":
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	elif event is InputEventMouseMotion:
 		var mouse_motion_event: InputEventMouseMotion = event
 		if should_apply_mouse_motion(Input.get_mouse_mode(), allow_uncaptured_look):

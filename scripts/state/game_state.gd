@@ -41,8 +41,13 @@ func _ready() -> void:
 ## 前提 (Godot 4 公式ドキュメント「Handling quit requests」):
 ## application/config/auto_accept_quit (既定 true) では終了直前に全ノードへ
 ## NOTIFICATION_WM_CLOSE_REQUEST が通知されるため、ここで保存を完了させる。
-func _notification(_what: int) -> void:
-	pass
+func _notification(what: int) -> void:
+	if (
+		what == NOTIFICATION_WM_CLOSE_REQUEST
+		and save_data != null
+		and not launched_with_cmdline_override
+	):
+		save_current_state()
 
 
 ## 指定パスの保存データとコマンドライン引数から状態を初期化する。

@@ -81,7 +81,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _is_playing:
 			toggle_dev_panel()
 	elif event.is_action_pressed("save_game"):
-		pass
+		if _is_playing and _game_state != null:
+			_game_state.save_current_state()
 
 
 ## タイトルを閉じて一人称プレイを開始する
@@ -210,5 +211,7 @@ func _on_new_game_pressed() -> void:
 
 
 ## 開発者調整画面で「屋敷を作り直す」を押した時のハンドラ
-func _on_dev_tuning_applied(_new_tuning: MansionTuning) -> void:
+func _on_dev_tuning_applied(new_tuning: MansionTuning) -> void:
+	if _game_state != null:
+		_game_state.apply_tuning_and_rebuild(new_tuning, true)
 	close_dev_panel()
