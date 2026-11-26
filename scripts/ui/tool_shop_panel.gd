@@ -146,7 +146,7 @@ func refresh(game_state: Node, near_trader: bool) -> void:
 			refill.disabled = (
 				not ToolRulesScript.can_afford(money, int(tool_def["refill_price"]))
 				or owned == null
-				or ToolRulesScript.refilled_count(tool_id, owned.consumable_count) == owned.consumable_count
+				or not ToolRulesScript.refill_changes_count(tool_id, owned.consumable_count)
 			)
 	for upgrade_id: StringName in _hand_upgrade_buttons.keys():
 		var level: int = game_state.get_hand_upgrade_level(upgrade_id)

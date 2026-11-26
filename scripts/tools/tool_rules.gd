@@ -149,6 +149,15 @@ static func refilled_count(tool_id: StringName, consumable_count: int) -> int:
 	return consumable_count + int(tool_def["refill_count"])
 
 
+## 消耗品の残り consumable_count の時に、買い足し (パックの交換) で残りが変わるか
+## (満タンのパックは交換しても変わらないので false。消耗品を使わない道具と表に無い道具も false)
+static func refill_changes_count(tool_id: StringName, consumable_count: int) -> bool:
+	return (
+		uses_consumable(tool_id)
+		and refilled_count(tool_id, consumable_count) != consumable_count
+	)
+
+
 ## 消耗品が尽きて道具を使えない時の文言 (パックの交換の道具は「パックが一杯」、それ以外は「紙が無い」の形)
 static func consumable_empty_message(tool_id: StringName) -> String:
 	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)

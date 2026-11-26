@@ -400,11 +400,7 @@ func _level_up_tool(tool_id: StringName) -> bool:
 ## 交換で戻す消耗品 (掃除機のパック) が交換しても変わらない (空きが満タンの) 時は false
 func _buy_consumable(tool_id: StringName) -> bool:
 	var owned: OwnedTool = find_owned_tool(tool_id)
-	if (
-		owned == null
-		or not ToolRulesScript.uses_consumable(tool_id)
-		or ToolRulesScript.refilled_count(tool_id, owned.consumable_count) == owned.consumable_count
-	):
+	if owned == null or not ToolRulesScript.refill_changes_count(tool_id, owned.consumable_count):
 		return false
 	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
 	if not _spend(int(tool_def["refill_price"])):
