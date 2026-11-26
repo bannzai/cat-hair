@@ -476,11 +476,13 @@ func _add_hair(
 ## 長さ 0.75〜1.35 倍・幅 0.85〜1.25 倍で抜け毛の個体差を出す
 static func random_hair_basis(rng: RandomNumberGenerator) -> Basis:
 	var scale_len: float = rng.randf_range(0.75, 1.35)
-	return Basis.from_euler(Vector3(
+	# 乱数を引く順 (長さ・傾き 3 つ・幅) を変えると同じ種で置く毛の位置が変わるため、引く順を文で固定する
+	var basis: Basis = Basis.from_euler(Vector3(
 		rng.randf_range(-0.14, 0.14),
 		rng.randf_range(0.0, TAU),
 		rng.randf_range(-0.18, 0.18)
-	)).scaled_local(Vector3(rng.randf_range(0.85, 1.25), scale_len, scale_len))
+	))
+	return basis.scaled_local(Vector3(rng.randf_range(0.85, 1.25), scale_len, scale_len))
 
 
 ## basis で置いた毛の根元を、面 (局所 Y = 0) から持ち上げる高さ。回転・スケール後に先端や根元が表面の下へ
