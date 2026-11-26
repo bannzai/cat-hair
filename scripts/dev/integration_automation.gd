@@ -437,8 +437,23 @@ func _verify_robot_cleaning(main: Node3D, game_state: Node) -> void:
 func _verify_pick_nearest(main: Node3D, game_state: Node, room: MansionLayout.RoomDef) -> void:
 	var hair_field: Node3D = main.get_node("MansionWorld").get_hair_field()
 	var world: MansionWorld = main.get_node("MansionWorld")
+	# 掃除ロボットを、輪を 4 分の 1 周走った所 (部屋の中心から横に離れた所) まで進める。中心のままだと、最初の部屋の
+	# 中心は屋敷の原点に重なり、消す毛を選ぶ起点を原点に取り違えても同じ毛が消えて区別できないため
+	var route: Dictionary = RobotRulesScript.build_route(
+		game_state.current_layout, game_state.automation.get_robots()[0].robot_room_ids
+	)
+	var cycle: float = float(route["cycle_seconds"])
+	game_state.automation.advance(
+		cycle - fposmod(game_state.automation.get_seconds(), cycle)
+		+ RouteClockScript.MOVE_SECONDS + RobotRulesScript.LOOP_SECONDS * 0.25
+	)
 	main.automation.update_positions()
 	var robot_position: Vector3 = main.automation.get_robot_node(0).position
+	_check(
+		Vector2(robot_position.x - room.center.x, robot_position.z - room.center.z).length() > 1.0,
+		"近い毛から消える検証の前に、掃除ロボットが部屋の中心から 1 m より離れている (位置: %s)"
+		% str(robot_position),
+	)
 	var surfaces: Array[MansionLayout.SurfaceDef] = game_state.current_layout.surfaces
 	var floor_index: int = -1
 	for index: int in range(surfaces.size()):
