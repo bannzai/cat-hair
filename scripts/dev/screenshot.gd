@@ -6,9 +6,10 @@ extends SceneTree
 
 ## 音の解放を待つ時間 (AUDIO_RELEASE_TIME) を借りる、headless の検証の土台
 const HeadlessCheck := preload("res://scripts/dev/headless_check.gd")
-
 ## 撮影するメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
+## 音声管理ノード (screenshot の --script 実行でも本番と同じ経路で動かす)
+const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 
 
 ## tree の準備が終わってから _run() を始める (シーンの追加は _initialize() の後でないとできない)
@@ -18,8 +19,24 @@ func _initialize() -> void:
 
 ## フレームを進めながら撮影するため、同じ実行中に重ねて呼び出さない
 func _run() -> void:
-	if await _capture_scenes():
-		await create_timer(HeadlessCheck.AUDIO_RELEASE_TIME).timeout
+	var settings_path: String = ProjectSettings.globalize_path(
+		"res://tmp/screenshot-audio-settings.cfg"
+	)
+	if FileAccess.file_exists(settings_path):
+		DirAccess.remove_absolute(settings_path)
+	var audio_manager: AudioManagerScript = AudioManagerScript.new()
+	audio_manager.name = "AudioManager"
+	root.add_child(audio_manager)
+	audio_manager.reload_settings(settings_path)
+
+	var ok: bool = await _capture_scenes()
+	audio_manager.stop_all()
+	await create_timer(HeadlessCheck.AUDIO_RELEASE_TIME).timeout
+	root.remove_child(audio_manager)
+	audio_manager.free()
+	if FileAccess.file_exists(settings_path):
+		DirAccess.remove_absolute(settings_path)
+	if ok:
 		print("screenshot OK")
 		quit(0)
 
@@ -32,7 +49,12 @@ func _capture_scenes() -> bool:
 	# 最初の撮影だけ、フォントの読み込みと最初の描画を時間で待つ。0.3 秒は bannzai/goki-hunter の撮影から引き継いだ値で、
 	# CI の llvmpipe でこの画面が描画し終わることを PR #1 の artifact で確かめた (下限は測っていない)
 	await create_timer(0.3).timeout
-	return await _capture("tmp/screenshot-title.png")
+	if not await _capture("tmp/screenshot-title.png"):
+		return false
+	var settings_button: Button = main.get_node_or_null("Layout/SettingsButton")
+	if settings_button != null:
+		settings_button.pressed.emit()
+	return await _capture("tmp/screenshot-settings.png")
 
 
 ## フレームを数フレーム進めて描画を安定させてから、現在の画面を path に保存する。保存できたら true
