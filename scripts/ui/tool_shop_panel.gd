@@ -133,12 +133,7 @@ func refresh(game_state: Node, near_trader: bool) -> void:
 			var refill: Button = _refill_buttons[tool_id]
 			refill.visible = owned != null
 			refill.text = (
-				"%sを交換する (%d 円。%d %s分の空きに戻る)" % [
-					tool_def["consumable_name"],
-					int(tool_def["refill_price"]),
-					int(tool_def["refill_count"]),
-					ToolRulesScript.consumable_unit(tool_id),
-				]
+				"%sを交換する (%d 円)" % [tool_def["consumable_name"], int(tool_def["refill_price"])]
 				if ToolRulesScript.refill_replaces(tool_id)
 				else "%sを %d %s買い足す (%d 円)" % [
 					tool_def["consumable_name"],
