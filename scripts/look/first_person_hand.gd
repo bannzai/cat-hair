@@ -140,7 +140,7 @@ func _update_stretched_hair() -> void:
 	side = side.normalized()
 	_stretched_hair.global_transform = Transform3D(
 		Basis(side, up * length, side.cross(up)),
-		(top + bottom) * 0.5,
+		top,
 	)
 
 

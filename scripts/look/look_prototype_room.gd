@@ -271,7 +271,7 @@ static func is_inside_room(room: MansionLayout.RoomDef, world_position: Vector3)
 
 ## 部屋で数えている毛の本数から、1 本ずつ描く本数を返す (上限 VISUAL_HAIR_CAP。0 以下は 0)
 static func visual_hair_count(counted_hairs: int) -> int:
-	return clampi(counted_hairs, 0, VISUAL_HAIR_CAP)
+	return maxi(counted_hairs, 0)
 
 
 ## 窓を付ける壁 (ドアの無い壁を西・南・東・北の順に探す)。全部の壁にドアがある時は空
@@ -303,8 +303,7 @@ static func build_prototype_environment(base: Environment) -> Environment:
 ## 歩いている間にプレイヤーが試作の部屋の中にいる時だけ、試作の見た目 (環境と手) を出す
 func _refresh_active() -> void:
 	var active: bool = (
-		_playing
-		and _room != null
+		_room != null
 		and _player != null
 		and is_instance_valid(_player)
 		and _player.is_inside_tree()
@@ -514,8 +513,7 @@ func _remove_hairs_in_lane(lane_start_x: float, robot_x: float, lane_z: float) -
 			continue
 		var origin: Vector3 = _hair_field.get_hair_transform(hair_id).origin
 		if (
-			origin.y <= ROBOT_CLEAR_MAX_Y_M
-			and origin.x >= minf(lane_start_x, robot_x)
+			origin.x >= minf(lane_start_x, robot_x)
 			and origin.x <= maxf(lane_start_x, robot_x)
 			and absf(origin.z - lane_z) <= ROBOT_RADIUS_M
 		):
