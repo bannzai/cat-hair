@@ -217,13 +217,21 @@ func _check_settings_screen_toggles(
 
 	var bgm_toggle: CheckButton = panel.get_node_or_null(AudioSettingsPanelScript.BGM_TOGGLE_PATH)
 	var sfx_toggle: CheckButton = panel.get_node_or_null(AudioSettingsPanelScript.SFX_TOGGLE_PATH)
+	var save_error_label: Label = panel.get_node_or_null(
+		AudioSettingsPanelScript.SAVE_ERROR_LABEL_PATH
+	)
 	var close_button: Button = panel.get_node_or_null(AudioSettingsPanelScript.CLOSE_BUTTON_PATH)
 	_check(
-		bgm_toggle != null and sfx_toggle != null and close_button != null,
-		"設定画面に BGM・効果音トグルと閉じるボタンがある"
+		bgm_toggle != null and sfx_toggle != null
+		and save_error_label != null and close_button != null,
+		"設定画面に BGM・効果音トグル、保存エラー表示、閉じるボタンがある"
 	)
-	if bgm_toggle == null or sfx_toggle == null or close_button == null:
+	if (
+		bgm_toggle == null or sfx_toggle == null
+		or save_error_label == null or close_button == null
+	):
 		return
+	_check(not save_error_label.visible, "初期表示時は設定保存エラーが表示されない")
 
 	# BGM をオフにする -> BGM バスだけ消音になり、保存され、ボタン効果音が鳴る
 	var count_before_bgm: int = audio_manager.get_sfx_play_count()
@@ -258,6 +266,31 @@ func _check_settings_screen_toggles(
 	bgm_toggle.button_pressed = true
 	_check(not AudioServer.is_bus_mute(bgm_bus_index), "設定画面で BGM をオンに戻すと BGM バスの消音が解除される")
 	_check(AudioServer.is_bus_mute(sfx_bus_index), "BGM をオンに戻しても SFX バスは消音のまま")
+	_check(not save_error_label.visible, "正常保存時は設定保存エラーが表示されない")
+
+	# 保存先が不正で保存に失敗した時はエラー表示しつつ今セッションの音声変更は即時反映する
+	var original_path: String = audio_manager.settings_path
+	audio_manager.settings_path = ""
+	bgm_toggle.button_pressed = false
+	_check(
+		save_error_label.visible
+		and save_error_label.text == AudioSettingsPanelScript.SAVE_ERROR_MESSAGE
+		and AudioServer.is_bus_mute(bgm_bus_index),
+		"BGM トグルの保存失敗時にエラーメッセージを表示しつつ BGM バス消音は即時反映される"
+	)
+	sfx_toggle.button_pressed = true
+	_check(
+		save_error_label.visible
+		and save_error_label.text == AudioSettingsPanelScript.SAVE_ERROR_MESSAGE
+		and not AudioServer.is_bus_mute(sfx_bus_index),
+		"効果音トグルの保存失敗時にエラーメッセージを表示しつつ SFX バス解除は即時反映される"
+	)
+	audio_manager.settings_path = original_path
+	bgm_toggle.button_pressed = true
+	_check(
+		not save_error_label.visible and save_error_label.text.is_empty(),
+		"保存成功時に設定保存エラー表示が消える"
+	)
 
 	# 閉じている間に AudioManager 側の設定を変更し、開き直した時にトグル表示が同期されることを確認
 	var count_before_close: int = audio_manager.get_sfx_play_count()
@@ -348,6 +381,15 @@ func _check_focus_pause_resume(audio_manager: AudioManagerScript) -> void:
 	_check(
 		audio_manager.is_bgm_paused_by_focus() and bgm_player.stream_paused,
 		"一時停止中の重ね FOCUS_OUT でも一時停止が維持される"
+	)
+	# フォーカス一時停止中に同じ BGM を再指定しても頭から再生し直さず一時停止を維持する
+	var play_count_while_paused: int = audio_manager.get_bgm_play_count()
+	_check(
+		audio_manager.play_bgm(AudioCatalog.BGM_TITLE)
+		and audio_manager.get_bgm_play_count() == play_count_while_paused
+		and audio_manager.is_bgm_paused_by_focus()
+		and bgm_player.stream_paused,
+		"一時停止中の同じ BGM 再指定では頭から再生し直さず一時停止を維持する"
 	)
 	audio_manager.notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
 	_check(

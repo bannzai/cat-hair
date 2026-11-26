@@ -46,9 +46,14 @@ static func calc_release_frames(fps: int) -> int:
 	)
 
 
-## 総フレーム数から解放待ちと終了余裕を引いた通常録画のフレーム数を返す (最小 1)
+## 録画 1 フレーム + 音声解放待ち + 終了余裕を含めた最小の総フレーム数を返す
+static func calc_min_total_frames(release_frames: int) -> int:
+	return release_frames + END_MARGIN_FRAMES + 1
+
+
+## 総フレーム数から解放待ちと終了余裕を引いた通常録画のフレーム数を返す (予算不足時は 0)
 static func calc_record_frames(total_frames: int, release_frames: int) -> int:
-	return maxi(1, total_frames - release_frames - END_MARGIN_FRAMES)
+	return maxi(0, total_frames - release_frames - END_MARGIN_FRAMES)
 
 
 ## tree の準備が終わってから _run() を始める
@@ -65,6 +70,18 @@ func _run() -> void:
 		quit(1)
 		return
 
+	var total_frames: int = int(options["total_frames"])
+	var release_frames: int = calc_release_frames(int(options["fps"]))
+	var record_frames: int = calc_record_frames(total_frames, release_frames)
+	if record_frames <= 0:
+		var min_frames: int = calc_min_total_frames(release_frames)
+		push_error(
+			"movie.gd の --frames=%d が不足しています (最小 %d フレーム必要)"
+			% [total_frames, min_frames]
+		)
+		quit(1)
+		return
+
 	var settings_path: String = ProjectSettings.globalize_path(
 		"res://tmp/movie-audio-settings.cfg"
 	)
@@ -74,8 +91,7 @@ func _run() -> void:
 	root.add_child(main)
 	current_scene = main
 
-	var release_frames: int = calc_release_frames(int(options["fps"]))
-	for _i: int in range(calc_record_frames(int(options["total_frames"]), release_frames)):
+	for _i: int in range(record_frames):
 		await process_frame
 	(audio_handle["manager"] as AudioManagerScript).stop_all()
 	for _i: int in range(release_frames):

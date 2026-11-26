@@ -310,8 +310,13 @@ func _check_movie_frame_calculations() -> void:
 	_check(MovieScript.calc_release_frames(30) == 10, "30 fps の解放待ちフレーム数が 10")
 	_check(MovieScript.calc_release_frames(60) == 17, "60 fps の解放待ちフレーム数が 17")
 	_check(MovieScript.calc_release_frames(0) == 3, "0 fps 下限の解放待ちフレーム数が 3")
-	# 通常録画フレーム数の下限境界と正常値
-	_check(MovieScript.calc_record_frames(12, 10) == 1, "total=12 (境界未満) は下限 1 を返す")
+	# 最小必要フレーム数と通常録画フレーム数の境界値・正常値
+	_check(
+		MovieScript.calc_min_total_frames(10) == 13,
+		"release=10 の最小必要フレーム数が 13"
+	)
+	_check(MovieScript.calc_record_frames(1, 10) == 0, "total=1 (予算不足) は 0 を返す")
+	_check(MovieScript.calc_record_frames(12, 10) == 0, "total=12 (境界未満) は 0 を返す")
 	_check(MovieScript.calc_record_frames(13, 10) == 1, "total=13 (境界) は 1 を返す")
 	_check(MovieScript.calc_record_frames(14, 10) == 2, "total=14 (境界 + 1) は 2 を返す")
 	_check(MovieScript.calc_record_frames(150, 10) == 138, "total=150, release=10 は 138 を返す")

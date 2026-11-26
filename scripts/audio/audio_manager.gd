@@ -116,7 +116,7 @@ func play_bgm(scene_name: String) -> bool:
 func play_bgm_path(scene_name: String, path: String) -> bool:
 	if _bgm_player == null or path.is_empty():
 		return false
-	if _current_bgm_name == scene_name and _bgm_player.playing:
+	if _current_bgm_name == scene_name and (_bgm_player.playing or _paused_by_focus):
 		return true
 	var stream: AudioStream = load_stream(path)
 	if stream == null:
