@@ -97,6 +97,7 @@ static func build_routes(layout: MansionLayout) -> Array[Dictionary]:
 				"nap": true,
 			})
 		var route: Dictionary = RouteClockScript.make_route(stops)
+		RouteClockScript.connect_through_doors(layout, route)
 		route["cat_id"] = cat_def["id"]
 		route["name"] = cat_def["name"]
 		route["color"] = cat_def["color"]

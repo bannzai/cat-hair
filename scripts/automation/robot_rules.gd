@@ -48,7 +48,10 @@ static func build_route(layout: MansionLayout, room_ids: Array[StringName]) -> D
 			var room: MansionLayout.RoomDef = find_room(layout, room_id)
 			if room != null:
 				stops.append({"point": room.center, "seconds": ROOM_SECONDS, "room_id": room_id})
-	return RouteClockScript.make_route(stops)
+	var route: Dictionary = RouteClockScript.make_route(stops)
+	if layout != null:
+		RouteClockScript.connect_through_doors(layout, route)
+	return route
 
 
 ## 屋敷の部屋のうち room_id の部屋を返す (無ければ null)

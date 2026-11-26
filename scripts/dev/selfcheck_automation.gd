@@ -49,6 +49,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_empty_inputs()
 	suite._check_picks_only_notify()
 	suite._check_view_point()
+	suite._check_door_path()
 
 
 ## 判定を selfcheck 本体に記録する
@@ -830,4 +831,59 @@ func _check_view_point() -> void:
 		and blocked_spot.is_equal_approx(Vector3(1.0, 0.0, 0.0)),
 		"真上を望むと後ろに立ち、右が家具で塞がれば 45 度回した所に立ち、どこも塞がれば望む右に立つ"
 		+ " (後ろ: %s / 回した所: %s / 塞がる時: %s)" % [open_spot, turned_spot, blocked_spot],
+	)
+
+
+## 斜めに離れた部屋 (隣り合わない部屋) へ移る掃除ロボットが、壁を通らずドアの開口部を通って移るか。
+## 移る途中の位置を細かく見て、どの位置もどれかの部屋の中にあり、部屋が変わる所が隣り合う部屋のドアの幅の中か
+func _check_door_path() -> void:
+	var layout: MansionLayout = MansionLayout.new()
+	for grid: Vector2i in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)]:
+		var room: MansionLayout.RoomDef = MansionLayout.RoomDef.new()
+		room.room_id = StringName("room_%d_%d" % [grid.x, grid.y])
+		room.grid_x = grid.x
+		room.grid_z = grid.y
+		room.center = Vector3(float(grid.x) * 6.0, 0.0, -float(grid.y) * 6.0)
+		room.size = Vector3(6.0, 3.0, 6.0)
+		layout.rooms.append(room)
+	var room_ids: Array[StringName] = [&"room_1_0", &"room_0_1"]
+	var route: Dictionary = RobotRulesScript.build_route(layout, room_ids)
+	var problems: Array[String] = []
+	var previous_room: MansionLayout.RoomDef = null
+	var previous_point: Vector3 = Vector3.ZERO
+	var samples: int = 200
+	for sample: int in range(samples + 1):
+		var point: Vector3 = RouteClockScript.position_at(
+			route,
+			RobotRulesScript.ROOM_SECONDS + RouteClockScript.MOVE_SECONDS * float(sample) / float(samples),
+		)
+		var here: MansionLayout.RoomDef = null
+		for room: MansionLayout.RoomDef in layout.rooms:
+			if (
+				absf(point.x - room.center.x) <= room.size.x * 0.5
+				and absf(point.z - room.center.z) <= room.size.z * 0.5
+			):
+				here = room
+		if here == null:
+			problems.append("部屋の外 %s" % str(point))
+		elif previous_room != null and here != previous_room:
+			var door: Vector3 = (previous_room.center + here.center) * 0.5
+			if (
+				absi(here.grid_x - previous_room.grid_x) + absi(here.grid_z - previous_room.grid_z) != 1
+				or previous_point.lerp(point, 0.5).distance_to(door)
+				> MansionLayoutScript.DOOR_WIDTH_M * 0.5
+			):
+				problems.append("壁を通る %s → %s" % [str(previous_point), str(point)])
+		previous_room = here
+		previous_point = point
+	_check(
+		problems.is_empty()
+		and RouteClockScript.position_at(route, RobotRulesScript.ROOM_SECONDS).is_equal_approx(
+			Vector3(6.0, 0.0, 0.0)
+		)
+		and RouteClockScript.position_at(
+			route, RobotRulesScript.ROOM_SECONDS + RouteClockScript.MOVE_SECONDS
+		).is_equal_approx(Vector3(0.0, 0.0, -6.0)),
+		"斜めに離れた部屋へ移る掃除ロボットは、壁を通らずドアを通って移り、前の部屋の中心から次の部屋の中心に着く"
+		+ " (問題: %s)" % str(problems),
 	)
