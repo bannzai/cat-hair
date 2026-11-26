@@ -99,6 +99,11 @@ failure-path: import
 	rm -f $(LOG_DIR)/hairbench-fail.json $(LOG_DIR)/hairbench-fail-*.png; \
 	tail -n 1 $(LOG_DIR)/hairbench-failure-path.log | grep -q '^exit=1$$'
 	! grep -q '^hairbench OK$$' $(LOG_DIR)/hairbench-failure-path.log
+	HAIRBENCH_COUNTS="10" HAIRBENCH_JSON="$(LOG_DIR)/nonexistent-hairbench-dir/out.json" HAIRBENCH_PNG_PREFIX="hairbench-fail" "$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/hairbench.gd > $(LOG_DIR)/hairbench-json-failure-path.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/hairbench-json-failure-path.log; \
+	rm -f $(LOG_DIR)/hairbench-fail-*.png; \
+	tail -n 1 $(LOG_DIR)/hairbench-json-failure-path.log | grep -q '^exit=1$$'
+	! grep -q '^hairbench OK$$' $(LOG_DIR)/hairbench-json-failure-path.log
 
 # GDScript の lint (gdtoolkit の gdlint。設定は ./gdlintrc)
 lint:
@@ -182,7 +187,7 @@ build-all: build-macos build-windows build-linux
 # ディレクトリごとや *.log をまとめては消さない)。ログは target ごとの <target>.log と、ENGINE_LOG の <target>.godot.log
 clean:
 	rm -rf build
-	rm -f $(foreach target,import check selfcheck integration failure-path hairbench-failure-path screenshot movie hairbench run build-macos build-windows build-linux,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
+	rm -f $(foreach target,import check selfcheck integration failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie hairbench run build-macos build-windows build-linux,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
 	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4
 
 # 引数なしの make で run を実行する (人が手で動作確認するための入口。検査・テストは CI が行う)

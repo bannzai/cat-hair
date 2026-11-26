@@ -230,7 +230,7 @@ func _measure_count(
 
 	var png_path: String = "%s/%s-%d.png" % [png_dir, png_prefix, target_count]
 	var image: Image = root.get_viewport().get_texture().get_image()
-	var save_status: Error = image.save_png(png_path)
+	var save_status: Error = image.save_png(png_path) if image != null else ERR_UNAVAILABLE
 	var lum_stats: Dictionary = sample_luminance(image)
 
 	var field: Node3D = prototype.get_hair_field()
