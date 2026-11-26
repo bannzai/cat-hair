@@ -3,10 +3,10 @@ extends Node3D
 ## 一人称カメラの子に置く、プレイヤー自身の右手 (Godot の基本の形を組み合わせた見た目の試作)。
 ## 手の原点は手首で、指先はカメラの前方 (-Z) を向く。毛をつまんで引いている途中の構図 (pinch) を取れる。
 
-## 平常時の手首の位置 (カメラ基準 m)。1280x720・視野角 72 度で画面の右下 1/4 に手の甲が収まる位置
-const IDLE_POSITION: Vector3 = Vector3(0.24, -0.24, -0.42)
-## 平常時の手首の回転 (rad)。指先をやや下・内側へ向け、手の甲が見える角度
-const IDLE_ROTATION: Vector3 = Vector3(-0.25, 0.35, 0.10)
+## 平常時の手首の位置 (カメラ基準 m)。1280x720 で画面の右下に手の甲と指が収まる位置
+const IDLE_POSITION: Vector3 = Vector3(0.20, -0.24, -0.40)
+## 平常時の手首の回転 (rad)。指先を前やや下へ向け、上から手の甲が見える角度
+const IDLE_ROTATION: Vector3 = Vector3(-0.55, 0.12, 0.0)
 ## つまむ時の手首の位置 (カメラ基準 m)。画面の中央やや右下で、指先が視線の先の床へ向く位置
 const PINCH_POSITION: Vector3 = Vector3(0.07, -0.10, -0.34)
 ## つまむ時の手首の回転 (rad)。カメラを床へ約 50 度向けた時に、指先が床から約 70 度で毛へ伸びる角度
@@ -31,10 +31,10 @@ const FINGER_LENGTHS_M: Array[float] = [0.075, 0.082, 0.078, 0.062]
 const FINGER_BASE_X_M: Array[float] = [-0.029, -0.010, 0.010, 0.029]
 ## 手のひらの寸法 (幅・厚み・長さ m)。成人の手のひらの標準寸法
 const PALM_SIZE_M: Vector3 = Vector3(0.085, 0.028, 0.095)
-## 袖の半径と長さ (m)。手首から肘へ向かう袖が画面の端から入って見える長さ
-const SLEEVE_RADIUS_M: float = 0.042
-## 袖の長さ (m)
-const SLEEVE_LENGTH_M: float = 0.30
+## 袖の半径 (m)。手首の太さに合わせたニットの袖口
+const SLEEVE_RADIUS_M: float = 0.036
+## 袖の長さ (m)。カメラの近くまで伸ばすと画面を覆うため、手首から先の袖口だけを見せる長さ
+const SLEEVE_LENGTH_M: float = 0.12
 ## 肌の色。写実寄りの明るい肌の色 (彩度を抑え、照明の色を受けやすい値)
 const SKIN_COLOR: Color = Color(0.86, 0.66, 0.54)
 ## 袖 (ニット) の色。屋敷の照明で肌との明暗差が付く濃い灰青

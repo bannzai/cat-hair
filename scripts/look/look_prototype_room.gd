@@ -33,7 +33,7 @@ const ROBOT_HEIGHT_M: float = 0.085
 const ROBOT_LANES: Array[Dictionary] = [
 	{"rz": -0.20, "rx_end": -0.05},
 	{"rz": 0.0, "rx_end": 0.17},
-	{"rz": 0.17, "rx_end": 0.08},
+	{"rz": 0.10, "rx_end": -0.12},
 ]
 ## 掃除ロボットが走り始めた壁からの距離 (m)。充電台の前から走り出した見た目にする
 const ROBOT_LANE_START_MARGIN_M: float = 0.45
@@ -668,11 +668,12 @@ static func _make_wood_height_image() -> Image:
 		# 板の端の継ぎ目の X 位置。隣の板と揃わないよう板ごとにずらす
 		var joint_x: int = (plank * 53 + 17) % WOOD_TEXTURE_SIZE
 		for x: int in range(WOOD_TEXTURE_SIZE):
-			# 木目は板の長さの方向 (X) に流れる縞。テクスチャの端で繋がるよう周期を幅の約数にし、ノイズで揺らす
+			# 木目は板の長さの方向 (X) に流れる細い縞。板の幅 (Y) の中で 5 本並べ、ノイズで縞を波打たせる
 			var stripe: float = 0.5 + 0.5 * sin(
-				TAU * float(x) / float(WOOD_TEXTURE_SIZE) * 6.0 + grain.get_pixel(x, y).r * 7.0
+				TAU * float(y % WOOD_PLANK_PX) / float(WOOD_PLANK_PX) * 5.0
+				+ grain.get_pixel(x, y).r * 2.5
 			)
-			var shade: float = plank_tint * (0.72 + 0.28 * stripe)
+			var shade: float = plank_tint * (0.80 + 0.20 * stripe)
 			if y % WOOD_PLANK_PX == 0 or x == joint_x:
 				shade *= 0.35
 			image.set_pixel(x, y, Color(shade, shade, shade))
