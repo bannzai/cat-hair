@@ -285,9 +285,12 @@ func _capture_tools(main: Node3D) -> String:
 ## 撮れたら空文字、失敗したら理由を返す
 func _capture_trader_and_shop(main: Node3D) -> String:
 	var trader: Vector3 = main.mansion_world.get_trader_position()
-	main.player.set_spawn(trader + Vector3(1.8, 0.0, -1.3), 0.0)
+	# 買取業者に毛を売れる距離 (main.TRADER_RANGE_M) の内側に立ち、続けて撮る道具を買う画面で売るボタンが押せるようにする
+	main.player.set_spawn(trader + Vector3(1.2, 0.0, -1.3), 0.0)
 	await physics_frame
 	main.player.look_at_point(trader + Vector3(0.0, 1.2, 0.0))
+	if not main.is_near_trader():
+		return "撮る位置が買取業者に毛を売れる距離の外にある"
 	if not await _capture_frozen(main, "tmp/screenshot-trader.png"):
 		return "買取業者を保存できない"
 	main.open_tool_shop()
