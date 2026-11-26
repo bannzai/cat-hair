@@ -4,11 +4,11 @@ extends SceneTree
 ## 全部の撮影を終えたら「screenshot OK」の行を出して quit(0) する (Makefile はこの行と PNG の存在で判定する)。
 ## 画面や状態を増やす時は _capture_scenes() に撮影を足す。
 
-## 音の解放を待つ時間 (AUDIO_RELEASE_TIME) と一時ファイル削除を借りる、headless の検証の土台
+## 音の解放を待つ時間 (AUDIO_RELEASE_TIME) と AudioManager 準備・後始末を借りる検証の土台
 const HeadlessCheck := preload("res://scripts/dev/headless_check.gd")
 ## 撮影するメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
-## 音声管理ノード (screenshot の --script 実行でも本番と同じ経路で動かす)
+## 音声管理ノードの型解決用スクリプト参照
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 
 
@@ -22,23 +22,13 @@ func _run() -> void:
 	var settings_path: String = ProjectSettings.globalize_path(
 		"res://tmp/screenshot-audio-settings.cfg"
 	)
-	HeadlessCheck.remove_file_if_exists(settings_path)
-	var audio_manager: AudioManagerScript = AudioManagerScript.resolve(self) as AudioManagerScript
-	var created_audio_manager: bool = false
-	if audio_manager == null:
-		audio_manager = AudioManagerScript.new()
-		audio_manager.name = AudioManagerScript.NODE_NAME
-		root.add_child(audio_manager)
-		created_audio_manager = true
-	audio_manager.reload_settings(settings_path)
+	var audio_handle: Dictionary = HeadlessCheck.prepare_audio_manager(self, settings_path)
+	var audio_manager: AudioManagerScript = audio_handle["manager"] as AudioManagerScript
 
 	var ok: bool = await _capture_scenes()
 	audio_manager.stop_all()
 	await create_timer(HeadlessCheck.AUDIO_RELEASE_TIME).timeout
-	if created_audio_manager:
-		root.remove_child(audio_manager)
-		audio_manager.free()
-	HeadlessCheck.remove_file_if_exists(settings_path)
+	HeadlessCheck.cleanup_audio_manager(self, audio_handle, settings_path)
 	if ok:
 		print("screenshot OK")
 		quit(0)

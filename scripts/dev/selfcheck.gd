@@ -14,6 +14,8 @@ const AUDIO_MANAGER_AUTOLOAD: String = "*res://scripts/audio/audio_manager.gd"
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## 音声設定の保存・読み込み・バス適用
 const AudioSettings := preload("res://scripts/audio/audio_settings.gd")
+## 起動録画スクリプト (引数解釈・録画フレーム計算の純粋関数)
+const MovieScript := preload("res://scripts/dev/movie.gd")
 
 
 ## 検証をすべて実行して終える
@@ -24,6 +26,8 @@ func _initialize() -> void:
 	_check_audio_catalog()
 	_check_audio_settings_persistence()
 	_check_audio_settings_bus_mute()
+	_check_audio_manager_guards()
+	_check_movie_frame_calculations()
 	_finish()
 
 
@@ -242,6 +246,62 @@ func _check_audio_settings_bus_mute() -> void:
 		and (not AudioServer.is_bus_mute(sfx_bus_index)),
 		"両方オンで BGM・SFX バスとも消音解除になる"
 	)
+
+
+## AudioManager の null tree ガードと _ready() 前の未準備ガードを確認する
+func _check_audio_manager_guards() -> void:
+	_check(AudioManagerScript.resolve(null) == null, "AudioManager.resolve(null) は null を返す")
+	_check(
+		not AudioManagerScript.play_button_sfx(null),
+		"AudioManager.play_button_sfx(null) は false を返す"
+	)
+	var unready_manager: AudioManagerScript = AudioManagerScript.new()
+	_check(
+		not unready_manager.play_bgm(AudioCatalog.BGM_TITLE),
+		"tree 追加前 (_bgm_player 未準備) の play_bgm は false を返す"
+	)
+	_check(
+		not unready_manager.play_sfx(AudioCatalog.SFX_BUTTON),
+		"tree 追加前 (_sfx_players 未準備) の play_sfx は false を返す"
+	)
+	unready_manager.free()
+
+
+## scripts/dev/movie.gd のコマンドライン引数解釈と録画フレーム数計算の境界値を確認する
+func _check_movie_frame_calculations() -> void:
+	_check(
+		MovieScript.parse_positive_int_arg(
+			PackedStringArray(["--frames=150", "--fps=30"]), "--frames="
+		) == 150,
+		"--frames=150 を 150 として解釈できる"
+	)
+	_check(
+		MovieScript.parse_positive_int_arg(
+			PackedStringArray(["--frames=150", "--fps=30"]), "--fps="
+		) == 30,
+		"--fps=30 を 30 として解釈できる"
+	)
+	for bad_args: PackedStringArray in [
+		PackedStringArray([]),
+		PackedStringArray(["--other=10"]),
+		PackedStringArray(["--frames="]),
+		PackedStringArray(["--frames=0"]),
+		PackedStringArray(["--frames=-5"]),
+		PackedStringArray(["--frames=abc"]),
+	]:
+		_check(
+			MovieScript.parse_positive_int_arg(bad_args, "--frames=") == -1,
+			"不正・欠落引数 %s は -1 を返す" % str(bad_args)
+		)
+	# 解放フレーム数: ceil(0.25 * fps) + 2
+	_check(MovieScript.calc_release_frames(30) == 10, "30 fps の解放待ちフレーム数が 10")
+	_check(MovieScript.calc_release_frames(60) == 17, "60 fps の解放待ちフレーム数が 17")
+	_check(MovieScript.calc_release_frames(0) == 3, "0 fps 下限の解放待ちフレーム数が 3")
+	# 通常録画フレーム数: maxi(1, total - release - END_MARGIN_FRAMES(2))
+	_check(MovieScript.calc_record_frames(12, 10) == 1, "total=12 (境界未満) は下限 1 を返す")
+	_check(MovieScript.calc_record_frames(13, 10) == 1, "total=13 (境界) は 1 を返す")
+	_check(MovieScript.calc_record_frames(14, 10) == 2, "total=14 (境界 + 1) は 2 を返す")
+	_check(MovieScript.calc_record_frames(150, 10) == 138, "total=150, release=10 は 138 を返す")
 
 
 ## 異常系テスト用に任意の文字列をファイルへ書き出す

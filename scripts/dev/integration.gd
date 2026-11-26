@@ -8,8 +8,8 @@ const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## 音声設定の永続化検証用
 const AudioSettings := preload("res://scripts/audio/audio_settings.gd")
-## 音声管理ノード (autoload の実行時取得用)
-const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
+## 設定画面パネルのノードパス定数参照用
+const AudioSettingsPanelScript := preload("res://scripts/ui/audio_settings_panel.gd")
 
 
 ## tree の準備が終わってから _run() を始める (シーンの追加は _initialize() の後でないとできない)
@@ -22,16 +22,8 @@ func _run() -> void:
 	var settings_path: String = ProjectSettings.globalize_path(
 		"res://tmp/integration-audio-settings.cfg"
 	)
-	remove_file_if_exists(settings_path)
-
-	var audio_manager: AudioManagerScript = AudioManagerScript.resolve(self) as AudioManagerScript
-	var created_audio_manager: bool = false
-	if audio_manager == null:
-		audio_manager = AudioManagerScript.new()
-		audio_manager.name = AudioManagerScript.NODE_NAME
-		root.add_child(audio_manager)
-		created_audio_manager = true
-	audio_manager.reload_settings(settings_path)
+	var audio_handle: Dictionary = prepare_audio_manager(self, settings_path)
+	var audio_manager: AudioManagerScript = audio_handle["manager"] as AudioManagerScript
 
 	var main: Control = MAIN_SCENE.instantiate()
 	root.add_child(main)
@@ -51,10 +43,7 @@ func _run() -> void:
 	await create_timer(AUDIO_RELEASE_TIME).timeout
 	root.remove_child(main)
 	main.free()
-	if created_audio_manager:
-		root.remove_child(audio_manager)
-		audio_manager.free()
-	remove_file_if_exists(settings_path)
+	cleanup_audio_manager(self, audio_handle, settings_path)
 	_finish()
 
 
@@ -67,7 +56,7 @@ func _check_title_screen_basics(main: Control) -> void:
 	_check(main.theme != null and main.theme.default_font != null, "メインシーンの theme に既定フォントが入っている")
 
 
-## 題名画面起動時の BGM 再生、同一曲の継続、ループ有効化、効果音の出来事別入口を確認する
+## 題名画面起動時の BGM 再生、同一曲の継続、停止後の再再生、ループ有効化、効果音の出来事別入口を確認する
 func _check_audio_playback_entry(audio_manager: AudioManagerScript, main: Control) -> void:
 	var bgm_player: AudioStreamPlayer = audio_manager.get_node_or_null("BGMPlayer")
 	_check(bgm_player != null, "AudioManager 配下に BGMPlayer がある")
@@ -90,10 +79,21 @@ func _check_audio_playback_entry(audio_manager: AudioManagerScript, main: Contro
 		"同じ BGM を重ねて指定しても頭から再生し直さない (count: %d)" % audio_manager.get_bgm_play_count()
 	)
 
+	# 曲名は同じだがプレイヤー側だけ止まっている時 (playing=false) は再生し直す
+	if bgm_player != null:
+		bgm_player.stop()
+		_check(
+			audio_manager.play_bgm(AudioCatalog.BGM_TITLE)
+			and bgm_player.playing
+			and audio_manager.get_bgm_play_count() == play_count_before_same + 1,
+			"同じ曲名でもプレイヤーが停止中なら頭から再生し直す"
+		)
+
 	# 別の曲へ切り替えると play() が増え、屋敷 BGM もループ有効になる
+	var play_count_before_mansion: int = audio_manager.get_bgm_play_count()
 	_check(audio_manager.play_bgm(AudioCatalog.BGM_MANSION), "屋敷 BGM へ切り替えられる")
 	_check(
-		audio_manager.get_bgm_play_count() == play_count_before_same + 1,
+		audio_manager.get_bgm_play_count() == play_count_before_mansion + 1,
 		"別 BGM への切替時は再生回数が増える"
 	)
 	_check(
@@ -130,34 +130,53 @@ func _check_audio_playback_entry(audio_manager: AudioManagerScript, main: Contro
 	_check(not audio_manager.play_sfx("unknown_sfx"), "未登録の効果音名は false を返しゲームを止めない")
 
 
-## 存在しないパスと AudioStream でないリソースの読み込み失敗時に null を返すか確認する
+## 存在しないパスと AudioStream でないリソースの読み込み失敗時に再生の入口がスキップするか確認する
 func _check_stream_load_errors(audio_manager: AudioManagerScript) -> void:
+	var bgm_name_before: String = audio_manager.get_current_bgm_name()
+	var bgm_count_before: int = audio_manager.get_bgm_play_count()
+	var sfx_count_before: int = audio_manager.get_sfx_play_count()
+	for bad_path: String in ["res://assets/audio/does_not_exist.ogg", "res://scenes/main.tscn"]:
+		_check(
+			audio_manager.load_stream(bad_path) == null,
+			"不正な音声リソース %s の読み込みは null を返す" % bad_path
+		)
+		_check(
+			not audio_manager.play_bgm_path("broken_bgm", bad_path),
+			"素材読み込み失敗 (%s) の play_bgm_path は false を返す" % bad_path
+		)
+		_check(
+			not audio_manager.play_sfx_path("broken_sfx", bad_path),
+			"素材読み込み失敗 (%s) の play_sfx_path は false を返す" % bad_path
+		)
 	_check(
-		audio_manager.load_stream("res://assets/audio/does_not_exist.ogg") == null,
-		"存在しない音声パスの読み込みは null を返す"
-	)
-	_check(
-		audio_manager.load_stream("res://scenes/main.tscn") == null,
-		"AudioStream でないリソースの読み込みは null を返す"
+		audio_manager.get_current_bgm_name() == bgm_name_before
+		and audio_manager.get_bgm_play_count() == bgm_count_before
+		and audio_manager.get_sfx_play_count() == sfx_count_before,
+		"素材読み込み失敗時に再生中の BGM 名・BGM/SFX 再生回数が変わらない"
 	)
 
 
-## 効果音プール (SFX_POOL_SIZE = 4) が全て再生中の時にラウンドロビンで再利用されることを確認する
+## 効果音プール (SFX_POOL_SIZE) が全て再生中の時にラウンドロビンで再利用されることを確認する
 func _check_sfx_pool_round_robin(audio_manager: AudioManagerScript) -> void:
 	audio_manager.stop_all()
-	for index: int in range(AudioManagerScript.SFX_POOL_SIZE):
+	var pool_size: int = AudioManagerScript.SFX_POOL_SIZE
+	for index: int in range(pool_size):
 		var player: AudioStreamPlayer = audio_manager.get_node_or_null("SFXPlayer%d" % index)
 		_check(
 			player != null and player.bus == AudioCatalog.BUS_SFX,
 			"SFXPlayer%d が SFX バスに接続されている" % index
 		)
+	var expected_indices: Array[int] = []
 	var chosen_indices: Array[int] = []
-	for _i: int in range(AudioManagerScript.SFX_POOL_SIZE + 2):
+	for step: int in range(pool_size + 2):
+		expected_indices.append(step % pool_size)
 		audio_manager.play_sfx(AudioCatalog.SFX_PLUCK_HAIR)
 		chosen_indices.append(audio_manager.get_last_sfx_player_index())
 	_check(
-		chosen_indices == [0, 1, 2, 3, 0, 1],
-		"効果音プール満杯時に 0→1→2→3→0→1 のラウンドロビンで再利用される (実際: %s)" % str(chosen_indices)
+		chosen_indices == expected_indices,
+		"効果音プール満杯時にラウンドロビン %s で再利用される (実際: %s)" % [
+			str(expected_indices), str(chosen_indices)
+		]
 	)
 	audio_manager.stop_all()
 	audio_manager.play_bgm(AudioCatalog.BGM_TITLE)
@@ -185,15 +204,9 @@ func _check_settings_screen_toggles(
 	_check(panel.visible, "設定ボタンを押すと設定画面が開く")
 	_check_button_sfx_played(audio_manager, count_before_open, "設定ボタン押下")
 
-	var bgm_toggle: CheckButton = panel.get_node_or_null(
-		"CenterContainer/Panel/MarginContainer/VBoxContainer/BGMToggle"
-	)
-	var sfx_toggle: CheckButton = panel.get_node_or_null(
-		"CenterContainer/Panel/MarginContainer/VBoxContainer/SFXToggle"
-	)
-	var close_button: Button = panel.get_node_or_null(
-		"CenterContainer/Panel/MarginContainer/VBoxContainer/CloseButton"
-	)
+	var bgm_toggle: CheckButton = panel.get_node_or_null(AudioSettingsPanelScript.BGM_TOGGLE_PATH)
+	var sfx_toggle: CheckButton = panel.get_node_or_null(AudioSettingsPanelScript.SFX_TOGGLE_PATH)
+	var close_button: Button = panel.get_node_or_null(AudioSettingsPanelScript.CLOSE_BUTTON_PATH)
 	_check(
 		bgm_toggle != null and sfx_toggle != null and close_button != null,
 		"設定画面に BGM・効果音トグルと閉じるボタンがある"
@@ -272,11 +285,12 @@ func _check_reload_persisted_settings(
 	var reopened_main: Control = MAIN_SCENE.instantiate()
 	root.add_child(reopened_main)
 	await process_frame
-	var bgm_toggle: CheckButton = reopened_main.get_node_or_null(
-		"AudioSettingsPanel/CenterContainer/Panel/MarginContainer/VBoxContainer/BGMToggle"
+	var panel: Control = reopened_main.get_node_or_null("AudioSettingsPanel")
+	var bgm_toggle: CheckButton = (
+		panel.get_node_or_null(AudioSettingsPanelScript.BGM_TOGGLE_PATH) if panel != null else null
 	)
-	var sfx_toggle: CheckButton = reopened_main.get_node_or_null(
-		"AudioSettingsPanel/CenterContainer/Panel/MarginContainer/VBoxContainer/SFXToggle"
+	var sfx_toggle: CheckButton = (
+		panel.get_node_or_null(AudioSettingsPanelScript.SFX_TOGGLE_PATH) if panel != null else null
 	)
 	_check(
 		bgm_toggle != null and sfx_toggle != null

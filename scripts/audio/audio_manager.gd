@@ -15,10 +15,11 @@ const NODE_NAME: String = "AudioManager"
 ## 効果音を同時に重ねて鳴らせるプレイヤーの本数。手で毛を連続して抜く序盤に 1 秒あたり 2〜3 回鳴らしつつ
 ## UI 操作やお金取得の効果音が重なっても先行の音が途切れにくい余裕として 4 本にした (実機調整で変更可)
 const SFX_POOL_SIZE: int = 4
-## 再生中に終了した時に AudioServer の解放を待つ時間 (ms)。scripts/dev/headless_check.gd の
-## AUDIO_RELEASE_TIME (0.25 秒) に合わせた値で、Godot 4.7.2-stable (ubuntu-24.04 / --audio-driver Dummy)
-## の CI 実測で 0 ms では ObjectDB 4 件・Resource 2 件のリーク警告が出、250 ms で解消することを確認した
-const EXIT_RELEASE_WAIT_MSEC: int = 250
+## 音を止めてから終了するまで AudioServer の解放を待つ時間 (秒。プロジェクト全体の単一の正)。
+## 止めた BGM・効果音の再生は AudioServer がミキシングを数回進めてから解放するため、待たずに終了すると
+## ObjectDB 4 件・Resource 2 件のリーク警告が出る (bannzai/kageboshi と本リポジトリの Godot 4.7.2-stable
+## CI run 45764505977 / 45767272708 で実測し 0.25 秒で解消を確認)
+const AUDIO_RELEASE_TIME_SEC: float = 0.25
 
 ## 現在のオン・オフ設定
 var _settings: RefCounted = AudioSettings.new()
@@ -55,6 +56,14 @@ static func resolve(tree: SceneTree) -> Node:
 	return tree.root.get_node_or_null(NODE_NAME)
 
 
+## SceneTree から AudioManager を解決し、ボタン効果音を鳴らす (UI 側の重複呼び出しを 1 か所に集約)
+static func play_button_sfx(tree: SceneTree) -> bool:
+	var manager: Node = resolve(tree)
+	if manager == null:
+		return false
+	return bool(manager.call("play_sfx", AudioCatalog.SFX_BUTTON))
+
+
 ## プレイヤーを準備し、保存済みの設定を読み込んでバスへ適用する
 func _ready() -> void:
 	_setup_players()
@@ -71,7 +80,7 @@ func _exit_tree() -> void:
 	stop_all()
 	_clear_streams()
 	if should_wait:
-		OS.delay_msec(EXIT_RELEASE_WAIT_MSEC)
+		OS.delay_msec(int(round(AUDIO_RELEASE_TIME_SEC * 1000.0)))
 
 
 ## アプリが裏に回った時に BGM を一時停止し、戻った時に再開する。
@@ -95,10 +104,12 @@ func reload_settings(path: String = AudioSettings.DEFAULT_PATH) -> Error:
 
 ## 場面名に対応する BGM をループ再生する。同じ曲が再生中なら頭から流し直さず継続する
 func play_bgm(scene_name: String) -> bool:
-	if _bgm_player == null:
-		return false
-	var path: String = AudioCatalog.resolve_bgm_path(scene_name)
-	if path.is_empty():
+	return play_bgm_path(scene_name, AudioCatalog.resolve_bgm_path(scene_name))
+
+
+## 指定リソースパスの BGM をループ再生する。未準備・空パス・読み込み失敗時はゲームを止めず false を返す
+func play_bgm_path(scene_name: String, path: String) -> bool:
+	if _bgm_player == null or path.is_empty():
 		return false
 	if _current_bgm_name == scene_name and _bgm_player.playing:
 		return true
@@ -127,10 +138,12 @@ func stop_bgm() -> void:
 
 ## 出来事名に対応する効果音を鳴らす。未登録の出来事や読み込み失敗時はゲームを止めず false を返す
 func play_sfx(event_name: String) -> bool:
-	if _sfx_players.is_empty():
-		return false
-	var path: String = AudioCatalog.resolve_sfx_path(event_name)
-	if path.is_empty():
+	return play_sfx_path(event_name, AudioCatalog.resolve_sfx_path(event_name))
+
+
+## 指定リソースパスの効果音を鳴らす。未準備・空パス・読み込み失敗時はゲームを止めず false を返す
+func play_sfx_path(event_name: String, path: String) -> bool:
+	if _sfx_players.is_empty() or path.is_empty():
 		return false
 	var stream: AudioStream = load_stream(path)
 	if stream == null:
@@ -264,12 +277,10 @@ func _clear_streams() -> void:
 	_stream_cache.clear()
 
 
-## ループ対応のストリーム形式ならループ再生を有効にする
+## Ogg Vorbis ストリームのループ再生を有効にする (assets/audio の BGM はすべて OGG)
 func _enable_loop(stream: AudioStream) -> void:
 	if stream is AudioStreamOggVorbis:
 		(stream as AudioStreamOggVorbis).loop = true
-	elif stream is AudioStreamMP3:
-		(stream as AudioStreamMP3).loop = true
 
 
 ## アプリが裏に回った時の BGM 一時停止

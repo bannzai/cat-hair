@@ -41,19 +41,11 @@ func _ready() -> void:
 
 ## はじめるボタン押下時の処理 (現時点ではボタン効果音の再生まで)
 func _on_start_button_pressed() -> void:
-	var audio_manager: AudioManagerScript = (
-		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
-	)
-	if audio_manager != null:
-		audio_manager.play_sfx(AudioCatalog.SFX_BUTTON)
+	AudioManagerScript.play_button_sfx(get_tree())
 
 
 ## 設定ボタン押下時の処理
 func _on_settings_button_pressed() -> void:
-	var audio_manager: AudioManagerScript = (
-		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
-	)
-	if audio_manager != null:
-		audio_manager.play_sfx(AudioCatalog.SFX_BUTTON)
+	AudioManagerScript.play_button_sfx(get_tree())
 	if _settings_panel != null:
 		_settings_panel.open()

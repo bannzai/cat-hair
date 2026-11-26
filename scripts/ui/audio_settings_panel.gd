@@ -6,23 +6,26 @@ extends Control
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## AudioManager の型解決と実行時取得用スクリプト参照 (headless --script で autoload 名を静的参照しない)
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
+## BGM トグルのパネル内ノードパス (UI とテストで共有する単一の正)
+const BGM_TOGGLE_PATH: String = "CenterContainer/Panel/MarginContainer/VBoxContainer/BGMToggle"
+## 効果音トグルのパネル内ノードパス (UI とテストで共有する単一の正)
+const SFX_TOGGLE_PATH: String = "CenterContainer/Panel/MarginContainer/VBoxContainer/SFXToggle"
+## 閉じるボタンのパネル内ノードパス (UI とテストで共有する単一の正)
+const CLOSE_BUTTON_PATH: String = "CenterContainer/Panel/MarginContainer/VBoxContainer/CloseButton"
 
 ## BGM のオン・オフを切り替えるチェックボタン
-@onready var _bgm_toggle: CheckButton = (
-	$CenterContainer/Panel/MarginContainer/VBoxContainer/BGMToggle
-)
+var _bgm_toggle: CheckButton = null
 ## 効果音のオン・オフを切り替えるチェックボタン
-@onready var _sfx_toggle: CheckButton = (
-	$CenterContainer/Panel/MarginContainer/VBoxContainer/SFXToggle
-)
+var _sfx_toggle: CheckButton = null
 ## 設定画面を閉じるボタン
-@onready var _close_button: Button = (
-	$CenterContainer/Panel/MarginContainer/VBoxContainer/CloseButton
-)
+var _close_button: Button = null
 
 
 ## UI のシグナルを接続し、現在の音声設定を表示へ反映する
 func _ready() -> void:
+	_bgm_toggle = get_node(BGM_TOGGLE_PATH) as CheckButton
+	_sfx_toggle = get_node(SFX_TOGGLE_PATH) as CheckButton
+	_close_button = get_node(CLOSE_BUTTON_PATH) as Button
 	_bgm_toggle.toggled.connect(_on_bgm_toggled)
 	_sfx_toggle.toggled.connect(_on_sfx_toggled)
 	_close_button.pressed.connect(_on_close_pressed)
@@ -75,9 +78,5 @@ func _on_sfx_toggled(toggled_on: bool) -> void:
 
 ## 閉じるボタン押下時の処理
 func _on_close_pressed() -> void:
-	var audio_manager: AudioManagerScript = (
-		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
-	)
-	if audio_manager != null:
-		audio_manager.play_sfx(AudioCatalog.SFX_BUTTON)
+	AudioManagerScript.play_button_sfx(get_tree())
 	close()
