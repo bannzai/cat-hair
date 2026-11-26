@@ -31,7 +31,7 @@ const INVALID_SLOT: int = -1
 
 ## 登録済みの配置表面定義 (name / bounds_min / bounds_max / weight)
 var _surfaces: Array[Dictionary] = []
-## 生成済みの表面ごとのバケット (name / instance / multimesh / hair_ids / active_count)
+## 生成済みの表面ごとのバケット (name / instance / multimesh / hair_ids / transforms / colors / active_count)
 var _buckets: Array[Dictionary] = []
 ## hair_id -> 表面インデックスの逆引き配列 (INVALID_SLOT = -1 は削除済み)
 var _id_to_surface: PackedInt32Array = PackedInt32Array()
@@ -298,10 +298,17 @@ func remove_hair(hair_id: int) -> bool:
 
 	if slot != last_slot:
 		var last_id: int = hair_ids[last_slot]
-		multimesh.set_instance_transform(slot, multimesh.get_instance_transform(last_slot))
-		multimesh.set_instance_color(slot, multimesh.get_instance_color(last_slot))
+		var transforms: Array[Transform3D] = bucket["transforms"]
+		var colors: PackedColorArray = bucket["colors"]
+		var moved_transform: Transform3D = transforms[last_slot]
+		var moved_color: Color = colors[last_slot]
+		transforms[slot] = moved_transform
+		colors[slot] = moved_color
+		multimesh.set_instance_transform(slot, moved_transform)
+		multimesh.set_instance_color(slot, moved_color)
 		hair_ids[slot] = last_id
 		_id_to_slot[last_id] = slot
+		bucket["colors"] = colors
 
 	active_count -= 1
 	bucket["active_count"] = active_count
@@ -372,8 +379,8 @@ func get_hair_transform(hair_id: int) -> Transform3D:
 		return Transform3D.IDENTITY
 	var surface_idx: int = _id_to_surface[hair_id]
 	var slot: int = _id_to_slot[hair_id]
-	var multimesh: MultiMesh = _buckets[surface_idx]["multimesh"]
-	return multimesh.get_instance_transform(slot)
+	var transforms: Array[Transform3D] = _buckets[surface_idx]["transforms"]
+	return transforms[slot]
 
 
 ## 指定した毛 ID の現在の色を返す (存在しない場合は透明黒)
@@ -382,11 +389,13 @@ func get_hair_color(hair_id: int) -> Color:
 		return Color(0.0, 0.0, 0.0, 0.0)
 	var surface_idx: int = _id_to_surface[hair_id]
 	var slot: int = _id_to_slot[hair_id]
-	var multimesh: MultiMesh = _buckets[surface_idx]["multimesh"]
-	return multimesh.get_instance_color(slot)
+	var colors: PackedColorArray = _buckets[surface_idx]["colors"]
+	return colors[slot]
 
 
-## 1 表面分の MultiMeshInstance3D とバケットを生成し、乱数シードに従って毛を配置する
+## 1 表面分の MultiMeshInstance3D とバケットを生成し、乱数シードに従って毛を配置する。
+## MultiMesh.get_instance_transform/color は headless (Dummy レンダラ) で既定値を返すため、
+## CPU 側の transforms / colors 配列にも同値を保持して swap-remove と照会を統一する。
 func _create_surface_bucket(
 	surface_idx: int,
 	spec: Dictionary,
@@ -403,6 +412,10 @@ func _create_surface_bucket(
 
 	var hair_ids: PackedInt32Array = PackedInt32Array()
 	hair_ids.resize(count)
+	var transforms: Array[Transform3D] = []
+	transforms.resize(count)
+	var colors: PackedColorArray = PackedColorArray()
+	colors.resize(count)
 
 	var bounds_min: Vector3 = spec["bounds_min"]
 	var bounds_max: Vector3 = spec["bounds_max"]
@@ -433,8 +446,12 @@ func _create_surface_bucket(
 			+ rng.randf_range(0.0, 0.0018),
 			rng.randf_range(bounds_min.z, bounds_max.z)
 		)
-		multimesh.set_instance_transform(slot, Transform3D(basis, pos))
-		multimesh.set_instance_color(slot, pick_hair_color(rng))
+		var xform: Transform3D = Transform3D(basis, pos)
+		var color: Color = pick_hair_color(rng)
+		transforms[slot] = xform
+		colors[slot] = color
+		multimesh.set_instance_transform(slot, xform)
+		multimesh.set_instance_color(slot, color)
 
 	var multimesh_instance: MultiMeshInstance3D = MultiMeshInstance3D.new()
 	multimesh_instance.name = "HairSurface_%s" % str(spec["name"])
@@ -448,5 +465,7 @@ func _create_surface_bucket(
 		"instance": multimesh_instance,
 		"multimesh": multimesh,
 		"hair_ids": hair_ids,
+		"transforms": transforms,
+		"colors": colors,
 		"active_count": count,
 	}

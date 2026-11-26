@@ -211,18 +211,22 @@ func _check_hair_field_populate_and_remove() -> void:
 	# 10 本配置 (floor 7 本: ID 0..6, sofa 3 本: ID 7..9)
 	var placed: int = field.populate(10, 12345)
 	_check(placed == 10 and field.get_remaining_count() == 10, "10 本配置できる")
-	# 配置したすべての毛の全 7 頂点が表面高さ (floor=0.0 / sofa=0.4) より下に潜らないこと
+	# 配置した毛が Identity ではなく実座標と非透明色を持ち、全 7 頂点が表面高さ以上に収まること
 	var hair_vertices: PackedVector3Array = HairFieldScript.build_hair_mesh().surface_get_arrays(0)[
 		Mesh.ARRAY_VERTEX
 	]
 	var all_above_surface: bool = true
+	var all_opaque_color: bool = true
 	for hair_id: int in range(10):
 		var surface_y: float = 0.0 if hair_id < 7 else 0.4
 		var xform: Transform3D = field.get_hair_transform(hair_id)
+		if field.get_hair_color(hair_id).a < 0.99:
+			all_opaque_color = false
 		for vertex: Vector3 in hair_vertices:
 			if (xform * vertex).y < surface_y:
 				all_above_surface = false
 	_check(all_above_surface, "配置したすべての毛の全頂点が表面 Y 以上に収まる")
+	_check(all_opaque_color, "配置したすべての毛が非透明色を持つ (headless でも色保持)")
 	_check(
 		field.get_surface_remaining_count(0) == 7
 		and field.get_surface_remaining_count(1) == 3,
