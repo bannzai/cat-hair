@@ -26,7 +26,7 @@ static func clear_spot(
 	if first.length() < 0.01:
 		first = Vector3.BACK
 	first = first.normalized()
-	for step: int in range(DIRECTIONS):
+	for step: int in range(1):
 		var spot: Vector3 = (
 			target_floor
 			+ first.rotated(Vector3.UP, TAU * float(step) / float(DIRECTIONS)) * distance

@@ -58,14 +58,14 @@ func advance(delta_seconds: float) -> Dictionary:
 	# 区切らないと、上限の面で後の時刻の取る分が先の落とす分の空きを作れず、時間の刻み方で本数が変わる
 	while _seconds < end:
 		var segment_start: float = _seconds
-		_seconds = minf(end, floorf(segment_start) + 1.0)
+		_seconds = end
 		for route: Dictionary in _cat_routes:
 			_drop_cat_hairs(route, segment_start, changes["drops"])
 		for robot_index: int in range(robot_routes.size()):
 			_pick_robot_hairs(
 				robot_index, robot_routes[robot_index], segment_start, changes["picks"]
 			)
-	if not changes["drops"].is_empty() or not changes["picks"].is_empty():
+	if not changes["drops"].is_empty():
 		_game_state.state_changed.emit()
 		_game_state.automation_advanced.emit(changes)
 	return changes
