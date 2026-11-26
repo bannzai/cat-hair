@@ -29,17 +29,21 @@ SCRIPT_FLAGS = --quit-after $(SCRIPT_FRAME_LIMIT)
 # warning の語があっても落ちない。続く「   at: ...」の行は対象外 (本体の行で検出できる)
 LOG_ERROR_PATTERN := ^(SCRIPT |SHADER )?(ERROR|WARNING):
 
-# 描画付きで起動する target (screenshot / movie) の共通オプション。headless では描画されないため付けない。
+# 描画付きで起動する target (screenshot / movie / hairbench) の共通オプション。headless では描画されないため付けない。
 # CI の Linux では Xvfb + Mesa llvmpipe 上で実行する
-WINDOWED_FLAGS := --audio-driver Dummy --rendering-driver opengl3 --resolution 1280x720 --windowed --position 0,0
+RENDERING_DRIVER ?= opengl3
+RENDERING_METHOD ?= gl_compatibility
+WINDOWED_FLAGS := --audio-driver Dummy --rendering-driver $(RENDERING_DRIVER) --rendering-method $(RENDERING_METHOD) --resolution 1280x720 --windowed --position 0,0
 # 描画付き起動でだけ出る、描画に影響しない OS / ドライバ由来の行。ログの WARNING / ERROR 検査から除外する
 # (llvmpipe は V-Sync を設定できない WARNING を毎回 1 件出す。macOS は入力メソッドの mach port のエラーを稀に出す)
 WINDOWED_LOG_NOISE := -e 'Could not set V-Sync mode' -e 'IMKCFRunLoopWakeUpReliable'
 # movie target が録画するフレーム数 (30 fps 固定。150 = 5 秒)。操作なしの起動〜メインシーン表示の確認には
 # 数秒あれば足り、CI の録画時間と artifact のサイズを抑えるため
 MOVIE_FRAMES ?= 150
+# hairbench target が計測する毛の本数 (カンマ区切り)
+HAIRBENCH_COUNTS ?= 1000,10000,100000,1000000
 
-.PHONY: import check selfcheck integration failure-path lint test verify screenshot movie run build-macos build-windows build-linux build-all clean
+.PHONY: import check selfcheck integration failure-path lint test verify screenshot movie hairbench run build-macos build-windows build-linux build-all clean
 
 # ログ・撮影の出力先。.gdignore を置き、撮影した PNG を Godot に import させない
 $(LOG_DIR)/.gdignore:
@@ -127,6 +131,18 @@ movie: import
 	rm -f $(LOG_DIR)/movie.avi
 	bash scripts/ci/check-movie-brightness.sh $(LOG_DIR)/movie.mp4
 
+# 毛の描画の試作ベンチマーク。1,000 / 10,000 / 100,000 / 1,000,000 本の描画可否と 1 フレームの描画時間を
+# tmp/hairbench.json に出力し、本数ごとの画面を tmp/hairbench-<本数>.png に撮る
+hairbench: import
+	rm -f $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json
+	HAIRBENCH_COUNTS="$(HAIRBENCH_COUNTS)" "$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) $(SCRIPT_FLAGS) --script res://scripts/dev/hairbench.gd > $(LOG_DIR)/hairbench.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/hairbench.log; \
+	grep -q '^hairbench OK$$' $(LOG_DIR)/hairbench.log
+	tail -n 1 $(LOG_DIR)/hairbench.log | grep -q '^exit=0$$'
+	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/hairbench.log | grep -v $(WINDOWED_LOG_NOISE) | grep -q .
+	test -f $(LOG_DIR)/hairbench.json
+	ls $(LOG_DIR)/hairbench-*.png
+
 # エディタなしでゲームを起動する (人が遊んで確かめる)。先にアセットをインポートする (.godot/ が無い初回や素材の
 # 追加後に、エディタを開かずに起動すると素材が読み込めず起動に失敗するため)
 run: import
@@ -161,8 +177,8 @@ build-all: build-macos build-windows build-linux
 # ディレクトリごとや *.log をまとめては消さない)。ログは target ごとの <target>.log と、ENGINE_LOG の <target>.godot.log
 clean:
 	rm -rf build
-	rm -f $(foreach target,import check selfcheck integration failure-path screenshot movie run build-macos build-windows build-linux,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
-	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4
+	rm -f $(foreach target,import check selfcheck integration failure-path screenshot movie hairbench run build-macos build-windows build-linux,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
+	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4
 
 # 引数なしの make で run を実行する (人が手で動作確認するための入口。検査・テストは CI が行う)
 .DEFAULT_GOAL := run

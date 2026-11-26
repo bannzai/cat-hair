@@ -119,6 +119,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb ffmpeg libgl1-mesa-dri \
+            libvulkan1 mesa-vulkan-drivers vulkan-tools \
             libxcursor1 libxinerama1 libxrandr2 libxi6 libxext6 libxkbcommon0
           nohup Xvfb :99 -screen 0 1280x720x24 > "$RUNNER_TEMP/xvfb.log" 2>&1 &
           for _ in $(seq 1 30); do
@@ -135,6 +136,43 @@ jobs:
         run: make screenshot GODOT="${{ steps.godot.outputs.godot }}"
       - name: Movie
         run: make movie GODOT="${{ steps.godot.outputs.godot }}"
+      - name: Hair benchmark
+        run: make hairbench GODOT="${{ steps.godot.outputs.godot }}"
+      - name: Probe Vulkan renderers (mobile and forward_plus on lavapipe)
+        run: |
+          mkdir -p tmp/probe-mobile tmp/probe-forward-plus
+          export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          vulkaninfo --summary > tmp/vulkaninfo.log 2>&1 || true
+          echo "=== vulkaninfo ==="
+          cat tmp/vulkaninfo.log
+
+          for method in mobile forward_plus; do
+            dir="tmp/probe-${method//_/-}"
+            echo "=== Probing ${method} ==="
+            set +e
+            timeout 300 env \
+              VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json \
+              HAIRBENCH_COUNTS="1000,10000,100000,1000000" \
+              HAIRBENCH_JSON="${dir}/hairbench.json" \
+              HAIRBENCH_PNG_DIR="${dir}" \
+              HAIRBENCH_PNG_PREFIX="hairbench" \
+              "${{ steps.godot.outputs.godot }}" \
+                --log-file "$(pwd)/${dir}/godot.log" \
+                --path . \
+                --audio-driver Dummy \
+                --rendering-driver vulkan \
+                --rendering-method "${method}" \
+                --resolution 1280x720 \
+                --windowed \
+                --position 0,0 \
+                --quit-after 12000 \
+                --script res://scripts/dev/hairbench.gd > "${dir}/run.log" 2>&1
+            code=$?
+            set -e
+            echo "exit=${code}" >> "${dir}/run.log"
+            echo "--- ${method} exit=${code} ---"
+            cat "${dir}/run.log"
+          done
       - name: Upload screenshots and movie
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -142,7 +180,11 @@ jobs:
           name: cat-hair-screenshot-and-movie
           path: |
             tmp/screenshot-*.png
+            tmp/hairbench-*.png
+            tmp/hairbench.json
             tmp/movie.mp4
             tmp/*.log
+            tmp/probe-mobile/
+            tmp/probe-forward-plus/
           if-no-files-found: warn
           retention-days: 7

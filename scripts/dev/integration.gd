@@ -4,6 +4,8 @@ extends "res://scripts/dev/headless_check.gd"
 
 ## 動かして確かめるメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
+## 毛の描画の試作シーン
+const HAIR_PROTOTYPE_SCENE: PackedScene = preload("res://scenes/hair_prototype.tscn")
 
 
 ## tree の準備が終わってから _run() を始める (シーンの追加は _initialize() の後でないとできない)
@@ -13,6 +15,12 @@ func _initialize() -> void:
 
 ## フレームを進めながら検証するため、同じ実行中に重ねて呼び出さない
 func _run() -> void:
+	await _verify_main_scene()
+	await _verify_hair_prototype_scene()
+	_finish()
+
+
+func _verify_main_scene() -> void:
 	var main: Control = MAIN_SCENE.instantiate()
 	root.add_child(main)
 	# _ready が走り、子のノードが tree に入るのを 1 フレーム待つ
@@ -24,4 +32,35 @@ func _run() -> void:
 	_check(main.theme != null and main.theme.default_font != null, "メインシーンの theme に既定フォントが入っている")
 	root.remove_child(main)
 	main.free()
-	_finish()
+
+
+func _verify_hair_prototype_scene() -> void:
+	var proto: Node3D = HAIR_PROTOTYPE_SCENE.instantiate()
+	root.add_child(proto)
+	await process_frame
+
+	var field: Node3D = proto.get_hair_field()
+	_check(field != null, "HairPrototype に HairField ノードがある")
+	_check(field.get_surface_count() == 2, "床とソファの 2 表面が登録されている")
+
+	var placed: int = proto.populate_hairs(100)
+	_check(placed == 100 and proto.get_remaining_count() == 100, "試作シーンに 100 本の毛を配置できる")
+	var visible_sum: int = (
+		field.get_surface_visible_instance_count(0)
+		+ field.get_surface_visible_instance_count(1)
+	)
+	_check(visible_sum == 100, "2 表面の visible_instance_count 合計が 100")
+
+	var removed: bool = proto.remove_hair(0)
+	await process_frame
+	var visible_after: int = (
+		field.get_surface_visible_instance_count(0)
+		+ field.get_surface_visible_instance_count(1)
+	)
+	_check(
+		removed and proto.get_remaining_count() == 99 and visible_after == 99,
+		"試作シーンで 1 本だけ抜いて残り本数・visible_instance_count が 99 になる"
+	)
+
+	root.remove_child(proto)
+	proto.free()
