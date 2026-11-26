@@ -160,7 +160,9 @@ func is_pulling() -> bool:
 	return not _pulling_ids.is_empty()
 
 
-## つまんでいる毛のどれかが、まだ手の届く距離 (REACH_M) にあるか (引いている間に歩いて離れたら離す)
+## つまんでいる毛のどれかが、まだ手の届く距離にあるか (引いている間に歩いて離れたら離す)。
+## 狙いは面の点まで REACH_M、毛はその点から GRAB_RADIUS_M 以内でつまむため、届く距離の境目で
+## つまんだ毛がすぐ離れないよう、毛の根元までの距離は REACH_M + GRAB_RADIUS_M と比べる
 func is_pull_in_reach() -> bool:
 	if not is_pulling() or _camera == null:
 		return false
@@ -169,7 +171,7 @@ func is_pull_in_reach() -> bool:
 		if (
 			hair_field.has_hair(hair_id)
 			and hair_field.get_hair_transform(hair_id).origin.distance_to(_camera.global_position)
-			<= REACH_M
+			<= REACH_M + GRAB_RADIUS_M
 		):
 			return true
 	return false
