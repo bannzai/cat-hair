@@ -76,19 +76,21 @@ func _verify_cats_walk(main: Node3D, game_state: Node) -> void:
 	var title_seconds: float = game_state.automation.get_seconds()
 	for _frame: int in range(10):
 		await _checker.process_frame
+	var seconds_after_title: float = game_state.automation.get_seconds()
+	main.auto_advance_automation = false
 	main.enter_mansion()
 	main.player.set_spawn(stand, 0.0)
 	await _checker.physics_frame
-	main.auto_advance_automation = false
 	_check(
-		is_equal_approx(game_state.automation.get_seconds(), title_seconds),
+		is_equal_approx(seconds_after_title, title_seconds),
 		"屋敷で遊んでいない間 (タイトル) は、時計を進める設定でも時計が進まない",
 	)
 	var route: Dictionary = routes[0]
 	var cat_node: Node3D = automation.get_cat_node(route["cat_id"])
 	var first_point: Vector3 = cat_node.position
 	game_state.automation.advance(float(route["stops"][0]["seconds"]) + RouteClockScript.MOVE_SECONDS)
-	await _checker.process_frame
+	# process_frame で再開するのは同じフレームの各ノードの _process より前のため、位置を明示して更新してから比べる
+	automation.update_positions()
 	var expected: Vector3 = RouteClockScript.position_at(route, game_state.automation.get_seconds())
 	_check(
 		cat_node.position.is_equal_approx(expected) and cat_node.position.distance_to(first_point) > 0.5,
@@ -113,7 +115,7 @@ func _verify_nap_posture(main: Node3D, game_state: Node) -> void:
 		base + nap_start + RouteClockScript.MOVE_SECONDS + 1.0,
 	]:
 		game_state.automation.advance(target - game_state.automation.get_seconds())
-		await _checker.process_frame
+		main.automation.update_positions()
 		var body: Node3D = cat.get_node("Body")
 		var legs: Node3D = cat.get_node("Legs")
 		postures.append(
