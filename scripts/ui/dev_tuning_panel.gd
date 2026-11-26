@@ -11,10 +11,12 @@ signal close_requested
 ## 開発者向け調整値データ型スクリプト
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 
-## 毛の本数 SpinBox の増減刻み (千〜万単位を調整しやすい 100 本刻み)
-const HAIR_COUNT_SPIN_STEP: float = 100.0
-## 部屋幅 (m) SpinBox の増減刻み (0.5m 単位で広さを試しやすい刻み)
-const ROOM_SIZE_SPIN_STEP: float = 0.5
+## 毛の本数 SpinBox の矢印ボタン増減幅 (千〜万単位を調整しやすい 100 本刻み。step は 1 で任意整数を保持)
+const HAIR_COUNT_ARROW_STEP: float = 100.0
+## 部屋幅 (m) SpinBox の矢印ボタン増減幅 (0.5m 刻み。step は 0.01 で任意の小数値を丸めず保持)
+const ROOM_SIZE_ARROW_STEP: float = 0.5
+## 部屋幅 (m) SpinBox の内部刻み (小数第 2 位までのコマンドライン引数値等を丸めず保持するため)
+const ROOM_SIZE_VALUE_STEP: float = 0.01
 
 ## 毛の本数の入力欄
 var hair_count_spin: SpinBox = null
@@ -103,7 +105,8 @@ func _ensure_ui() -> void:
 		"毛の本数",
 		float(MansionTuningScript.MIN_HAIR_COUNT),
 		float(MansionTuningScript.MAX_HAIR_COUNT),
-		HAIR_COUNT_SPIN_STEP,
+		1.0,
+		HAIR_COUNT_ARROW_STEP,
 		float(MansionTuningScript.DEFAULT_HAIR_COUNT),
 	)
 	found_item_count_spin = _add_spin_row(
@@ -113,6 +116,7 @@ func _ensure_ui() -> void:
 		float(MansionTuningScript.MIN_FOUND_ITEM_COUNT),
 		float(MansionTuningScript.MAX_FOUND_ITEM_COUNT),
 		1.0,
+		1.0,
 		float(MansionTuningScript.DEFAULT_FOUND_ITEM_COUNT),
 	)
 	room_size_spin = _add_spin_row(
@@ -121,7 +125,8 @@ func _ensure_ui() -> void:
 		"屋敷の広さ (1部屋の幅 m)",
 		MansionTuningScript.MIN_ROOM_SIZE_M,
 		MansionTuningScript.MAX_ROOM_SIZE_M,
-		ROOM_SIZE_SPIN_STEP,
+		ROOM_SIZE_VALUE_STEP,
+		ROOM_SIZE_ARROW_STEP,
 		MansionTuningScript.DEFAULT_ROOM_SIZE_M,
 	)
 	object_count_spin = _add_spin_row(
@@ -131,6 +136,7 @@ func _ensure_ui() -> void:
 		float(MansionTuningScript.MIN_OBJECT_COUNT),
 		float(MansionTuningScript.MAX_OBJECT_COUNT),
 		1.0,
+		1.0,
 		float(MansionTuningScript.DEFAULT_OBJECT_COUNT),
 	)
 	room_count_spin = _add_spin_row(
@@ -139,6 +145,7 @@ func _ensure_ui() -> void:
 		"部屋の数",
 		float(MansionTuningScript.MIN_ROOM_COUNT),
 		float(MansionTuningScript.MAX_ROOM_COUNT),
+		1.0,
 		1.0,
 		float(MansionTuningScript.DEFAULT_ROOM_COUNT),
 	)
@@ -170,6 +177,7 @@ func _add_spin_row(
 	min_value: float,
 	max_value: float,
 	step_value: float,
+	arrow_step_value: float,
 	default_value: float,
 ) -> SpinBox:
 	var row_label: Label = Label.new()
@@ -182,6 +190,7 @@ func _add_spin_row(
 	spin_box.min_value = min_value
 	spin_box.max_value = max_value
 	spin_box.step = step_value
+	spin_box.custom_arrow_step = arrow_step_value
 	spin_box.value = default_value
 	spin_box.custom_minimum_size = Vector2(160.0, 0.0)
 	fields_grid.add_child(spin_box)

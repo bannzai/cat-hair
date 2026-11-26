@@ -90,6 +90,19 @@ static func should_capture_mouse(event: InputEvent) -> bool:
 	return mouse_button_event.button_index == MOUSE_BUTTON_LEFT and mouse_button_event.pressed
 
 
+## 現在のマウスモードと許可フラグから視点回転を適用すべきかを判定する (純粋判定)
+static func should_apply_mouse_motion(
+	mouse_mode: Input.MouseMode,
+	allow_uncaptured: bool,
+) -> bool:
+	return mouse_mode == Input.MOUSE_MODE_CAPTURED or allow_uncaptured
+
+
+## 入力イベントがマウス捕捉を解放すべき操作かを判定する (純粋判定)
+static func should_release_mouse(event: InputEvent) -> bool:
+	return event.is_action_pressed("release_mouse")
+
+
 ## プレイ中のマウス捕捉・視点回転・Esc 解放を処理する
 func _unhandled_input(event: InputEvent) -> void:
 	if not controls_enabled:
@@ -99,9 +112,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	elif event is InputEventMouseMotion:
 		var mouse_motion_event: InputEventMouseMotion = event
-		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED or allow_uncaptured_look:
+		if should_apply_mouse_motion(Input.get_mouse_mode(), allow_uncaptured_look):
 			apply_look_delta(mouse_motion_event.relative)
-	elif event.is_action_pressed("release_mouse"):
+	elif should_release_mouse(event):
 		if DisplayServer.get_name() != "headless":
 			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 

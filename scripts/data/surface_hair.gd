@@ -2,10 +2,13 @@ class_name SurfaceHair
 extends Resource
 ## 建物の中の 1 つの面 (居間の床・ソファ・住人のスーツ等) に残っている毛の本数。
 
-## 標準の毛の色 (白・黒・三毛。PROJECT.md「道具」の毛の加工機の色仕分けに対応)
+## 標準の毛の色: 白 (PROJECT.md「道具」の毛の加工機の色仕分けに対応)
 const COLOR_WHITE: StringName = &"white"
+## 標準の毛の色: 黒
 const COLOR_BLACK: StringName = &"black"
+## 標準の毛の色: 三毛
 const COLOR_CALICO: StringName = &"calico"
+## 標準の毛の色 3 種の一覧
 const STANDARD_COLORS: Array[StringName] = [COLOR_WHITE, COLOR_BLACK, COLOR_CALICO]
 
 ## 建物のどの面か

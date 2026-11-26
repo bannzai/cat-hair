@@ -21,18 +21,28 @@ const MAX_VISUAL_HAIRS_TOTAL: int = 900
 ## (rendering/limits/opengl/max_lights_per_object = 8、DirectionalLight3D は別枠)。
 ## 隣室のライトが境界メッシュへ重なっても上限 8 を超えない安全余裕として 6 灯に制限する。
 const MAX_ROOM_LIGHTS: int = 6
-## 室内補助ライトの強度 (アンビエント 0.78 + 平行光 0.75 に重ねて床と家具の立体感を出す値)
+## 室内補助ライトの強度 (環境光と平行光に重ねて床と家具の立体感を出す値)
 const ROOM_LIGHT_ENERGY: float = 1.6
 ## 室内補助ライトの到達距離倍率 (部屋幅の対角距離 sqrt(2) ≈ 1.41 まで届く値)
 const ROOM_LIGHT_RANGE_MULTIPLIER: float = 1.4
+## 室内補助ライトを天井面から下げて照明シェードと重ならない位置に置く距離 (m)
+const ROOM_LIGHT_CEILING_OFFSET_M: float = 0.35
 ## 部屋の壁の厚み (m)。隣接部屋との Z-fighting を防ぐ内側オフセットの単一情報源
 const WALL_THICKNESS_M: float = 0.14
 ## 隣接部屋の壁どうしが重ならないよう各部屋の壁を内側へ寄せる距離 (壁厚の半分)
 const WALL_HALF_THICKNESS_M: float = WALL_THICKNESS_M * 0.5
 ## ドア開口の両脇に最低 0.3m ずつの壁柱を残すための最小合計余白 (m)
 const DOOR_SIDE_WALL_MIN_TOTAL_M: float = 0.6
+## ドア開口の上側にまぐさ壁を残すための最小天井余白 (m)
+const DOOR_HEADER_MIN_CLEARANCE_M: float = 0.3
+## ドア両脇の壁柱メッシュが潰れない最小幅 (m)
+const DOOR_SIDE_MIN_WIDTH_M: float = 0.15
+## ドア上のまぐさ壁メッシュが潰れない最小高さ (m)
+const DOOR_HEADER_MIN_HEIGHT_M: float = 0.2
 ## 仮の毛片を表面の端 6% を避けて内側へ散らす半幅比率
 const VISUAL_HAIR_EXTENT_HALF_RATIO: float = 0.44
+## 仮の毛片を表面からわずかに浮かせて Z-fighting を防ぐ高さオフセット (m)
+const VISUAL_HAIR_HEIGHT_OFFSET_M: float = 0.008
 ## 一人称視点 2〜4m 先から細い線として視認できる仮毛片の寸法 (m)
 const VISUAL_HAIR_MESH_SIZE: Vector3 = Vector3(0.014, 0.006, 0.11)
 ## 仮の毛片を再現性高く散らすための固定シード
@@ -222,7 +232,9 @@ func _build_room_node(room: MansionLayout.RoomDef, room_idx: int) -> void:
 	if room_idx < MAX_ROOM_LIGHTS:
 		var room_light: OmniLight3D = OmniLight3D.new()
 		room_light.name = "RoomLight_%d" % room_idx
-		room_light.position = room.center + Vector3(0.0, room_height - 0.35, 0.0)
+		room_light.position = (
+			room.center + Vector3(0.0, room_height - ROOM_LIGHT_CEILING_OFFSET_M, 0.0)
+		)
 		room_light.light_color = Color(1.0, 0.94, 0.84)
 		room_light.light_energy = ROOM_LIGHT_ENERGY
 		room_light.omni_range = maxf(room_width, room_depth) * ROOM_LIGHT_RANGE_MULTIPLIER
@@ -307,8 +319,11 @@ func _build_wall(
 		MansionLayoutScript.DOOR_WIDTH_M,
 		wall_span - DOOR_SIDE_WALL_MIN_TOTAL_M,
 	)
-	var door_height: float = minf(MansionLayoutScript.DOOR_HEIGHT_M, wall_height - 0.3)
-	var side_width: float = maxf(0.15, (wall_span - door_width) * 0.5)
+	var door_height: float = minf(
+		MansionLayoutScript.DOOR_HEIGHT_M,
+		wall_height - DOOR_HEADER_MIN_CLEARANCE_M,
+	)
+	var side_width: float = maxf(DOOR_SIDE_MIN_WIDTH_M, (wall_span - door_width) * 0.5)
 	var side_offset: float = (door_width + side_width) * 0.5
 
 	_add_static_box(
@@ -327,7 +342,7 @@ func _build_wall(
 		_material_wall,
 		true,
 	)
-	var header_height: float = maxf(0.2, wall_height - door_height)
+	var header_height: float = maxf(DOOR_HEADER_MIN_HEIGHT_M, wall_height - door_height)
 	_add_static_box(
 		wall_root,
 		"HeaderPanel",
@@ -619,7 +634,7 @@ func _build_visual_hairs(layout: MansionLayout, progress: BuildingProgress) -> v
 							-surface.extents.x * VISUAL_HAIR_EXTENT_HALF_RATIO,
 							surface.extents.x * VISUAL_HAIR_EXTENT_HALF_RATIO,
 						),
-						surface.center.y + 0.008,
+						surface.center.y + VISUAL_HAIR_HEIGHT_OFFSET_M,
 						surface.center.z
 						+ rng.randf_range(
 							-surface.extents.y * VISUAL_HAIR_EXTENT_HALF_RATIO,

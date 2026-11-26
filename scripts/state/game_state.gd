@@ -203,7 +203,7 @@ func _found_item_ids_match_layout() -> bool:
 func _resident_ids_match_layout() -> bool:
 	var expected_ids: Dictionary = {}
 	for room: MansionLayout.RoomDef in current_layout.rooms:
-		expected_ids[StringName("resident_%s" % String(room.room_id))] = true
+		expected_ids[MansionBuilderScript.resident_id_for_room(room.room_id)] = true
 	return _id_sets_equal(expected_ids, save_data.building_progress.resident_moods)
 
 

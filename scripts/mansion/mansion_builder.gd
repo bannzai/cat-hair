@@ -54,6 +54,20 @@ const SPOT_HEIGHT_OFFSET_M: float = 0.05
 const SPAWN_BACK_OFFSET_RATIO: float = 0.36
 ## 最小部屋幅でも部屋中央から離して視界を確保するスポーン後方オフセット下限 (m)
 const MIN_SPAWN_BACK_OFFSET_M: float = 0.9
+## プレイヤー初期スポーンを床面からわずかに浮かせて床衝突への食い込みを防ぐ高さ (m)
+const SPAWN_HEIGHT_M: float = 0.05
+## 床表面の毛を壁と巾木から離して内側へ収める両端合計の余白 (m)
+const FLOOR_HAIR_INSET_M: float = 0.6
+## 極小部屋でも床表面の毛配置領域がゼロにならない最小幅 (m)
+const MIN_FLOOR_HAIR_EXTENT_M: float = 1.0
+## 家具縮小時の水平フットプリント下限 (m。家具の形状が潰れない最小寸法)
+const MIN_OBJECT_FOOTPRINT_M: float = 0.5
+## 家具中心の配置許容範囲が潰れないための最小クランプ限界 (m)
+const MIN_OBJECT_OFFSET_LIMIT_M: float = 0.1
+## 家具表面の毛配置範囲が極端に狭まらない最小幅 (m)
+const MIN_SURFACE_EXTENT_M: float = 0.3
+## ゼロ除算を防ぎつつ表面ごとに正の分配比率を保証する毛重みの下限
+const MIN_HAIR_WEIGHT: float = 0.01
 
 ## 屋敷 1 階の部屋名プリセット (先頭から順に使用し、9 部屋目以降は連番)
 const ROOM_PRESETS: Array[Dictionary] = [
@@ -192,7 +206,10 @@ static func _build_rooms(layout: MansionLayout, tuning: MansionTuning) -> void:
 		floor_surface.room_id = room.room_id
 		floor_surface.surface_type = MansionLayoutScript.SURFACE_FLOOR
 		floor_surface.center = Vector3(room.center.x, 0.01, room.center.z)
-		floor_surface.extents = Vector2(maxf(1.0, room_width - 0.6), maxf(1.0, room_width - 0.6))
+		floor_surface.extents = Vector2(
+			maxf(MIN_FLOOR_HAIR_EXTENT_M, room_width - FLOOR_HAIR_INSET_M),
+			maxf(MIN_FLOOR_HAIR_EXTENT_M, room_width - FLOOR_HAIR_INSET_M),
+		)
 		floor_surface.hair_weight = FLOOR_HAIR_WEIGHT
 		layout.surfaces.append(floor_surface)
 
@@ -221,7 +238,8 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		var raw_size: Vector3 = preset["size"]
 		var fit_scale: float = minf(
 			1.0,
-			maxf(0.5, room.size.x * OBJECT_MAX_FOOTPRINT_RATIO) / maxf(raw_size.x, raw_size.z),
+			maxf(MIN_OBJECT_FOOTPRINT_M, room.size.x * OBJECT_MAX_FOOTPRINT_RATIO)
+			/ maxf(raw_size.x, raw_size.z),
 		)
 		obj.size = Vector3(raw_size.x * fit_scale, raw_size.y, raw_size.z * fit_scale)
 
@@ -234,11 +252,11 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 			offset_x += RING_STAGGER_X_M if (ring % 2 == 1) else -RING_STAGGER_X_M
 			offset_z += RING_STAGGER_Z_M if ((local_idx % 2) == 0) else -RING_STAGGER_Z_M
 		var limit_x: float = maxf(
-			0.1,
+			MIN_OBJECT_OFFSET_LIMIT_M,
 			room.size.x * 0.5 - maxf(MIN_WALL_MARGIN_M, obj.size.x * 0.5 + WALL_CLEARANCE_M),
 		)
 		var limit_z: float = maxf(
-			0.1,
+			MIN_OBJECT_OFFSET_LIMIT_M,
 			room.size.z * 0.5 - maxf(MIN_WALL_MARGIN_M, obj.size.z * 0.5 + WALL_CLEARANCE_M),
 		)
 		offset_x = clampf(offset_x, -limit_x, limit_x)
@@ -259,8 +277,8 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 			obj.position.z,
 		)
 		surface.extents = Vector2(
-			maxf(0.3, obj.size.x * SURFACE_HAIR_EXTENT_RATIO),
-			maxf(0.3, obj.size.z * SURFACE_HAIR_EXTENT_RATIO),
+			maxf(MIN_SURFACE_EXTENT_M, obj.size.x * SURFACE_HAIR_EXTENT_RATIO),
+			maxf(MIN_SURFACE_EXTENT_M, obj.size.z * SURFACE_HAIR_EXTENT_RATIO),
 		)
 		surface.hair_weight = float(preset["weight"])
 		layout.surfaces.append(surface)
@@ -308,7 +326,7 @@ static func _configure_spawn(layout: MansionLayout, tuning: MansionTuning) -> vo
 	var first_room: MansionLayout.RoomDef = layout.rooms[0]
 	layout.spawn_position = Vector3(
 		first_room.center.x,
-		0.05,
+		SPAWN_HEIGHT_M,
 		first_room.center.z
 		+ maxf(MIN_SPAWN_BACK_OFFSET_M, tuning.room_size_m * SPAWN_BACK_OFFSET_RATIO),
 	)
@@ -326,7 +344,7 @@ static func _distribute_hairs(
 	var safe_total: int = maxi(0, total_hair_count)
 	var total_weight: float = 0.0
 	for surface: MansionLayout.SurfaceDef in layout.surfaces:
-		total_weight += maxf(0.01, surface.hair_weight)
+		total_weight += maxf(MIN_HAIR_WEIGHT, surface.hair_weight)
 
 	var allocated: Array[int] = []
 	allocated.resize(layout.surfaces.size())
@@ -335,7 +353,7 @@ static func _distribute_hairs(
 		var share: int = int(
 			floor(
 				float(safe_total)
-				* (maxf(0.01, layout.surfaces[surface_idx].hair_weight) / total_weight)
+				* (maxf(MIN_HAIR_WEIGHT, layout.surfaces[surface_idx].hair_weight) / total_weight)
 			)
 		)
 		allocated[surface_idx] = share
@@ -382,11 +400,16 @@ static func _split_by_color(surface_total: int, surface_index: int) -> Dictionar
 	}
 
 
+## 部屋 id から対応する住人 id を生成する (進行生成とレイアウト照合の単一情報源)
+static func resident_id_for_room(room_id: StringName) -> StringName:
+	return StringName("resident_%s" % String(room_id))
+
+
 ## 各部屋に対応する住人の初期機嫌辞書を生成する
 static func _build_initial_resident_moods(layout: MansionLayout) -> Dictionary:
 	var moods: Dictionary = {}
 	for room: MansionLayout.RoomDef in layout.rooms:
-		moods[StringName("resident_%s" % String(room.room_id))] = INITIAL_RESIDENT_MOOD
+		moods[resident_id_for_room(room.room_id)] = INITIAL_RESIDENT_MOOD
 	return moods
 
 

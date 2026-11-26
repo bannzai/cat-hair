@@ -2,10 +2,13 @@ class_name HairStock
 extends Resource
 ## 取ってまだ売っていない毛、または加工した物の在庫 1 種類。
 
-## 加工の形 (毛のまま・毛玉・フェルト・人形。PROJECT.md「道具」の毛の加工機に対応)
+## 加工の形: 取ったままの毛 (PROJECT.md「道具」の毛の加工機に対応)
 const FORM_RAW: StringName = &"raw"
+## 加工の形: 毛玉
 const FORM_BALL: StringName = &"hairball"
+## 加工の形: フェルト
 const FORM_FELT: StringName = &"felt"
+## 加工の形: 猫の毛の人形
 const FORM_DOLL: StringName = &"doll"
 
 ## 毛の色 (白・黒・三毛・混ざった物)

@@ -65,12 +65,67 @@ func _capture_scenes() -> bool:
 		_cleanup(main, game_state, created_state)
 		return false
 
+	# 描画付き環境 (非 headless) でのマウス捕捉・捕捉中視点移動・Esc 解放・F1 解放を検証する
+	if not await _verify_windowed_mouse_capture(main):
+		_cleanup(main, game_state, created_state)
+		quit(1)
+		return false
+
 	_cleanup(main, game_state, created_state)
+	return true
+
+
+## 非 headless 描画環境で左クリック捕捉 → 捕捉中マウス移動 → Esc 解放 → 開発者画面解放を検証する
+func _verify_windowed_mouse_capture(main: Node3D) -> bool:
+	main.close_dev_panel()
+	await process_frame
+
+	var player: FirstPersonPlayer = main.get_node("Player")
+	player.allow_uncaptured_look = false
+	var click_event: InputEventMouseButton = InputEventMouseButton.new()
+	click_event.button_index = MOUSE_BUTTON_LEFT
+	click_event.pressed = true
+	Input.parse_input_event(click_event)
+	await process_frame
+
+	if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
+		push_error("windowed mouse check FAIL: 左クリックで MOUSE_MODE_CAPTURED にならない")
+		return false
+
+	var yaw_before: float = player.rotation.y
+	var motion_event: InputEventMouseMotion = InputEventMouseMotion.new()
+	motion_event.relative = Vector2(36.0, -18.0)
+	Input.parse_input_event(motion_event)
+	await process_frame
+
+	if is_equal_approx(player.rotation.y, yaw_before):
+		push_error("windowed mouse check FAIL: マウス捕捉中の視点移動でヨー角が変わらない")
+		return false
+
+	var esc_event: InputEventKey = InputEventKey.new()
+	esc_event.physical_keycode = KEY_ESCAPE
+	esc_event.pressed = true
+	Input.parse_input_event(esc_event)
+	await process_frame
+
+	if Input.get_mouse_mode() != Input.MOUSE_MODE_VISIBLE:
+		push_error("windowed mouse check FAIL: Esc キーで MOUSE_MODE_VISIBLE に戻らない")
+		return false
+
+	# 再度捕捉した状態から開発者調整画面を開くと MOUSE_MODE_VISIBLE に解放されることも検証
+	Input.parse_input_event(click_event)
+	await process_frame
+	main.open_dev_panel()
+	await process_frame
+	if Input.get_mouse_mode() != Input.MOUSE_MODE_VISIBLE:
+		push_error("windowed mouse check FAIL: 開発者画面を開いても MOUSE_MODE_VISIBLE に戻らない")
+		return false
 	return true
 
 
 ## 撮影に使ったメインシーン・自前生成 GameState・一時セーブファイルを片付ける
 func _cleanup(main: Node3D, game_state: Node, created_state: bool) -> void:
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	if current_scene == main:
 		current_scene = null
 	if is_instance_valid(main) and main.get_parent() != null:

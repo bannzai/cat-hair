@@ -1,8 +1,6 @@
 extends "res://scripts/dev/headless_check.gd"
 ## メインシーンを tree に置いて動かす入力統合テスト (headless)。
-## タイトルからの遷移・一人称の 4 方向移動とマウス視点入力・F1/F5 キー入力・開発者調整画面での
-## 屋敷作り直し・終了時保存・セーブあり起動時の「続きから」「はじめから」・実プロセスの
-## コマンドライン引数起動 (--verify-cmdline) を検証する。実行方法は AGENTS.md「検証方法」を参照。
+## 実行方法は AGENTS.md「検証方法」を参照 (各検証の詳細は下の _verify_* 関数を参照)。
 
 ## 動かして確かめるメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
@@ -106,11 +104,12 @@ func _verify_title_and_blocked_inputs(main: Node3D) -> void:
 		_check(not title_label.text.is_empty(), "題名の Label に文字が入っている")
 	var ui_theme: Theme = main.get_ui_theme()
 	_check(ui_theme != null and ui_theme.default_font != null, "UI の theme に既定フォントが入っている")
-	var title_overlay: Control = main.get_node("UILayer/UI/TitleOverlay")
-	var hud: Control = main.get_node("UILayer/UI/HUD")
 	var start_button: Button = main.get_node("UILayer/UI/TitleOverlay/Layout/StartButton")
 	var new_game_button: Button = main.get_node("UILayer/UI/TitleOverlay/Layout/NewGameButton")
-	_check(title_overlay.visible and not hud.visible, "起動時はタイトル表示で HUD は非表示")
+	_check(
+		main.get_node("UILayer/UI/TitleOverlay").visible and not main.get_node("UILayer/UI/HUD").visible,
+		"起動時はタイトル表示で HUD は非表示",
+	)
 	_check(
 		start_button.text == "はじめる" and not new_game_button.visible,
 		"セーブ未作成時は『はじめる』のみ表示される",
@@ -150,21 +149,34 @@ func _verify_title_and_blocked_inputs(main: Node3D) -> void:
 	)
 
 
-## 屋敷へ入った後の HUD 表示・4 方向移動の向き・マウス視点イベントとピッチ上下限クランプを検証する
+## 屋敷へ入った後の HUD 表示・床接地・壁衝突・ドア通過・4 方向移動・視点入力とクランプを検証する
 func _verify_enter_movement_and_look(main: Node3D) -> void:
-	var start_button: Button = main.get_node("UILayer/UI/TitleOverlay/Layout/StartButton")
-	start_button.pressed.emit()
+	main.get_node("UILayer/UI/TitleOverlay/Layout/StartButton").pressed.emit()
 	await process_frame
 
-	var hud: Control = main.get_node("UILayer/UI/HUD")
 	var hair_label: Label = main.get_node("UILayer/UI/HUD/RemainingHairPanel/RemainingHairLabel")
-	_check(hud.visible, "はじめる押下で HUD が表示される")
+	_check(main.get_node("UILayer/UI/HUD").visible, "はじめる押下で HUD が表示される")
 	_check(
 		hair_label.text.contains("12,000"),
 		"残り毛本数の表示に既定値 12,000 が出ている (実際: %s)" % hair_label.text,
 	)
 
 	var player: FirstPersonPlayer = main.get_node("Player")
+	# 数物理フレーム進めて床の上に接地していることを確認 (床衝突が無いと落下し続ける)
+	for _step: int in range(6):
+		await physics_frame
+	_check(
+		player.is_on_floor() and player.global_position.y >= -0.05,
+		"プレイヤーが床の衝突体の上に接地している (y=%.3f)" % player.global_position.y,
+	)
+
+	# 南の閉じた壁へ向かって十分後退しても壁衝突で部屋の外 (z > 3.0) へ抜けないことを確認
+	await _hold_move_action("move_back", 45)
+	_check(
+		player.global_position.z < MansionTuningScript.DEFAULT_ROOM_SIZE_M * 0.5,
+		"南側の閉じた壁の衝突体で止まり外へ抜けない (z=%.3f)" % player.global_position.z,
+	)
+
 	# 前進 (-Z)・後退 (+Z)・左 (-X)・右 (+X) の 4 方向すべての向きを検証
 	var pos_before_fwd: Vector3 = player.global_position
 	await _hold_move_action("move_forward", 8)
@@ -181,6 +193,17 @@ func _verify_enter_movement_and_look(main: Node3D) -> void:
 	var pos_before_right: Vector3 = player.global_position
 	await _hold_move_action("move_right", 6)
 	_check(player.global_position.x > pos_before_right.x + 0.1, "右移動入力で +X 方向へ移動する")
+
+	# 中央 (x=0) へ戻って北側ドア開口を通過し隣室 (z < -room_size/2) へ入れることを確認
+	player.global_position = Vector3(0.0, 0.05, 0.0)
+	await _hold_move_action("move_forward", 60)
+	_check(
+		player.global_position.z < -MansionTuningScript.DEFAULT_ROOM_SIZE_M * 0.5,
+		"北側ドア開口を通って隣室へ移動できる (z=%.3f)" % player.global_position.z,
+	)
+
+	# Esc キー入力 (release_mouse) がエラーなく処理されることを確認
+	await _press_physical_key(KEY_ESCAPE)
 
 	# マウス未捕捉 + allow_uncaptured_look=false では視点が変わらない
 	player.allow_uncaptured_look = false
