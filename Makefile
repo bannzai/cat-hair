@@ -98,11 +98,14 @@ failure-path: import
 	echo "exit=$$?" >> $(LOG_DIR)/hairbench-failure-path.log; \
 	rm -f $(LOG_DIR)/hairbench-fail.json $(LOG_DIR)/hairbench-fail-*.png; \
 	tail -n 1 $(LOG_DIR)/hairbench-failure-path.log | grep -q '^exit=1$$'
+	grep -q '^hairbench count=10 rendered=false' $(LOG_DIR)/hairbench-failure-path.log
 	! grep -q '^hairbench OK$$' $(LOG_DIR)/hairbench-failure-path.log
 	HAIRBENCH_COUNTS="10" HAIRBENCH_JSON="$(LOG_DIR)/nonexistent-hairbench-dir/out.json" HAIRBENCH_PNG_PREFIX="hairbench-fail" "$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/hairbench.gd > $(LOG_DIR)/hairbench-json-failure-path.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/hairbench-json-failure-path.log; \
 	rm -f $(LOG_DIR)/hairbench-fail-*.png; \
 	tail -n 1 $(LOG_DIR)/hairbench-json-failure-path.log | grep -q '^exit=1$$'
+	grep -q 'hairbench JSON 書き込み失敗' $(LOG_DIR)/hairbench-json-failure-path.log
+	! grep -q '^hairbench count=' $(LOG_DIR)/hairbench-json-failure-path.log
 	! grep -q '^hairbench OK$$' $(LOG_DIR)/hairbench-json-failure-path.log
 
 # GDScript の lint (gdtoolkit の gdlint。設定は ./gdlintrc)

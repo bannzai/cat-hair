@@ -32,12 +32,15 @@ const CALICO_BROWN_THRESHOLD: float = 0.85
 const CALICO_MIN_CHROMA: float = 0.08
 ## 色分類で白と判定する最小最大チャンネル値 (pick_hair_color の黒最大 0.16 と白最小 0.89 の中間より白寄り)
 const WHITE_MIN_CHANNEL: float = 0.75
-## 削除済み・未登録の毛 ID を表すスロット番号の番兵値
+## 削除済み・未登録の毛 ID または範囲外スロットを表す番兵値
 const INVALID_SLOT: int = -1
+## 存在しない毛 ID または範囲外スロットに対する番兵色 (透明黒。実在の毛は alpha=1.0 のため区別可能)
+const INVALID_COLOR: Color = Color(0.0, 0.0, 0.0, 0.0)
 
 ## 登録済みの配置表面定義 (name / bounds_min / bounds_max / weight)
 var _surfaces: Array[Dictionary] = []
-## 生成済みの表面ごとのバケット (name / instance / multimesh / hair_ids / transforms / colors / active_count)
+## 生成済みの表面ごとのバケット (instance / multimesh / hair_ids / transforms / colors)。
+## 表面ごとの有効本数は multimesh.visible_instance_count を唯一の SSOT とする
 var _buckets: Array[Dictionary] = []
 ## hair_id -> 表面インデックスの逆引き配列 (INVALID_SLOT = -1 は削除済み)
 var _id_to_surface: PackedInt32Array = PackedInt32Array()
@@ -283,12 +286,10 @@ func populate(total_count: int, seed_value: int = DEFAULT_SEED) -> int:
 	var next_id: int = 0
 
 	for surface_idx: int in range(_surfaces.size()):
-		var spec: Dictionary = _surfaces[surface_idx]
 		var count: int = counts[surface_idx]
-		var bucket: Dictionary = _create_surface_bucket(
-			surface_idx, spec, count, rng, next_id
-		)
-		_buckets.append(bucket)
+		_buckets.append(_create_surface_bucket(
+			surface_idx, _surfaces[surface_idx], count, rng, next_id
+		))
 		next_id += count
 
 	_remaining_count = actual_total
@@ -302,12 +303,10 @@ func remove_hair(hair_id: int) -> bool:
 	var slot: int = _id_to_slot[hair_id]
 	if slot < 0:
 		return false
-	var surface_idx: int = _id_to_surface[hair_id]
-	var bucket: Dictionary = _buckets[surface_idx]
+	var bucket: Dictionary = _buckets[_id_to_surface[hair_id]]
 	var multimesh: MultiMesh = bucket["multimesh"]
 	var hair_ids: PackedInt32Array = bucket["hair_ids"]
-	var active_count: int = int(bucket["active_count"])
-	var last_slot: int = active_count - 1
+	var last_slot: int = multimesh.visible_instance_count - 1
 
 	if slot != last_slot:
 		var last_id: int = hair_ids[last_slot]
@@ -323,10 +322,8 @@ func remove_hair(hair_id: int) -> bool:
 		_id_to_slot[last_id] = slot
 		bucket["colors"] = colors
 
-	active_count -= 1
-	bucket["active_count"] = active_count
 	bucket["hair_ids"] = hair_ids
-	multimesh.visible_instance_count = active_count
+	multimesh.visible_instance_count = last_slot
 	_id_to_slot[hair_id] = INVALID_SLOT
 	_id_to_surface[hair_id] = INVALID_SLOT
 	_remaining_count -= 1
@@ -357,19 +354,16 @@ func get_surface_count() -> int:
 	return _surfaces.size()
 
 
-## 指定した表面の残り毛本数を返す
+## 指定した表面の残り毛本数を返す (MultiMesh の visible_instance_count を SSOT とする)
 func get_surface_remaining_count(surface_index: int) -> int:
-	if surface_index < 0 or surface_index >= _buckets.size():
-		return 0
-	return int(_buckets[surface_index]["active_count"])
+	return get_surface_visible_instance_count(surface_index)
 
 
 ## 指定した表面の MultiMesh の visible_instance_count を返す
 func get_surface_visible_instance_count(surface_index: int) -> int:
 	if surface_index < 0 or surface_index >= _buckets.size():
 		return 0
-	var multimesh: MultiMesh = _buckets[surface_index]["multimesh"]
-	return multimesh.visible_instance_count
+	return (_buckets[surface_index]["multimesh"] as MultiMesh).visible_instance_count
 
 
 ## 指定した表面の指定スロットにある毛 ID を返す (範囲外は INVALID_SLOT = -1)
@@ -377,10 +371,9 @@ func get_hair_id_at_slot(surface_index: int, slot: int) -> int:
 	if surface_index < 0 or surface_index >= _buckets.size():
 		return INVALID_SLOT
 	var bucket: Dictionary = _buckets[surface_index]
-	if slot < 0 or slot >= int(bucket["active_count"]):
+	if slot < 0 or slot >= (bucket["multimesh"] as MultiMesh).visible_instance_count:
 		return INVALID_SLOT
-	var hair_ids: PackedInt32Array = bucket["hair_ids"]
-	return hair_ids[slot]
+	return (bucket["hair_ids"] as PackedInt32Array)[slot]
 
 
 ## 指定した表面の MultiMesh 本体から指定スロットの Transform3D を直接読む (描画付き検証用)
@@ -396,10 +389,10 @@ func get_multimesh_slot_transform(surface_index: int, slot: int) -> Transform3D:
 ## 指定した表面の MultiMesh 本体から指定スロットの色を直接読む (描画付き検証用)
 func get_multimesh_slot_color(surface_index: int, slot: int) -> Color:
 	if surface_index < 0 or surface_index >= _buckets.size():
-		return Color(0.0, 0.0, 0.0, 0.0)
+		return INVALID_COLOR
 	var multimesh: MultiMesh = _buckets[surface_index]["multimesh"]
 	if slot < 0 or slot >= multimesh.visible_instance_count:
-		return Color(0.0, 0.0, 0.0, 0.0)
+		return INVALID_COLOR
 	return multimesh.get_instance_color(slot)
 
 
@@ -421,20 +414,18 @@ func get_hair_slot(hair_id: int) -> int:
 func get_hair_transform(hair_id: int) -> Transform3D:
 	if not has_hair(hair_id):
 		return Transform3D.IDENTITY
-	var surface_idx: int = _id_to_surface[hair_id]
-	var slot: int = _id_to_slot[hair_id]
-	var transforms: Array[Transform3D] = _buckets[surface_idx]["transforms"]
-	return transforms[slot]
+	return (_buckets[_id_to_surface[hair_id]]["transforms"] as Array[Transform3D])[
+		_id_to_slot[hair_id]
+	]
 
 
-## 指定した毛 ID の現在の色を返す (存在しない場合は透明黒)
+## 指定した毛 ID の現在の色を返す (存在しない場合は INVALID_COLOR)
 func get_hair_color(hair_id: int) -> Color:
 	if not has_hair(hair_id):
-		return Color(0.0, 0.0, 0.0, 0.0)
-	var surface_idx: int = _id_to_surface[hair_id]
-	var slot: int = _id_to_slot[hair_id]
-	var colors: PackedColorArray = _buckets[surface_idx]["colors"]
-	return colors[slot]
+		return INVALID_COLOR
+	return (_buckets[_id_to_surface[hair_id]]["colors"] as PackedColorArray)[
+		_id_to_slot[hair_id]
+	]
 
 
 ## 1 表面分の MultiMeshInstance3D とバケットを生成し、乱数シードに従って毛を配置する。
@@ -483,14 +474,13 @@ func _create_surface_bucket(
 		basis = basis.scaled(Vector3(rng.randf_range(0.85, 1.25), scale_len, scale_len))
 		# 回転・スケール後に先端や根元が表面の下へ潜らないよう最小 Y 分だけ持ち上げる。
 		# 重なり合う毛同士の Z ファイトを避けるため高さに最大 1.8 mm の微差を付ける
-		var pos: Vector3 = Vector3(
+		var xform: Transform3D = Transform3D(basis, Vector3(
 			rng.randf_range(bounds_min.x, bounds_max.x),
 			base_y
 			- minf(compute_aabb_min_transformed_y(basis, local_aabb), 0.0)
 			+ rng.randf_range(0.0, 0.0018),
 			rng.randf_range(bounds_min.z, bounds_max.z)
-		)
-		var xform: Transform3D = Transform3D(basis, pos)
+		))
 		var color: Color = pick_hair_color(rng)
 		transforms[slot] = xform
 		colors[slot] = color
@@ -505,11 +495,9 @@ func _create_surface_bucket(
 	add_child(multimesh_instance)
 
 	return {
-		"name": str(spec["name"]),
 		"instance": multimesh_instance,
 		"multimesh": multimesh,
 		"hair_ids": hair_ids,
 		"transforms": transforms,
 		"colors": colors,
-		"active_count": count,
 	}

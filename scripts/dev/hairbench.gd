@@ -6,6 +6,8 @@ extends SceneTree
 
 ## 音の解放を待つ時間 (AUDIO_RELEASE_TIME) を借りる headless 検証の土台
 const HeadlessCheck := preload("res://scripts/dev/headless_check.gd")
+## 番兵値 (INVALID_SLOT / INVALID_COLOR) を SSOT として参照する HairField
+const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## 計測対象の試作シーン
 const HAIR_PROTOTYPE_SCENE: PackedScene = preload("res://scenes/hair_prototype.tscn")
 
@@ -126,15 +128,20 @@ static func evaluate_rendered(
 	return placed == target_count and save_status == OK and not_blank and single_remove_ok
 
 
+## 1 本数分の計測後に続行を打ち切るべきか (JSON 書き込み失敗または描画失敗) を判定する
+static func should_abort_step(json_written: bool, entry_rendered: bool) -> bool:
+	return not json_written or not entry_rendered
+
+
 ## レポート辞書を JSON 文字列として path へ書き出す。成功なら true
-static func write_json(path: String, data: Dictionary) -> bool:
+static func write_json(path: String, report: Dictionary) -> bool:
 	if path.strip_edges().is_empty():
 		return false
 	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		push_error("hairbench JSON 書き込み失敗: %s" % path)
 		return false
-	file.store_string(JSON.stringify(data, "  ") + "\n")
+	file.store_string(JSON.stringify(report, "  ") + "\n")
 	file.close()
 	return true
 
@@ -173,7 +180,8 @@ func _run() -> void:
 			prototype, target_count, idx == 0, png_dir, png_prefix
 		)
 		results.append(entry)
-		if not write_json(json_path, report):
+		var json_written: bool = write_json(json_path, report)
+		if not json_written:
 			failed = true
 			break
 		print(
@@ -187,7 +195,7 @@ func _run() -> void:
 				str(entry["single_remove_ok"]),
 			]
 		)
-		if not bool(entry["rendered"]):
+		if should_abort_step(json_written, bool(entry["rendered"])):
 			failed = true
 			break
 
@@ -235,12 +243,16 @@ func _measure_count(
 
 	var field: Node3D = prototype.get_hair_field()
 	var surface0_count: int = field.get_surface_remaining_count(0)
-	var tail_id: int = field.get_hair_id_at_slot(0, surface0_count - 1) if surface0_count >= 2 else -1
+	var tail_id: int = (
+		field.get_hair_id_at_slot(0, surface0_count - 1)
+		if surface0_count >= 2
+		else HairFieldScript.INVALID_SLOT
+	)
 	var tail_xform_before: Transform3D = (
 		field.get_hair_transform(tail_id) if tail_id >= 0 else Transform3D.IDENTITY
 	)
 	var tail_color_before: Color = (
-		field.get_hair_color(tail_id) if tail_id >= 0 else Color(0.0, 0.0, 0.0, 0.0)
+		field.get_hair_color(tail_id) if tail_id >= 0 else HairFieldScript.INVALID_COLOR
 	)
 	var before_remove: int = prototype.get_remaining_count()
 	var removed: bool = prototype.remove_hair(0) if before_remove > 0 else false
@@ -265,16 +277,15 @@ func _measure_count(
 		frame_min = minf(frame_min, frame_time_ms)
 		frame_max = maxf(frame_max, frame_time_ms)
 
-	var rendered: bool = evaluate_rendered(
-		placed, target_count, save_status, bool(lum_stats["not_blank"]), single_remove_ok
-	)
 	if save_status != OK:
 		push_error("hairbench PNG 保存失敗: %s (%s)" % [png_path, error_string(save_status)])
 
 	return {
 		"count": target_count,
 		"placed_count": placed,
-		"rendered": rendered,
+		"rendered": evaluate_rendered(
+			placed, target_count, save_status, bool(lum_stats["not_blank"]), single_remove_ok
+		),
 		"setup_ms": snappedf(setup_ms, 0.01),
 		"frame_ms_avg": snappedf(frame_sum / float(frame_times.size()), 0.01),
 		"frame_ms_min": snappedf(frame_min, 0.01),

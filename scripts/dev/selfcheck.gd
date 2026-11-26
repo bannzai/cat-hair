@@ -255,14 +255,28 @@ func _check_hair_field_populate_and_remove() -> void:
 	_check(
 		field.get_hair_transform(-1) == Transform3D.IDENTITY
 		and field.get_hair_transform(99) == Transform3D.IDENTITY
-		and field.get_hair_color(-1) == Color(0.0, 0.0, 0.0, 0.0)
-		and field.get_hair_color(99) == Color(0.0, 0.0, 0.0, 0.0)
-		and field.get_hair_slot(-1) == -1
-		and field.get_hair_slot(10) == -1
+		and field.get_hair_color(-1) == HairFieldScript.INVALID_COLOR
+		and field.get_hair_color(99) == HairFieldScript.INVALID_COLOR
+		and field.get_hair_slot(-1) == HairFieldScript.INVALID_SLOT
+		and field.get_hair_slot(10) == HairFieldScript.INVALID_SLOT
 		and field.get_hair_id_at_slot(0, 6) == 6
-		and field.get_hair_id_at_slot(-1, 0) == -1
-		and field.get_hair_id_at_slot(0, 7) == -1,
-		"存在しない ID・スロットの照会が既定値 / -1 を返す"
+		and field.get_hair_id_at_slot(-1, 0) == HairFieldScript.INVALID_SLOT
+		and field.get_hair_id_at_slot(2, 0) == HairFieldScript.INVALID_SLOT
+		and field.get_hair_id_at_slot(0, -1) == HairFieldScript.INVALID_SLOT
+		and field.get_hair_id_at_slot(0, 7) == HairFieldScript.INVALID_SLOT,
+		"存在しない ID・スロットの照会が既定値 / INVALID_SLOT を返す"
+	)
+	# get_multimesh_slot_transform / color の範囲外 4 境界 (surface < 0 / >= 上限, slot < 0 / >= visible)
+	_check(
+		field.get_multimesh_slot_transform(-1, 0) == Transform3D.IDENTITY
+		and field.get_multimesh_slot_transform(2, 0) == Transform3D.IDENTITY
+		and field.get_multimesh_slot_transform(0, -1) == Transform3D.IDENTITY
+		and field.get_multimesh_slot_transform(0, 7) == Transform3D.IDENTITY
+		and field.get_multimesh_slot_color(-1, 0) == HairFieldScript.INVALID_COLOR
+		and field.get_multimesh_slot_color(2, 0) == HairFieldScript.INVALID_COLOR
+		and field.get_multimesh_slot_color(0, -1) == HairFieldScript.INVALID_COLOR
+		and field.get_multimesh_slot_color(0, 7) == HairFieldScript.INVALID_COLOR,
+		"get_multimesh_slot_transform / color の範囲外 4 境界が既定値を返す"
 	)
 
 	# swap される末尾の毛 (ID 6) と次末尾 (ID 5) の位置・色を控え、中間の ID 2 を削除する
@@ -272,11 +286,14 @@ func _check_hair_field_populate_and_remove() -> void:
 	var id5_color_before: Color = field.get_hair_color(5)
 	_check(field.remove_hair(2), "中間の毛 ID 2 を 1 本削除できる")
 	_check(field.get_remaining_count() == 9, "1 本削除後に残り本数が 9")
-	_check(not field.has_hair(2) and field.get_hair_slot(2) == -1, "削除した ID 2 は存在しない")
+	_check(
+		not field.has_hair(2) and field.get_hair_slot(2) == HairFieldScript.INVALID_SLOT,
+		"削除した ID 2 は存在しない"
+	)
 	_check(
 		field.get_hair_transform(2) == Transform3D.IDENTITY
-		and field.get_hair_color(2) == Color(0.0, 0.0, 0.0, 0.0),
-		"削除済み ID 2 の Transform/Color 照会は Identity / 透明黒"
+		and field.get_hair_color(2) == HairFieldScript.INVALID_COLOR,
+		"削除済み ID 2 の Transform/Color 照会は Identity / INVALID_COLOR"
 	)
 	_check(
 		field.get_surface_remaining_count(0) == 6
@@ -490,6 +507,24 @@ func _check_hairbench_helpers() -> void:
 		"evaluate_rendered は single_remove_ok=false で false"
 	)
 
+	# should_abort_step: JSON 書き込み失敗と描画失敗それぞれの独立判定
+	_check(
+		not HairbenchScript.should_abort_step(true, true),
+		"should_abort_step は書き込み成功・描画成功なら続行 (false)"
+	)
+	_check(
+		HairbenchScript.should_abort_step(false, true),
+		"should_abort_step は描画成功でも JSON 書き込み失敗だけで打ち切る (true)"
+	)
+	_check(
+		HairbenchScript.should_abort_step(true, false),
+		"should_abort_step は書き込み成功でも描画失敗だけで打ち切る (true)"
+	)
+	_check(
+		HairbenchScript.should_abort_step(false, false),
+		"should_abort_step は両方失敗で打ち切る (true)"
+	)
+
 	# write_json: 空パス失敗と正常書き込み
 	_check(not HairbenchScript.write_json("", {"ok": true}), "write_json は空パスで false")
 	var temp_json_path: String = "tmp/selfcheck-hairbench-write-test.json"
@@ -497,6 +532,8 @@ func _check_hairbench_helpers() -> void:
 		HairbenchScript.write_json(temp_json_path, {"count": 42}),
 		"write_json は有効パスへ書き込める"
 	)
-	var written_text: String = FileAccess.get_file_as_string(temp_json_path)
-	_check(written_text.contains("\"count\": 42"), "write_json の出力に JSON の内容が含まれる")
+	_check(
+		FileAccess.get_file_as_string(temp_json_path).contains("\"count\": 42"),
+		"write_json の出力に JSON の内容が含まれる"
+	)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("res://" + temp_json_path))
