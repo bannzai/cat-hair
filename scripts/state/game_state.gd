@@ -6,6 +6,9 @@ extends Node
 
 ## 進行状態や残り毛本数が変わった時に発火し、HUD 等の表示を更新する
 signal state_changed
+## 猫と掃除ロボットの時間を進めて毛が増減した時に発火する (changes は advance_automation の戻り値)。
+## 屋敷の毛の見た目 (HairField) を同じ本数だけ増減するため
+signal automation_advanced(changes: Dictionary)
 ## 調整値から屋敷レイアウトが組み立て直された時に発火し、3D 空間を再構築する
 signal mansion_rebuilt(layout: MansionLayout)
 
@@ -29,6 +32,8 @@ const ToolRulesScript := preload("res://scripts/tools/tool_rules.gd")
 const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
 ## 買った道具 1 つのデータ型スクリプト
 const OwnedToolScript := preload("res://scripts/data/owned_tool.gd")
+## 猫と掃除ロボットの状態と入口のスクリプト
+const AutomationStateScript := preload("res://scripts/state/automation_state.gd")
 ## お金で買う物の種類: 道具
 const PURCHASE_TOOL: StringName = &"tool"
 ## お金で買う物の種類: 道具のレベルを 1 上げる
@@ -48,9 +53,17 @@ var current_layout: MansionLayout = null
 var loaded_from_save: bool = false
 ## コマンドライン引数で調整値を上書き起動したか (既存セーブの意図しない終了時上書きを防ぐ)
 var launched_with_cmdline_override: bool = false
+## 猫と掃除ロボットの状態 (時計・猫の通り道) と、時計を進める・掃除ロボットを買う・回る順を変える・猫をブラッシングする入口
+## (scripts/state/automation_state.gd)
+var automation: RefCounted = null
 ## 部屋ごとの最初の毛の本数 (room_id -> int。きれいさの分母)。屋敷を組み直した時に 1 回だけ求める。
 ## 保存データには入れない (調整値とレイアウトから同じ値が求まるため)
 var _initial_room_hairs: Dictionary = {}
+
+
+## 猫と掃除ロボットの状態を持つ
+func _init() -> void:
+	automation = AutomationStateScript.new(self)
 
 
 ## autoload 起動時に保存ファイルとコマンドライン引数から初期状態を構築する
@@ -424,20 +437,23 @@ func _spend(price: int) -> bool:
 	return true
 
 
-## 今の調整値とレイアウトから、部屋ごとの最初の毛の本数を求め直す (屋敷を組み直した時に呼ぶ)
+## 今の調整値とレイアウトから、部屋ごと・面ごとの最初の毛の本数と猫の通り道を求め直し、猫と掃除ロボットの時計を
+## 0 に戻す (屋敷を組み直した時に呼ぶ)
 func _recompute_initial_room_hairs() -> void:
 	_initial_room_hairs.clear()
-	if current_layout == null:
-		return
-	var initial: BuildingProgress = MansionBuilderScript.build_initial_progress(
-		current_layout, get_tuning()
-	)
-	for surface_def: MansionLayout.SurfaceDef in current_layout.surfaces:
-		var surface: SurfaceHair = initial.find_surface_hair(surface_def.surface_id)
-		_initial_room_hairs[surface_def.room_id] = (
-			int(_initial_room_hairs.get(surface_def.room_id, 0))
-			+ (surface.total_count() if surface != null else 0)
+	var initial_surface_hairs: Dictionary = {}
+	if current_layout != null:
+		var initial: BuildingProgress = MansionBuilderScript.build_initial_progress(
+			current_layout, get_tuning()
 		)
+		for surface_def: MansionLayout.SurfaceDef in current_layout.surfaces:
+			var surface: SurfaceHair = initial.find_surface_hair(surface_def.surface_id)
+			var count: int = surface.total_count() if surface != null else 0
+			initial_surface_hairs[surface_def.surface_id] = count
+			_initial_room_hairs[surface_def.room_id] = (
+				int(_initial_room_hairs.get(surface_def.room_id, 0)) + count
+			)
+	automation.reset(current_layout, initial_surface_hairs)
 
 
 ## 毛のままの在庫のうち、色と珍しい毛の種類が一致する 1 件に count 本足す (無ければ作る)

@@ -324,8 +324,7 @@ func populate_with_group_counts(
 					groups.append(group)
 		groups_by_surface.append(groups)
 		total += groups.size()
-	if total <= 0:
-		return 0
+	# 0 本の時も表面ごとの枠を作る (毛を取り切った屋敷を開き直した後も、猫が落とした毛を add_hair で足せるようにする)
 	_prepare_shared_resources(total)
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = seed_value
@@ -407,6 +406,98 @@ func remove_hair(hair_id: int) -> bool:
 	_id_to_surface[hair_id] = INVALID_SLOT
 	_remaining_count -= 1
 	return true
+
+
+## field の表面 surface_index の、point (ワールド座標) から面に沿って spread 以内のどこかに、色の系統 group の毛を
+## 1 本足し、足した毛の ID を返す (猫が落とした毛)。point は面の矩形の中に収め、置けない時 (表面が無い・未配置) は
+## INVALID_SLOT。MultiMesh の枠が足りない時は枠を倍に広げて、CPU 側の配列から今の毛を置き直す。
+## 公開の関数の数の上限 (gdlint の max-public-methods) に収めるため、count_surface_groups と同じく field を受け取る形にする
+static func add_hair(
+	field: Node3D,
+	surface_index: int,
+	point: Vector3,
+	spread: float,
+	group: int,
+	rng: RandomNumberGenerator,
+) -> int:
+	return field._add_hair(surface_index, point, spread, group, rng)
+
+
+## add_hair の本体
+func _add_hair(
+	surface_index: int, point: Vector3, spread: float, group: int, rng: RandomNumberGenerator
+) -> int:
+	if surface_index < 0 or surface_index >= _buckets.size() or _hair_mesh == null:
+		return INVALID_SLOT
+	var bucket: Dictionary = _buckets[surface_index]
+	var multimesh: MultiMesh = bucket["multimesh"]
+	var slot: int = multimesh.visible_instance_count
+	if slot >= multimesh.instance_count:
+		_grow_bucket(bucket, maxi(16, multimesh.instance_count * 2))
+	var spec: Dictionary = _surfaces[surface_index]
+	var surface_transform: Transform3D = spec["transform"]
+	var rect_min: Vector2 = spec["rect_min"]
+	var rect_max: Vector2 = spec["rect_max"]
+	var local_point: Vector3 = surface_transform.affine_inverse() * point
+	var basis: Basis = Basis.from_euler(Vector3(
+		rng.randf_range(-0.14, 0.14), rng.randf_range(0.0, TAU), rng.randf_range(-0.18, 0.18)
+	))
+	var scale_len: float = rng.randf_range(0.75, 1.35)
+	basis = basis.scaled_local(Vector3(rng.randf_range(0.85, 1.25), scale_len, scale_len))
+	# 置き方 (傾き・長さ・幅・表面から持ち上げる高さ・除外範囲を避ける回数) は _create_surface_bucket と同じ範囲にする
+	var local_xform: Transform3D = Transform3D(basis, Vector3(
+		0.0,
+		SURFACE_LIFT_M
+		- minf(compute_aabb_min_transformed_y(basis, compute_mesh_aabb(_hair_mesh)), 0.0)
+		+ rng.randf_range(0.0, 0.0018),
+		0.0
+	))
+	var xform: Transform3D = Transform3D()
+	for _retry: int in range(EXCLUSION_RETRY_LIMIT + 1):
+		var angle: float = rng.randf_range(0.0, TAU)
+		var distance: float = spread * sqrt(rng.randf())
+		local_xform.origin.x = clampf(local_point.x + cos(angle) * distance, rect_min.x, rect_max.x)
+		local_xform.origin.z = clampf(local_point.z + sin(angle) * distance, rect_min.y, rect_max.y)
+		xform = surface_transform * local_xform
+		if not _is_excluded(xform.origin, spec["exclusions"]):
+			break
+	var color: Color = pick_hair_color_in_group(rng, group)
+	var hair_id: int = _id_to_slot.size()
+	_id_to_slot.append(slot)
+	_id_to_surface.append(surface_index)
+	var hair_ids: PackedInt32Array = bucket["hair_ids"]
+	var colors: PackedColorArray = bucket["colors"]
+	hair_ids[slot] = hair_id
+	colors[slot] = color
+	(bucket["transforms"] as Array[Transform3D])[slot] = xform
+	bucket["hair_ids"] = hair_ids
+	bucket["colors"] = colors
+	multimesh = bucket["multimesh"]
+	multimesh.visible_instance_count = slot + 1
+	multimesh.set_instance_transform(slot, xform)
+	multimesh.set_instance_color(slot, color)
+	_remaining_count += 1
+	return hair_id
+
+
+## 表面の MultiMesh の枠を capacity 本に広げ、CPU 側の配列 (transforms / colors) から今の毛を置き直す。
+## MultiMesh は instance_count を変えると中身が消えるため置き直す
+func _grow_bucket(bucket: Dictionary, capacity: int) -> void:
+	var multimesh: MultiMesh = bucket["multimesh"]
+	var visible_count: int = multimesh.visible_instance_count
+	var transforms: Array[Transform3D] = bucket["transforms"]
+	var colors: PackedColorArray = bucket["colors"]
+	var hair_ids: PackedInt32Array = bucket["hair_ids"]
+	transforms.resize(capacity)
+	colors.resize(capacity)
+	hair_ids.resize(capacity)
+	multimesh.instance_count = capacity
+	multimesh.visible_instance_count = visible_count
+	for slot: int in range(visible_count):
+		multimesh.set_instance_transform(slot, transforms[slot])
+		multimesh.set_instance_color(slot, colors[slot])
+	bucket["colors"] = colors
+	bucket["hair_ids"] = hair_ids
 
 
 ## すべての毛と生成済み MultiMeshInstance3D を解放する
