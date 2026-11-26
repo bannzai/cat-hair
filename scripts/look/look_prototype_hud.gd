@@ -19,7 +19,7 @@ const SCREEN_MARGIN_PX: float = 18.0
 const TOOL_SLOT_SIZE_PX: Vector2 = Vector2(112.0, 44.0)
 ## ラベル 1 行の高さ (px)。20 px の文字の行の高さに上下の余白を足し、所持金と案内の両方で使う
 const LABEL_LINE_HEIGHT_PX: float = 30.0
-## 道具の枠どうしの間隔 (px)
+## 道具の枠どうしの間隔 (px)。枠の線 (1〜2 px) が隣の枠の線と重ならず、4 つの枠が 1 つの並びに見える狭さ
 const TOOL_SLOT_GAP_PX: int = 6
 ## 文字の色。写実寄りの部屋の上で白く浮きすぎない、わずかに暖かい白
 const TEXT_COLOR: Color = Color(0.94, 0.92, 0.88)

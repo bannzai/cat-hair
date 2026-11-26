@@ -204,20 +204,26 @@ func _check_automation_props() -> void:
 	var inside_lane_count: int = 0
 	# 帯の Z 幅に入る床の毛のうち、ロボットがまだ走っていない先 (ロボットの位置より +X) にあるもの。X の上限の境界の側
 	var ahead_of_robot_count: int = 0
+	# 帯の Z 幅に入る床の毛のうち、走り始めより壁側 (-X) にあるもの。X の下限の境界の側
+	var behind_start_count: int = 0
 	for hair_id: int in range(origins.size()):
 		var origin: Vector3 = origins[hair_id]
 		var in_any_lane: bool = false
 		for lane: Dictionary in LookPrototypeRoomScript.ROBOT_LANES:
-			var in_lane_z: bool = (
-				absf(origin.z - (room.center.z + float(lane["z_ratio"]) * room.size.z))
-				<= LookPrototypeRoomScript.ROBOT_RADIUS_M
-			)
 			var robot_x: float = room.center.x + float(lane["end_x_ratio"]) * room.size.x
-			if origin.y <= LookPrototypeRoomScript.ROBOT_CLEAR_MAX_Y_M and in_lane_z:
+			if (
+				origin.y <= LookPrototypeRoomScript.ROBOT_CLEAR_MAX_Y_M
+				and (
+					absf(origin.z - (room.center.z + float(lane["z_ratio"]) * room.size.z))
+					<= LookPrototypeRoomScript.ROBOT_RADIUS_M
+				)
+			):
 				if origin.x >= lane_start_x and origin.x <= robot_x:
 					in_any_lane = true
 				elif origin.x > robot_x:
 					ahead_of_robot_count += 1
+				else:
+					behind_start_count += 1
 		if not in_any_lane:
 			outside_lane_count += 1
 			kept_outside_lanes = kept_outside_lanes and hair_field.has_hair(hair_id)
@@ -229,10 +235,13 @@ func _check_automation_props() -> void:
 		"帯の中の床とカーペットの毛 %d 本は 1 本残らず消え、消えた本数 %d と同じ" % [inside_lane_count, removed],
 	)
 	_check(
-		outside_lane_count > 0 and ahead_of_robot_count > 0 and kept_outside_lanes,
+		outside_lane_count > 0
+		and ahead_of_robot_count > 0
+		and behind_start_count > 0
+		and kept_outside_lanes,
 		(
-			"帯の外の毛 %d 本 (家具の上・帯の Z 幅の外・走り始めより壁側・ロボットより先の %d 本) は 1 本も消えない"
-			% [outside_lane_count, ahead_of_robot_count]
+			"帯の外の毛 %d 本 (家具の上・帯の Z 幅の外・走り始めより壁側の %d 本・ロボットより先の %d 本) は消えない"
+			% [outside_lane_count, behind_start_count, ahead_of_robot_count]
 		),
 	)
 	_check(
@@ -284,17 +293,28 @@ func _check_apply_edges() -> void:
 		room.open_north = side != &"north"
 		look_room.apply(layout, progress, null)
 		var window: Node3D = look_room.get_window_node()
-		var expected_position: Vector3 = (
-			room.center
-			+ expected_by_side[side][0]
-			+ Vector3(0.0, LookPrototypeRoomScript.WINDOW_CENTER_HEIGHT_M, 0.0)
-		)
+		var daylight: SpotLight3D = look_room.get_daylight()
 		_check(
 			window != null
-			and window.position.is_equal_approx(expected_position)
+			and window.position.is_equal_approx(
+				room.center
+				+ expected_by_side[side][0]
+				+ Vector3(0.0, LookPrototypeRoomScript.WINDOW_CENTER_HEIGHT_M, 0.0)
+			)
 			and window.basis.z.is_equal_approx(expected_by_side[side][1]),
 			"%s の壁だけにドアが無い時は、窓をその壁の内側の面に部屋の内側へ向けて付ける (%s)"
 			% [side, window.position if window != null else null],
+		)
+		# 窓の光: 影を付け、部屋の内側 (窓の外向きの逆) かつ下を照らす (SpotLight3D は -Z を照らす)
+		var light_direction: Vector3 = (
+			-daylight.transform.basis.z if daylight != null else Vector3.ZERO
+		)
+		_check(
+			daylight != null
+			and daylight.shadow_enabled
+			and light_direction.dot(-expected_by_side[side][1]) > 0.0
+			and light_direction.y < 0.0,
+			"%s の窓の光は影付きで、部屋の内側の下を照らす (%s)" % [side, light_direction],
 		)
 
 	look_room.apply(layout, null, null)
@@ -303,6 +323,11 @@ func _check_apply_edges() -> void:
 		and look_room.get_hair_field() == null
 		and look_room.get_visual_hair_count() == 0,
 		"進行が無い時は部屋を重ねるが毛は描かない",
+	)
+	_check(
+		look_room.show_automation_props() == 0
+		and look_room.get_robot_count() == LookPrototypeRoomScript.ROBOT_LANES.size(),
+		"毛を描いていない部屋でも掃除ロボットは置き、消える毛は 0 本",
 	)
 
 	room.open_west = true
@@ -360,6 +385,18 @@ func _check_hand_pose() -> void:
 	var idle_visible: bool = hand.is_stretched_hair_visible()
 	hand.set_pinch_pose(true, 0.0)
 	var pinch_state: Array = [hand.is_pinching(), hand.is_stretched_hair_visible()]
+	# つまむ構図: 手首はつまむ位置と回転になり、人差し指は他の 3 本より曲げが浅い (親指の先と合わせるため)
+	var index_curl: float = -(hand.get_node("Finger0") as Node3D).rotation.x
+	_check(
+		hand.position.is_equal_approx(FirstPersonHandScript.PINCH_POSITION)
+		and hand.rotation.is_equal_approx(FirstPersonHandScript.PINCH_ROTATION)
+		and is_equal_approx(index_curl, FirstPersonHandScript.PINCH_INDEX_CURL)
+		and is_equal_approx(
+			-(hand.get_node("Finger3") as Node3D).rotation.x,
+			FirstPersonHandScript.PINCH_FOLDED_FINGER_CURL
+		),
+		"つまむ構図では手首がつまむ位置と回転になり、人差し指だけ浅く曲げる",
+	)
 	hand.set_pinch_pose(false, 0.0)
 	_check(
 		not idle_visible

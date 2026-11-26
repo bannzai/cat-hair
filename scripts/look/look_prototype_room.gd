@@ -236,6 +236,11 @@ func get_window_node() -> Node3D:
 	return _content_root.get_node_or_null("Window") as Node3D if _content_root != null else null
 
 
+## 窓から差す光 (窓を付けなかった時は null)
+func get_daylight() -> SpotLight3D:
+	return _content_root.get_node_or_null("Daylight") as SpotLight3D if _content_root != null else null
+
+
 ## 置いた掃除ロボットの台数
 func get_robot_count() -> int:
 	if _robots_root == null:

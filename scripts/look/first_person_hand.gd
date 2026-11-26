@@ -148,6 +148,7 @@ func _update_stretched_hair() -> void:
 
 ## 手のひら・指・親指・袖・伸びた毛のノードを生成して子に置く
 func _build_hand() -> void:
+	# 粗さ: 肌は 0.55 (わずかに艶のある皮膚)、袖は 0.95 (光を返さない毛糸)、毛は 0.6 (照明で白く光りすぎない艶)
 	var skin: StandardMaterial3D = make_material(SKIN_COLOR, 0.55)
 
 	var palm_mesh: BoxMesh = BoxMesh.new()

@@ -82,17 +82,21 @@ static func verify_look_prototype_room(checker: SceneTree, main: Node3D, game_st
 	)
 	look_room.set_pinch_pose(false)
 
-	# 最初の部屋の中にいても、タイトルの画面 (歩いていない間) では試作の見た目を出さない
-	look_room.set_playing(false)
+	# 最初の部屋の中にいても、タイトルの画面 (歩いていない間) では試作の見た目を出さない。main.gd の画面の切り替えを通す
+	main._set_title_mode()
 	await checker.process_frame
 	checker._check(
 		not look_room.is_prototype_active()
 		and not look_room.get_hand().visible
 		and not environment_node.environment.ssao_enabled,
-		"最初の部屋の中でも、歩いていない間は試作の見た目を出さない",
+		"最初の部屋の中でも、タイトルの画面では試作の見た目を出さない",
 	)
-	look_room.set_playing(true)
+	main.enter_mansion()
 	await checker.process_frame
+	checker._check(
+		look_room.is_prototype_active() and look_room.get_hand().visible,
+		"タイトルから屋敷へ戻ると、最初の部屋で試作の見た目がまた出る",
+	)
 
 	# 歩いていて最初の部屋の位置にいても、重ねる部屋が無いレイアウトの後は試作の見た目を出さない
 	look_room.apply(null, null, null)
