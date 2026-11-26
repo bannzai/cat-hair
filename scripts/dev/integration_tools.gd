@@ -380,13 +380,17 @@ func _verify_every_tool_once(main: Node3D, game_state: Node) -> void:
 			ToolCatalogScript.KIND_CAT:
 				var before_brush: int = game_state.get_total_remaining_hairs()
 				var money_brush: int = game_state.get_money()
+				# 猫を狙いの先から外す (猫がいない時の振る舞いを確かめる。猫を狙った時は integration_automation.gd で確かめる)
+				var cats_root: Node3D = main.automation.get_node("Cats")
+				cats_root.position = Vector3(0.0, -100.0, 0.0)
 				await _press_and_release_use()
+				cats_root.position = Vector3.ZERO
 				_check(
 					main.tool_message_label.text.contains("猫がいない")
 					and game_state.get_total_remaining_hairs() == before_brush
 					and game_state.get_money() == money_brush
-					and not bool(tools.brush_cat(null)["used"]),
-					"ブラシは猫がいない屋敷では「猫がいない」と出て、毛の本数とお金が変わらない",
+					and not bool(tools.brush_cat(&"")["used"]),
+					"ブラシは狙いの先 (床の毛) に猫がいなければ「猫がいない」と出て、毛の本数とお金が変わらない",
 				)
 				used_ids.append(tool_id)
 	_check(

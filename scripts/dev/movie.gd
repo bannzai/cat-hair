@@ -1,5 +1,7 @@
 extends SceneTree
 ## 操作なしの起動〜メインシーン表示を Movie Maker モードで録画する (Makefile の movie target)。
+## 引数に --automation を付けると、屋敷に入って掃除ロボットを 2 台置き、猫と掃除ロボットの時計を速めて
+## 掃除ロボットが毛を取り残り本数が減る様子を録画する (Makefile の movie-automation target)。
 ## Godot 4.7.2-stable (ubuntu-24.04 / --audio-driver Dummy / --write-movie) の CI 実測
 ## (run 45767272708) で、再生中 BGM のまま --quit-after で終了すると ObjectDB 4 件・Resource 2 件の
 ## リーク警告が出たため、終了直前に stop_all() してフレームを進めて解放する (run 45767858306 で解消)。
@@ -14,6 +16,15 @@ const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 const RELEASE_MARGIN_FRAMES: int = 2
 ## Makefile の --quit-after と本スクリプトの quit(0) が同一フレームで競合しないための余裕フレーム数
 const END_MARGIN_FRAMES: int = 2
+## 掃除ロボットの録画で、猫と掃除ロボットの時計を実時間の何倍で進めるか。10 秒の録画で掃除ロボットが
+## 1 部屋に留まる 20 秒を超え、毛を取る様子と残り本数の減り方が見える倍率
+const AUTOMATION_SPEED: float = 4.0
+## 掃除ロボットの録画で置く台数 (同じ部屋を回らせ、取る量を目で追える数にする)
+const AUTOMATION_ROBOTS: int = 2
+## 掃除ロボットの録画で、部屋の角から部屋の中心へ寄って立つ割合 (部屋の半幅に対する比率)
+const AUTOMATION_VIEW_RATIO: float = 0.7
+## 掃除ロボットの値段の定数
+const RobotRulesScript := preload("res://scripts/automation/robot_rules.gd")
 
 
 ## コマンドライン引数から prefix=<正の整数> を取り出す。未指定・空・非数値・0 以下は -1 を返す
@@ -87,11 +98,21 @@ func _run() -> void:
 	)
 	var audio_handle: Dictionary = HeadlessCheck.prepare_audio_manager(self, settings_path)
 
+	var automation_mode: bool = user_args.has("--automation")
 	var main: Node3D = MAIN_SCENE.instantiate()
+	if automation_mode:
+		main.auto_advance_automation = false
 	root.add_child(main)
 	current_scene = main
+	if automation_mode and not await _stage_automation(main):
+		quit(1)
+		return
 
 	for _i: int in range(record_frames):
+		if automation_mode:
+			main.get_game_state().automation.advance(
+				AUTOMATION_SPEED / float(int(options["fps"]))
+			)
 		await process_frame
 	(audio_handle["manager"] as AudioManagerScript).stop_all()
 	for _i: int in range(release_frames):
@@ -99,3 +120,23 @@ func _run() -> void:
 	HeadlessCheck.cleanup_audio_manager(self, audio_handle, settings_path)
 	print("movie OK")
 	quit(0)
+
+
+## 屋敷に入り、最初の部屋を回る掃除ロボットを AUTOMATION_ROBOTS 台置いて、部屋の角から部屋の中心を見下ろす。置けたら true
+func _stage_automation(main: Node3D) -> bool:
+	await process_frame
+	main.enter_mansion()
+	var game_state: Node = main.get_game_state()
+	var room: MansionLayout.RoomDef = game_state.current_layout.rooms[0]
+	game_state.save_data.building_progress.money = RobotRulesScript.ROBOT_PRICE * AUTOMATION_ROBOTS
+	for _robot: int in range(AUTOMATION_ROBOTS):
+		if not game_state.automation.buy_robot(room.room_id):
+			push_error("movie.gd: 掃除ロボットを置けない")
+			return false
+	var corner: Vector3 = room.center + Vector3(
+		room.size.x * 0.5 * AUTOMATION_VIEW_RATIO, 0.0, room.size.z * 0.5 * AUTOMATION_VIEW_RATIO
+	)
+	main.player.set_spawn(corner, 0.0)
+	await physics_frame
+	main.player.look_at_point(room.center)
+	return true

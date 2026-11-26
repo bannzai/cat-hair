@@ -26,6 +26,14 @@ const TOOL_TRACE_RNG_SEED: int = 20261126
 const TOOL_TRACE_MIN_HAIRS: int = 6
 ## 引いている途中を撮る時の進み具合 (毛が伸びて手が閉じかけた所)
 const PULL_SNAPSHOT_PROGRESS: float = 0.7
+## 掃除ロボットが毛を取った跡を撮る前に時計を進める刻みの秒数 (掃除ロボットの位置に合わせて毛が消えるよう、
+## 部屋の中の輪を 1 周する 10 秒より十分細かくする)
+const ROBOT_TRACE_STEP_SECONDS: float = 0.25
+## 掃除ロボットが毛を取った跡を撮る前に時計を進める回数 (0.25 秒 × 60 = 15 秒。部屋に留まる 20 秒の内に収まり、
+## 輪を 1 周以上走った跡が残る長さ)
+const ROBOT_TRACE_STEPS: int = 60
+## 猫を撮る時に、猫から立つ位置までの水平距離 (m。猫の体と名札が画面に収まる距離)
+const CAT_VIEW_DISTANCE_M: float = 1.4
 
 ## 開発者向け調整値データ型スクリプト (見た目の試作の撮影で毛の本数を変える)
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
@@ -78,6 +86,7 @@ func _capture_scenes() -> bool:
 	var created_state: bool = state_handle["created"]
 
 	var main: Node3D = MAIN_SCENE.instantiate()
+	main.auto_advance_automation = false
 	root.add_child(main)
 	current_scene = main
 
@@ -229,6 +238,9 @@ func _capture_mansion_scenes(main: Node3D) -> String:
 	var tool_error: String = await _capture_tools(main)
 	if not tool_error.is_empty():
 		return tool_error
+	var automation_error: String = await _capture_automation(main)
+	if not automation_error.is_empty():
+		return automation_error
 	main.open_dev_panel()
 	return "" if await _capture("tmp/screenshot-dev-panel.png") else "開発者向け調整画面を保存できない"
 
@@ -301,6 +313,52 @@ func _capture_trader_and_shop(main: Node3D) -> String:
 	var shop_ok: bool = await _capture("tmp/screenshot-tool-shop.png")
 	main.close_tool_shop()
 	return "" if shop_ok else "道具を買う画面を保存できない"
+
+
+## 掃除ロボットの回る順を決める画面 (2 台を買い、1 台目に部屋を 2 つ並べた所)、掃除ロボットが部屋を走って毛を取った跡、
+## 猫が部屋に立ち止まっている所を撮る。猫と掃除ロボットの時計は撮る前に進める。撮れたら空文字、失敗したら理由を返す
+func _capture_automation(main: Node3D) -> String:
+	var game_state: Node = main.get_game_state()
+	var automation: RefCounted = game_state.automation
+	var layout: MansionLayout = game_state.current_layout
+	var room: MansionLayout.RoomDef = layout.rooms[0]
+	for _robot: int in range(2):
+		if not automation.buy_robot(room.room_id):
+			return "掃除ロボットを買えない"
+	var route_ids: Array[StringName] = [room.room_id, layout.rooms[1].room_id]
+	if not automation.set_robot_route(0, route_ids):
+		return "掃除ロボットの回る順を決められない"
+	main.open_robot_route()
+	var panel_ok: bool = await _capture("tmp/screenshot-robot-route.png")
+	main.close_robot_route()
+	if not panel_ok:
+		return "掃除ロボットの回る順の画面を保存できない"
+
+	# 2 台目 (最初の部屋だけを回る) が部屋を走りながら毛を取る跡が残るよう、時計を細かく刻んで進める
+	for _step: int in range(ROBOT_TRACE_STEPS):
+		automation.advance(ROBOT_TRACE_STEP_SECONDS)
+	await process_frame
+	var robot_node: Node3D = main.automation.get_robot_node(1)
+	main.player.set_spawn(
+		room.center + Vector3(room.size.x * 0.35, 0.0, room.size.z * 0.35), 0.0
+	)
+	await physics_frame
+	main.player.look_at_point(robot_node.position)
+	if not await _capture_frozen(main, "tmp/screenshot-robot-room.png"):
+		return "掃除ロボットが動いている部屋を保存できない"
+
+	var cat: Node3D = main.automation.get_cat_node(automation.get_cat_routes()[0]["cat_id"])
+	var cat_floor: Vector3 = Vector3(cat.global_position.x, 0.0, cat.global_position.z)
+	var toward_room: Vector3 = (Vector3(room.center.x, 0.0, room.center.z) - cat_floor)
+	if toward_room.length() < 0.1:
+		toward_room = Vector3.BACK
+	main.player.set_spawn(cat_floor + toward_room.normalized() * CAT_VIEW_DISTANCE_M, 0.0)
+	await physics_frame
+	main.player.look_at_point(cat.global_position)
+	return (
+		"" if await _capture_frozen(main, "tmp/screenshot-cat-room.png")
+		else "猫がいる部屋を保存できない"
+	)
 
 
 ## メインシーンの処理を止めたまま現在の画面を path に保存する。保存できたら true

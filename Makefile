@@ -41,10 +41,13 @@ WINDOWED_LOG_NOISE := -e 'Could not set V-Sync mode' -e 'IMKCFRunLoopWakeUpRelia
 # 操作なしの起動〜メインシーン表示の確認には数秒あれば足り、CI の録画時間と artifact のサイズを抑えるため
 MOVIE_FPS ?= 30
 MOVIE_FRAMES ?= 150
+# movie-automation target が録画するフレーム数 (30 fps × 11 秒 = 330)。時計を 4 倍で進めるため、掃除ロボットが
+# 1 部屋に留まる 20 秒より長い 40 秒分を録り、毛を取る様子と残り本数の減り方が見える長さ (倍率は scripts/dev/movie.gd)
+MOVIE_AUTOMATION_FRAMES ?= 330
 # hairbench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/hairbench.gd の DEFAULT_COUNTS が SSOT)
 HAIRBENCH_COUNTS ?=
 
-.PHONY: import check selfcheck integration failure-path lint test verify screenshot movie hairbench run build-macos build-windows build-linux build-web build-all clean
+.PHONY: import check selfcheck integration failure-path lint test verify screenshot movie movie-automation hairbench run build-macos build-windows build-linux build-web build-all clean
 
 # ログ・撮影の出力先。.gdignore を置き、撮影した PNG を Godot に import させない
 $(LOG_DIR)/.gdignore:
@@ -152,6 +155,19 @@ movie: import
 	rm -f $(LOG_DIR)/movie.avi
 	bash scripts/ci/check-movie-brightness.sh $(LOG_DIR)/movie.mp4
 
+# 屋敷に入って掃除ロボットを置き、猫と掃除ロボットの時計を速めて、掃除ロボットが毛を取って残り本数が減る様子を
+# tmp/movie-automation.mp4 に録画する (検査は movie target と同じ)
+movie-automation: import
+	rm -f $(LOG_DIR)/movie-automation.avi $(LOG_DIR)/movie-automation.mp4
+	"$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) --write-movie $(LOG_DIR)/movie-automation.avi --fixed-fps $(MOVIE_FPS) --quit-after $(MOVIE_AUTOMATION_FRAMES) --script res://scripts/dev/movie.gd -- --frames=$(MOVIE_AUTOMATION_FRAMES) --fps=$(MOVIE_FPS) --automation > $(LOG_DIR)/movie-automation.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/movie-automation.log; \
+	grep -q '^movie OK$$' $(LOG_DIR)/movie-automation.log
+	tail -n 1 $(LOG_DIR)/movie-automation.log | grep -q '^exit=0$$'
+	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/movie-automation.log | grep -v $(WINDOWED_LOG_NOISE) | grep -q .
+	ffmpeg -loglevel error -y -i $(LOG_DIR)/movie-automation.avi -c:v libx264 -pix_fmt yuv420p $(LOG_DIR)/movie-automation.mp4
+	rm -f $(LOG_DIR)/movie-automation.avi
+	bash scripts/ci/check-movie-brightness.sh $(LOG_DIR)/movie-automation.mp4
+
 # 毛の描画の試作ベンチマーク。1,000 / 10,000 / 100,000 / 1,000,000 本の描画可否と 1 フレームの描画時間を
 # tmp/hairbench.json に出力し、本数ごとの画面を tmp/hairbench-<本数>.png に撮る
 hairbench: import
@@ -208,8 +224,8 @@ build-all: build-macos build-windows build-linux
 # ディレクトリごとや *.log をまとめては消さない)。ログは target ごとの <target>.log と、ENGINE_LOG の <target>.godot.log
 clean:
 	rm -rf build
-	rm -f $(foreach target,import check selfcheck integration integration-cmdline failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie hairbench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
-	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4
+	rm -f $(foreach target,import check selfcheck integration integration-cmdline failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-automation hairbench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
+	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4 $(LOG_DIR)/movie-automation.avi $(LOG_DIR)/movie-automation.mp4
 
 # 引数なしの make で run を実行する (人が手で動作確認するための入口。検査・テストは CI が行う)
 .DEFAULT_GOAL := run

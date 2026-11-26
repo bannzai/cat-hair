@@ -93,15 +93,11 @@ func _check_tool_catalog() -> void:
 		"表に無い道具の id は空の定義を返す",
 	)
 	var controller: ToolController = ToolController.new()
-	var cat: Node3D = Node3D.new()
-	var no_cat: Dictionary = controller.brush_cat(null)
-	var with_cat: Dictionary = controller.brush_cat(cat)
+	var no_cat: Dictionary = controller.brush_cat(&"")
 	_check(
-		not bool(no_cat["used"]) and str(no_cat["message"]).contains("猫がいない")
-		and not bool(with_cat["used"]) and str(with_cat["message"]).contains("まだできない"),
-		"ブラシの入口は、猫がいなければ「猫がいない」、猫がいても (issue #11 で繋ぐまで) 使わずに知らせる",
+		not bool(no_cat["used"]) and str(no_cat["message"]).contains("猫がいない"),
+		"ブラシは狙いの先に猫がいなければ「猫がいない」と出して使わない",
 	)
-	cat.free()
 	controller.free()
 
 
