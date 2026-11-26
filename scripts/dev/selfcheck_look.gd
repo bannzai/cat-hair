@@ -409,6 +409,20 @@ func _check_hud_samples() -> void:
 		and marked == [true, false, false, false],
 		"道具の枠の名前 %s と、手を持っている印 %s" % [names, marked],
 	)
+	# 本物の道具の並びを渡すと枠を作り直し、渡した位置の枠だけが手に持っている枠になる
+	var real_texts: Array[String] = ["1 手", "2 —", "3 —", "4 —", "5 粘着ローラー", "6 —", "7 —", "8 —"]
+	look_hud.set_tools(real_texts, 4)
+	_check(
+		look_hud.get_tool_slot_texts() == real_texts
+		and look_hud.get_selected_tool_slot_index() == 4,
+		"set_tools で道具の枠が 8 つに作り直され、5 番目だけが手に持っている枠になる (実際: %s / %d)"
+		% [look_hud.get_tool_slot_texts(), look_hud.get_selected_tool_slot_index()],
+	)
+	look_hud.set_tools(real_texts, -1)
+	_check(
+		look_hud.get_selected_tool_slot_index() == -1 and look_hud.get_tool_slot_count() == 8,
+		"set_tools で選んでいる位置が範囲外なら、手に持っている枠は無い",
+	)
 	look_hud.free()
 
 

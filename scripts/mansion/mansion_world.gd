@@ -57,6 +57,8 @@ const TABLE_LEG_OFFSET_X_RATIO: float = 0.42
 const TABLE_LEG_OFFSET_Z_RATIO: float = 0.40
 ## テーブル脚の断面一辺の幅 (m。天板を支える見た目として細すぎずかさばらない一般的な木製脚幅)
 const TABLE_LEG_WIDTH_M: float = 0.07
+## 買取業者の札の字 (Label3D は UI の theme のフォントを引かないため、日本語の字形を持つフォントを渡す)
+const SIGN_FONT: Font = preload("res://assets/fonts/NotoSansJP[wght].ttf")
 ## 買取業者を立たせる所の、最初の部屋の西の壁からの距離 (m)
 const TRADER_WEST_OFFSET_M: float = 0.8
 ## 買取業者を立たせる所の、最初の部屋の南の壁 (屋敷の外に面した裏口の側) からの距離 (m)。
@@ -173,6 +175,7 @@ func _build_trader(layout: MansionLayout) -> void:
 	var sign_label: Label3D = Label3D.new()
 	sign_label.name = "Sign"
 	sign_label.text = "買取業者 (裏口)"
+	sign_label.font = SIGN_FONT
 	sign_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	sign_label.pixel_size = 0.004
 	sign_label.font_size = 48

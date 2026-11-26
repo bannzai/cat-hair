@@ -57,6 +57,8 @@ var _glow_light: SpotLight3D = null
 var _last_message: String = ""
 ## 前のフレームでつまむ操作が押されていたか (押した瞬間だけ使うため)
 var _was_pressed: bool = false
+## 前のフレームでマウスを捕捉していたか (捕捉する最初のクリックで道具を使わないため)
+var _was_captured: bool = false
 
 
 ## GameState・屋敷・手・カメラを受け取り、毛を光らせるライトをカメラに付ける
@@ -86,9 +88,11 @@ func _process(_delta: float) -> void:
 		and _selected_tool_id != ToolCatalogScript.TOOL_HAND
 		and Input.is_action_pressed(HandController.ACTION_PLUCK)
 	)
-	if pressed and not _was_pressed:
+	# マウスを捕捉する最初のクリック (前のフレームでは捕捉していない) では道具を使わない (HandController と同じ)
+	if pressed and not _was_pressed and _was_captured:
 		use_selected_tool()
 	_was_pressed = pressed
+	_was_captured = captured
 
 
 ## 1〜8 キーで道具を選ぶ

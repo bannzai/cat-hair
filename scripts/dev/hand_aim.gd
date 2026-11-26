@@ -12,6 +12,18 @@ const MAX_CANDIDATES: int = 40
 ## 床の毛を順に試し、プレイヤーをその毛から部屋の中心の向きへ STAND_DISTANCE_M 離れた所に立たせて目線を向ける。
 ## 画面中央の狙い (hand.aim_target) がその毛の表面に当たり、その毛をつまめる時、その毛の ID を返す。見つからなければ -1
 static func aim_at_floor_hair(tree: SceneTree, main: Node3D) -> int:
+	return await _aim_at_floor(tree, main, HandController.GRAB_RADIUS_M, 0)
+
+
+## aim_at_floor_hair と同じ順に床の毛を試し、狙いの点から radius の中に毛が min_hairs 本以上ある所で止める
+## (道具の検証用。毛の多い屋敷では、狙いの点にいちばん近い毛が試した 1 本と限らないため)。止めた毛の ID を返し、見つからなければ -1
+static func aim_at_floor_hairs(tree: SceneTree, main: Node3D, radius: float, min_hairs: int) -> int:
+	return await _aim_at_floor(tree, main, radius, min_hairs)
+
+
+## 床の毛を順に試して目線を向ける。min_hairs が 0 の時は試した毛そのものをつまめる所、
+## 1 以上の時は radius の中に毛が min_hairs 本以上ある所で止め、試した毛の ID を返す (見つからなければ -1)
+static func _aim_at_floor(tree: SceneTree, main: Node3D, radius: float, min_hairs: int) -> int:
 	var world: MansionWorld = main.get_node("MansionWorld")
 	var player: FirstPersonPlayer = main.get_node("Player")
 	var hand: HandController = main.hand
@@ -40,8 +52,10 @@ static func aim_at_floor_hair(tree: SceneTree, main: Node3D) -> int:
 			if target.is_empty() or int(target["surface_index"]) != surface_idx:
 				continue
 			var near: PackedInt32Array = hair_field.find_hairs_near(
-				surface_idx, target["point"], HandController.GRAB_RADIUS_M, 1
+				surface_idx, target["point"], radius, maxi(1, min_hairs)
 			)
-			if near.size() == 1 and near[0] == hair_id:
+			if min_hairs <= 0 and near.size() == 1 and near[0] == hair_id:
+				return hair_id
+			if min_hairs > 0 and near.size() >= min_hairs:
 				return hair_id
 	return -1

@@ -17,6 +17,8 @@ const MainScript := preload("res://scripts/main.gd")
 const DENSE_HAIR_COUNT: int = 60000
 ## 取りこぼしの抽選の乱数のシード (結果を固定する)
 const TOOL_RNG_SEED: int = 20261126
+## 道具をかける所に要る、粘着ローラーの半径の中の毛の本数 (取れた毛と取りこぼした毛の両方が出るだけの本数)
+const MIN_HAIRS_IN_RANGE: int = 8
 ## 道具を選ぶキー (ToolController.SELECT_KEYS と同じ並び。1 = 手)
 const KEY_FOR_TOOL: Dictionary = {
 	ToolCatalogScript.TOOL_HAND: KEY_1,
@@ -75,9 +77,11 @@ func _verify_unowned_tool_and_shop_screen(main: Node3D, game_state: Node) -> voi
 		and main.hand.enabled,
 		"持っていないピンセットのキー (2) では選べず、手のまま「持っていない」と出る",
 	)
+	var slot_texts: Array[String] = main.look_hud.get_tool_slot_texts()
 	_check(
-		main.tool_bar_label.text.contains("【1 手】") and main.tool_bar_label.text.contains("2 —"),
-		"道具の並びで手が選ばれ、持っていない道具は「—」で出る (実際: %s)" % main.tool_bar_label.text,
+		slot_texts.size() == 8 and slot_texts[0] == "1 手" and slot_texts[1] == "2 —"
+		and main.look_hud.get_selected_tool_slot_index() == 0,
+		"右下の道具の枠は 8 つで、手の枠が選ばれ、持っていない道具は「—」で出る (実際: %s)" % str(slot_texts),
 	)
 	await _checker._press_physical_key(KEY_T)
 	_check(
@@ -126,9 +130,10 @@ func _verify_buy_use_and_sell(main: Node3D, game_state: Node) -> void:
 	await _checker._press_physical_key(KEY_FOR_TOOL[roller])
 	_check(
 		tools.get_selected_tool_id() == roller and not main.hand.enabled
-		and main.tool_bar_label.text.contains("【5 粘着ローラー】")
-		and main.tool_bar_label.text.contains("紙: 20 枚"),
-		"5 キーで粘着ローラーを選ぶと手の操作が止まり、道具の並びと紙の残りに出る",
+		and main.look_hud.get_tool_slot_texts()[4] == "5 粘着ローラー"
+		and main.look_hud.get_selected_tool_slot_index() == 4
+		and main.tool_detail_label.text.contains("紙: 20 枚"),
+		"5 キーで粘着ローラーを選ぶと手の操作が止まり、5 番目の枠が選ばれ、紙の残りが出る",
 	)
 
 	var result: Dictionary = await _use_on_floor(main, game_state)
@@ -197,7 +202,8 @@ func _verify_buy_use_and_sell(main: Node3D, game_state: Node) -> void:
 	_check(
 		game_state.get_money() == money_before + stock_value
 		and game_state.get_raw_hair_stock_count() == 0
-		and main.money_label.text.contains(MainScript.format_hair_count(game_state.get_money())),
+		and main.look_hud.get_money_text()
+		== "所持金 %s 円" % MainScript.format_hair_count(game_state.get_money()),
 		"毛を売ると在庫の売値 %d 円だけお金が増え、在庫が 0 本になり、所持金の表示も変わる" % stock_value,
 	)
 	main.close_tool_shop()
@@ -208,11 +214,11 @@ func _verify_empty_consumable(main: Node3D, game_state: Node) -> void:
 	var roller: StringName = ToolCatalogScript.TOOL_LINT_ROLLER
 	var owned: OwnedTool = game_state.find_owned_tool(roller)
 	owned.consumable_count = 0
-	var aimed: int = await HandAim.aim_at_floor_hair(_checker, main)
+	var aimed: bool = await _aim_at_floor_hairs(main)
 	var before_total: int = game_state.get_total_remaining_hairs()
 	await _press_and_release_use()
 	_check(
-		aimed >= 0 and game_state.get_total_remaining_hairs() == before_total
+		aimed and game_state.get_total_remaining_hairs() == before_total
 		and owned.consumable_count == 0
 		and main.tool_message_label.text.contains("紙が無い"),
 		"紙が 0 枚の粘着ローラーを使っても毛が減らず、「紙が無い」と出る",
@@ -228,6 +234,34 @@ func _verify_empty_consumable(main: Node3D, game_state: Node) -> void:
 		"紙の買い足しボタンで紙が 20 枚になり 10 円減る",
 	)
 	main.close_tool_shop()
+	await _verify_capture_click(main, game_state, owned)
+
+
+## マウスを捕捉していない時のクリックと、捕捉する最初のクリックでは道具を使わず、捕捉した後のクリックで使うか
+func _verify_capture_click(main: Node3D, game_state: Node, owned: OwnedTool) -> void:
+	var tools: ToolController = main.tools
+	await _aim_at_floor_hairs(main)
+	var before_total: int = game_state.get_total_remaining_hairs()
+	tools.allow_uncaptured_use = false
+	Input.action_press(HandController.ACTION_PLUCK)
+	await _checker.process_frame
+	await _checker.process_frame
+	_check(
+		owned.consumable_count == 20 and game_state.get_total_remaining_hairs() == before_total,
+		"マウスを捕捉していない時のクリックでは道具を使わない",
+	)
+	# 押したまま捕捉した扱いに切り替える (捕捉する最初のクリックと同じく、前のフレームは捕捉していない)
+	tools.allow_uncaptured_use = true
+	await _checker.process_frame
+	await _checker.process_frame
+	Input.action_release(HandController.ACTION_PLUCK)
+	await _checker.process_frame
+	_check(
+		owned.consumable_count == 20 and game_state.get_total_remaining_hairs() == before_total,
+		"マウスを捕捉する最初のクリックでは道具を使わず、紙も減らない",
+	)
+	await _press_and_release_use()
+	_check(owned.consumable_count == 19, "捕捉した後のクリックでは道具を使い、紙が 1 枚減る")
 
 
 ## 8 つの道具を 1 回ずつ使う: 手はつまんで 1 本抜け、毛を取る 5 つは範囲の毛が減り、ライトは点いて消え、
@@ -324,10 +358,17 @@ func _verify_cleaning_fee(main: Node3D, game_state: Node) -> void:
 	)
 
 
+## 道具の届く範囲 (粘着ローラーの半径) に毛が MIN_HAIRS_IN_RANGE 本以上ある床の点を、画面中央で狙う。狙えたら true
+func _aim_at_floor_hairs(main: Node3D) -> bool:
+	var radius: float = float(
+		ToolCatalogScript.find_tool(ToolCatalogScript.TOOL_LINT_ROLLER)["radius_m"]
+	)
+	return await HandAim.aim_at_floor_hairs(_checker, main, radius, MIN_HAIRS_IN_RANGE) >= 0
+
+
 ## 床の毛を狙い、選んでいる道具を 1 回使い、結果と使う前の本数を返す (狙えなければ "used" が false)
 func _use_on_floor(main: Node3D, game_state: Node) -> Dictionary:
-	var aimed: int = await HandAim.aim_at_floor_hair(_checker, main)
-	if aimed < 0:
+	if not await _aim_at_floor_hairs(main):
 		return {"used": false, "total_before": game_state.get_total_remaining_hairs()}
 	var target: Dictionary = main.hand.aim_target()
 	var before: Dictionary = {

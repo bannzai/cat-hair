@@ -68,7 +68,7 @@ func refresh(game_state: Node, near_trader: bool) -> void:
 	var stock_value: int = EconomyRulesScript.raw_stock_value(
 		game_state.save_data.building_progress.hair_stocks
 	)
-	_money_label.text = "お金: %d 円 / 在庫の毛: %d 本 (売ると %d 円)" % [
+	_money_label.text = "所持金: %d 円 / 在庫の毛: %d 本 (売ると %d 円)" % [
 		money, game_state.get_raw_hair_stock_count(), stock_value
 	]
 	_sell_button.disabled = not near_trader or stock_value <= 0

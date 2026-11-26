@@ -20,6 +20,10 @@ const HandAim := preload("res://scripts/dev/hand_aim.gd")
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## 手に持って使う道具の定義
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
+## 道具をかけた跡を撮る時の取りこぼしの抽選の乱数のシード (撮る絵を毎回同じにする)
+const TOOL_TRACE_RNG_SEED: int = 20261126
+## 道具をかけた跡を撮る所に要る、粘着ローラーの半径の中の毛の本数 (取りこぼした毛が跡の中に見える本数)
+const TOOL_TRACE_MIN_HAIRS: int = 6
 ## 引いている途中を撮る時の進み具合 (毛が伸びて手が閉じかけた所)
 const PULL_SNAPSHOT_PROGRESS: float = 0.7
 
@@ -254,16 +258,38 @@ func _capture_tools(main: Node3D) -> String:
 	var game_state: Node = main.get_game_state()
 	game_state.save_data.building_progress.money = 1000
 	var roller: StringName = ToolCatalogScript.TOOL_LINT_ROLLER
-	if not game_state.purchase(GameStateScript.PURCHASE_TOOL, roller):
+	game_state.save_data.building_progress.money = 100000
+	# 8 つの道具を全部持った時の右下の道具の枠の並びも同じ 1 枚で確かめる
+	for tool_def: Dictionary in ToolCatalogScript.TOOLS:
+		if tool_def["id"] != ToolCatalogScript.TOOL_HAND:
+			game_state.purchase(GameStateScript.PURCHASE_TOOL, tool_def["id"])
+	if game_state.find_owned_tool(roller) == null:
 		return "粘着ローラーを買えない"
 	if not main.tools.select_tool(roller):
 		return "粘着ローラーを選べない"
-	if await HandAim.aim_at_floor_hair(self, main) < 0:
+	main.tools.set_rng_seed(TOOL_TRACE_RNG_SEED)
+	var radius: float = float(ToolCatalogScript.find_tool(roller)["radius_m"])
+	if await HandAim.aim_at_floor_hairs(self, main, radius, TOOL_TRACE_MIN_HAIRS) < 0:
 		return "粘着ローラーをかける床の毛を狙える位置が見つからない"
-	if not bool(main.tools.use_selected_tool()["used"]):
-		return "粘着ローラーを床にかけられない"
+	var result: Dictionary = main.tools.use_selected_tool()
+	if not bool(result["used"]) or int(result["removed"]) <= 0 or int(result["missed"]) <= 0:
+		return (
+			"粘着ローラーで取れた毛と取りこぼした毛の両方が出ない (%s)" % str(result)
+		)
 	if not await _capture_frozen(main, "tmp/screenshot-tool-trace.png"):
 		return "道具をかけた跡を保存できない"
+	return await _capture_trader_and_shop(main)
+
+
+## 裏口の買取業者 (人型と札の字) と、その近くで開いた道具を買う画面 (毛を売るボタンが押せる) を撮る。
+## 撮れたら空文字、失敗したら理由を返す
+func _capture_trader_and_shop(main: Node3D) -> String:
+	var trader: Vector3 = main.mansion_world.get_trader_position()
+	main.player.set_spawn(trader + Vector3(1.4, 0.0, -1.4), 0.0)
+	await physics_frame
+	main.player.look_at_point(trader + Vector3(0.0, 1.2, 0.0))
+	if not await _capture_frozen(main, "tmp/screenshot-trader.png"):
+		return "買取業者を保存できない"
 	main.open_tool_shop()
 	var shop_ok: bool = await _capture("tmp/screenshot-tool-shop.png")
 	main.close_tool_shop()

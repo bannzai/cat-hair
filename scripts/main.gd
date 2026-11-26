@@ -67,10 +67,8 @@ var pluck_popup_label: Label = null
 var tools: ToolController = null
 ## 道具を買う画面
 var tool_shop_panel: ToolShopPanel = null
-## 所持金の表示
-var money_label: Label = null
-## 道具の並び (1〜8 キー) と選んでいる道具の表示
-var tool_bar_label: Label = null
+## 選んでいる道具の様子 (レベル・得意な表面・消耗品の残り) の表示 (画面右下の道具の枠と所持金の上)
+var tool_detail_label: Label = null
 ## 最後に道具を使った結果 (取りこぼしの割合) の表示
 var tool_message_label: Label = null
 ## 今いる部屋のきれいさ・機嫌・掃除代の表示の親
@@ -144,7 +142,6 @@ func _ready() -> void:
 	look_room.setup(player, world_environment)
 	look_hud = LookPrototypeHudScript.new()
 	hud.add_child(look_hud)
-	look_hud.set_money_digits(format_hair_count(LookPrototypeHudScript.SAMPLE_MONEY_YEN))
 
 	_game_state = _resolve_game_state()
 	_build_hand_ui()
@@ -413,37 +410,33 @@ func _refresh_hud() -> void:
 	)
 	if stock_label != null:
 		stock_label.text = "在庫: %s 本" % format_hair_count(_game_state.get_raw_hair_stock_count())
-	if money_label != null:
-		money_label.text = "お金: %s 円" % format_hair_count(_game_state.get_money())
-	if tool_bar_label != null:
-		tool_bar_label.text = _tool_bar_text()
+	if look_hud != null:
+		look_hud.set_money_digits(format_hair_count(_game_state.get_money()))
+	if look_hud != null and tools != null:
+		_refresh_tool_slots()
 	if tool_shop_panel != null and tool_shop_panel.visible:
 		tool_shop_panel.refresh(_game_state, is_near_trader())
 
 
-## 道具の並び (キーの番号・名前。選んでいる道具は【】で囲み、持っていない道具は「—」) と、選んでいる道具の様子
-func _tool_bar_text() -> String:
-	var slots: PackedStringArray = PackedStringArray()
+## 画面右下の道具の枠を、キーの番号と名前 (持っていない道具は「—」) の 8 つで描き直し、選んでいる道具の様子を枠の上に出す
+func _refresh_tool_slots() -> void:
+	var slot_texts: Array[String] = []
+	var selected_index: int = -1
 	for index: int in range(ToolCatalogScript.TOOLS.size()):
 		var tool_def: Dictionary = ToolCatalogScript.TOOLS[index]
 		var tool_id: StringName = tool_def["id"]
-		var slot: String = (
-			"%d %s" % [index + 1, tool_def["name"]]
-			if tools.owns_tool(tool_id)
-			else "%d —" % (index + 1)
+		slot_texts.append(
+			"%d %s" % [index + 1, tool_def["name"]] if tools.owns_tool(tool_id) else "%d —" % (index + 1)
 		)
-		if tools != null and tool_id == tools.get_selected_tool_id():
-			slot = "【%s】" % slot
-		slots.append(slot)
-	var lines: PackedStringArray = PackedStringArray(["  ".join(slots)])
-	if tools != null:
-		lines.append(
-			ToolShopPanelScript.describe_tool(
-				tools.get_selected_tool_id(), _game_state.find_owned_tool(tools.get_selected_tool_id())
-			)
-			+ "   (T: 道具を買う)"
+		if tool_id == tools.get_selected_tool_id():
+			selected_index = index
+	look_hud.set_tools(slot_texts, selected_index)
+	tool_detail_label.text = (
+		ToolShopPanelScript.describe_tool(
+			tools.get_selected_tool_id(), _game_state.find_owned_tool(tools.get_selected_tool_id())
 		)
-	return "\n".join(lines)
+		+ "   (T: 道具を買う)"
+	)
 
 
 ## 今いる部屋の名前・きれいさ・機嫌のゲージと次の掃除代を描き直す (部屋の外では隠す)
@@ -549,25 +542,18 @@ func _build_hand_ui() -> void:
 	hair_book_panel.offset_bottom = 170.0
 	ui_root.add_child(hair_book_panel)
 	hair_book_panel.close_requested.connect(close_hair_book)
-	_build_tool_ui(stock_panel)
+	_build_tool_ui()
 
 
-## 道具の操作・所持金・道具の並び・道具の結果・部屋のゲージ・道具を買う画面を作る
-func _build_tool_ui(stock_panel: PanelContainer) -> void:
+## 道具の操作・選んでいる道具の様子・道具の結果・部屋のゲージ・道具を買う画面を作る
+## (所持金と道具の枠は LookPrototypeHud が出す)
+func _build_tool_ui() -> void:
 	tools = ToolController.new()
 	tools.name = "Tools"
 	add_child(tools)
 	tools.setup(_game_state, mansion_world, hand, player.get_camera())
 	tools.tool_used.connect(_on_tool_used)
 	tools.tool_selected.connect(_on_tool_selected)
-
-	var money_panel: PanelContainer = stock_panel.duplicate() as PanelContainer
-	money_panel.name = "MoneyPanel"
-	money_panel.offset_top += 58.0
-	money_panel.offset_bottom += 58.0
-	hud.add_child(money_panel)
-	money_label = money_panel.get_child(0) as Label
-	money_label.name = "MoneyLabel"
 
 	tool_message_label = Label.new()
 	tool_message_label.name = "ToolMessage"
@@ -586,23 +572,24 @@ func _build_tool_ui(stock_panel: PanelContainer) -> void:
 	tool_message_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(tool_message_label)
 
-	var tool_bar_panel: PanelContainer = PanelContainer.new()
-	tool_bar_panel.name = "ToolBar"
-	tool_bar_panel.anchor_left = 0.0
-	tool_bar_panel.anchor_right = 1.0
-	tool_bar_panel.anchor_top = 1.0
-	tool_bar_panel.anchor_bottom = 1.0
-	tool_bar_panel.offset_left = 20.0
-	tool_bar_panel.offset_right = -20.0
-	tool_bar_panel.offset_top = -78.0
-	tool_bar_panel.offset_bottom = -14.0
-	tool_bar_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud.add_child(tool_bar_panel)
-	tool_bar_label = Label.new()
-	tool_bar_label.name = "ToolBarLabel"
-	tool_bar_label.add_theme_font_size_override("font_size", 15)
-	tool_bar_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tool_bar_panel.add_child(tool_bar_label)
+	# 選んでいる道具の様子は、画面右下の道具の枠と所持金 (LookPrototypeHud) のさらに上に 1 行で出す
+	tool_detail_label = Label.new()
+	tool_detail_label.name = "ToolDetail"
+	tool_detail_label.add_theme_font_size_override("font_size", 15)
+	tool_detail_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.75))
+	tool_detail_label.add_theme_constant_override("shadow_offset_x", 1)
+	tool_detail_label.add_theme_constant_override("shadow_offset_y", 2)
+	tool_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	tool_detail_label.anchor_left = 1.0
+	tool_detail_label.anchor_right = 1.0
+	tool_detail_label.anchor_top = 1.0
+	tool_detail_label.anchor_bottom = 1.0
+	tool_detail_label.offset_left = -918.0
+	tool_detail_label.offset_right = -18.0
+	tool_detail_label.offset_top = -130.0
+	tool_detail_label.offset_bottom = -104.0
+	tool_detail_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(tool_detail_label)
 
 	room_gauge_panel = PanelContainer.new()
 	room_gauge_panel.name = "RoomGauge"
@@ -648,6 +635,8 @@ func _add_gauge(parent: VBoxContainer, caption: String, bar_name: String) -> Pro
 	bar.name = bar_name
 	bar.min_value = 0.0
 	bar.max_value = 100.0
+	# 既定の刻み 1 だと 1% 未満の変化が丸められ、きれいさ・機嫌の値とゲージがずれるため刻みを無くす
+	bar.step = 0.0
 	bar.custom_minimum_size = Vector2(240.0, 16.0)
 	parent.add_child(bar)
 	return bar
