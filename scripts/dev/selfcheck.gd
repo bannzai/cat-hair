@@ -8,6 +8,8 @@ const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
 const HAIR_PROTOTYPE_SCENE_PATH: String = "res://scenes/hair_prototype.tscn"
 ## プロジェクト設定の名前に入っているべき値 (ゲームの題名)
 const PROJECT_NAME: String = "Oh My Fur!"
+## プロジェクト設定のレンダラ (ADR 0002 で Forward+ に決定)
+const RENDERING_METHOD: String = "forward_plus"
 ## 毛の描画ノードのスクリプト
 const HairFieldScript := preload("res://scripts/hair_field.gd")
 
@@ -35,6 +37,14 @@ func _check_project_settings() -> void:
 	_check(
 		project_name == PROJECT_NAME,
 		"application/config/name が %s (実際: %s)" % [PROJECT_NAME, project_name]
+	)
+	var rendering_method: String = ProjectSettings.get_setting(
+		"rendering/renderer/rendering_method", ""
+	)
+	_check(
+		rendering_method == RENDERING_METHOD,
+		"rendering/renderer/rendering_method が %s (実際: %s)"
+		% [RENDERING_METHOD, rendering_method]
 	)
 
 

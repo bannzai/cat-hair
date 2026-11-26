@@ -103,8 +103,8 @@ jobs:
           retention-days: 7
 
   # 描画付きの検証。headless の check / selfcheck / integration では見た目の崩れを検出できないため、
-  # Xvfb + Mesa llvmpipe (ソフトウェア GL) 上で代表画面の撮影と起動の録画を行い artifact に残す。
-  # PR を開いた agent は artifact をダウンロードして PNG と mp4 を目視してから完了報告する (AGENTS.md「検証方法」)
+  # Xvfb + Mesa lavapipe (ソフトウェア Vulkan) 上で Forward+ による代表画面の撮影・起動の録画・毛ベンチマークを行い
+  # artifact に残す。PR を開いた agent は artifact をダウンロードして PNG と mp4 を目視してから完了報告する (AGENTS.md「検証方法」)
   screenshot-and-movie:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -115,11 +115,11 @@ jobs:
         with:
           # エディタバイナリで動かすため export templates は要らない (tpz を取得しない)
           templates: ""
-      - name: Start Xvfb with software GL
+      - name: Start Xvfb with software Vulkan (lavapipe)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb ffmpeg libgl1-mesa-dri \
-            libvulkan1 mesa-vulkan-drivers vulkan-tools \
+            libvulkan1 mesa-vulkan-drivers \
             libxcursor1 libxinerama1 libxrandr2 libxi6 libxext6 libxkbcommon0
           nohup Xvfb :99 -screen 0 1280x720x24 > "$RUNNER_TEMP/xvfb.log" 2>&1 &
           for _ in $(seq 1 30); do
@@ -127,8 +127,12 @@ jobs:
             sleep 1
           done
           [ -S /tmp/.X11-unix/X99 ] || { cat "$RUNNER_TEMP/xvfb.log"; exit 1; }
+          lvp_icd=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n 1 || true)
+          [ -n "$lvp_icd" ] || { echo "::error::lavapipe ICD JSON が見つかりません"; exit 1; }
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
           echo "LIBGL_ALWAYS_SOFTWARE=1" >> "$GITHUB_ENV"
+          echo "VK_ICD_FILENAMES=$lvp_icd" >> "$GITHUB_ENV"
+          echo "VK_DRIVER_FILES=$lvp_icd" >> "$GITHUB_ENV"
       # ffmpeg が要るため、ffmpeg を入れたこの job で回す
       - name: Test the movie brightness check
         run: bash scripts/ci/test/test-check-movie-brightness.sh
@@ -138,46 +142,6 @@ jobs:
         run: make movie GODOT="${{ steps.godot.outputs.godot }}"
       - name: Hair benchmark
         run: make hairbench GODOT="${{ steps.godot.outputs.godot }}"
-      - name: Probe Vulkan renderers (mobile and forward_plus on lavapipe)
-        run: |
-          mkdir -p tmp/probe-mobile tmp/probe-forward-plus
-          echo "=== /usr/share/vulkan/icd.d ===" > tmp/vulkaninfo.log
-          ls -la /usr/share/vulkan/icd.d >> tmp/vulkaninfo.log 2>&1 || true
-          lvp_icd=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n 1 || true)
-          echo "selected_lvp_icd=${lvp_icd}" >> tmp/vulkaninfo.log
-          if [ -n "$lvp_icd" ]; then
-            export VK_ICD_FILENAMES="$lvp_icd"
-            export VK_DRIVER_FILES="$lvp_icd"
-          fi
-          vulkaninfo --summary >> tmp/vulkaninfo.log 2>&1 || true
-          cat tmp/vulkaninfo.log
-
-          for method in mobile forward_plus; do
-            dir="tmp/probe-${method//_/-}"
-            echo "=== Probing ${method} ==="
-            set +e
-            timeout 360 env \
-              HAIRBENCH_COUNTS="1000,10000,100000,1000000" \
-              HAIRBENCH_JSON="${dir}/hairbench.json" \
-              HAIRBENCH_PNG_DIR="${dir}" \
-              HAIRBENCH_PNG_PREFIX="hairbench" \
-              "${{ steps.godot.outputs.godot }}" \
-                --log-file "$(pwd)/${dir}/godot.log" \
-                --path . \
-                --audio-driver Dummy \
-                --rendering-driver vulkan \
-                --rendering-method "${method}" \
-                --resolution 1280x720 \
-                --windowed \
-                --position 0,0 \
-                --quit-after 12000 \
-                --script res://scripts/dev/hairbench.gd > "${dir}/run.log" 2>&1
-            code=$?
-            set -e
-            echo "exit=${code}" >> "${dir}/run.log"
-            echo "--- ${method} exit=${code} ---"
-            cat "${dir}/run.log"
-          done
       - name: Upload screenshots and movie
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -189,7 +153,5 @@ jobs:
             tmp/hairbench.json
             tmp/movie.mp4
             tmp/*.log
-            tmp/probe-mobile/
-            tmp/probe-forward-plus/
           if-no-files-found: warn
           retention-days: 7

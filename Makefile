@@ -30,9 +30,9 @@ SCRIPT_FLAGS = --quit-after $(SCRIPT_FRAME_LIMIT)
 LOG_ERROR_PATTERN := ^(SCRIPT |SHADER )?(ERROR|WARNING):
 
 # 描画付きで起動する target (screenshot / movie / hairbench) の共通オプション。headless では描画されないため付けない。
-# CI の Linux では Xvfb + Mesa llvmpipe 上で実行する
-RENDERING_DRIVER ?= opengl3
-RENDERING_METHOD ?= gl_compatibility
+# レンダラは Forward+ (ADR 0002)。CI の Linux では Xvfb + Mesa lavapipe (Vulkan) 上で実行する
+RENDERING_DRIVER ?= vulkan
+RENDERING_METHOD ?= forward_plus
 WINDOWED_FLAGS := --audio-driver Dummy --rendering-driver $(RENDERING_DRIVER) --rendering-method $(RENDERING_METHOD) --resolution 1280x720 --windowed --position 0,0
 # 描画付き起動でだけ出る、描画に影響しない OS / ドライバ由来の行。ログの WARNING / ERROR 検査から除外する
 # (llvmpipe は V-Sync を設定できない WARNING を毎回 1 件出す。macOS は入力メソッドの mach port のエラーを稀に出す)
