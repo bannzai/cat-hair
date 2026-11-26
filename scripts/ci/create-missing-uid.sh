@@ -8,6 +8,8 @@
 # (https://github.com/godotengine/godot/blob/4.7.2-stable/core/io/resource_uid.cpp) の create_id が
 # 乱数の 64 bit の上位 1 bit を落とした値を作り、id_to_text がそれを 34 文字 (a〜y と 0〜8) の基数で上位の桁から
 # 書くのと同じ手順で作る。リポジトリ内の既存の識別子 (uid://...) と重なったら作り直す。
+# 作った .uid を Godot がそのまま使うことは、CI の check-and-export の step
+# 「Check that Godot keeps the .uid made by make uid」が確かめる。
 #
 # exit code: 0 = 作れた (作るものが無かった時を含む) / 0 以外 = git の失敗か、書き込みに失敗した
 set -u -o pipefail
@@ -25,27 +27,27 @@ random_id() {
 id_to_text() {
   local id=$1 text=""
   while :; do
-    text="${uid_characters[id % 34]}$text"
-    id=$(( id / 34 ))
+    text="${uid_characters[id % ${#uid_characters[@]}]}$text"
+    id=$(( id / ${#uid_characters[@]} ))
     [ "$id" -eq 0 ] && break
   done
   printf 'uid://%s\n' "$text"
 }
 
-missing=$(bash "$(dirname "$0")/list-missing-uid.sh") || exit $?
-[ -n "$missing" ] || exit 0
+missing_uid_paths=$(bash "$(dirname "$0")/list-missing-uid.sh") || exit $?
+[ -n "$missing_uid_paths" ] || exit 0
 
 # 重なりを調べる既存の識別子。.uid のほか、.tscn・.tres・.import・project.godot に書かれた uid://... も含む
-existing=$(git -c core.quotePath=false ls-files -z --cached --others --exclude-standard \
+existing_uid_texts=$(git -c core.quotePath=false ls-files -z --cached --others --exclude-standard \
   | xargs -0 grep -hoE 'uid://[a-y0-8]+' 2> /dev/null | sort -u)
 
 while IFS= read -r uid_path; do
   [ -e "$uid_path" ] && continue
   while :; do
     text=$(id_to_text "$(random_id)")
-    printf '%s\n' "$existing" | grep -qxF -- "$text" || break
+    printf '%s\n' "$existing_uid_texts" | grep -qxF -- "$text" || break
   done
   printf '%s\n' "$text" > "$uid_path" || exit 1
-  existing=$(printf '%s\n%s\n' "$existing" "$text")
+  existing_uid_texts=$(printf '%s\n%s\n' "$existing_uid_texts" "$text")
   printf '%s\n' "$uid_path"
-done <<< "$missing"
+done <<< "$missing_uid_paths"

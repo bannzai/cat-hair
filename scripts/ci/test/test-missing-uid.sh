@@ -101,4 +101,116 @@ else
   failed=1
 fi
 
+# git のリポジトリでない場所 ($not_a_repo) でスクリプトを実行し、exit code だけを出す (標準出力は $not_a_repo/out に残す)
+exit_code_outside_repo() {
+  (cd "$not_a_repo" && GIT_CONFIG_GLOBAL=/dev/null GIT_CEILING_DIRECTORIES="$(dirname "$not_a_repo")" "$@" > "$not_a_repo/out" 2> /dev/null)
+  echo "$?"
+}
+check "create: git のリポジトリでない場所では失敗する (list の失敗を伝える)" "$([ "$(exit_code_outside_repo bash "$create")" -ne 0 ] && echo nonzero)" "nonzero"
+check "create: git のリポジトリでない場所では何も作ったと出さない" "$(cat "$not_a_repo/out")" ""
+
+# 新しい一時リポジトリを作り直す (前のケースのファイルを持ち越さない)
+reset_work() {
+  chmod -R u+w "$work"
+  rm -rf "$work"
+  work=$(mktemp -d)
+  repo_git init -q
+}
+
+reset_work
+check "list: .gd が 1 つも無いリポジトリでは何も出さない" "$(run_in_work "$list")" ""
+printf 'extends Node\n' > "$work/deleted.gd"
+repo_git add deleted.gd
+repo_git commit -q -m deleted
+rm "$work/deleted.gd"
+check "list: 作業ツリーから消したが index に残る .gd は対象外" "$(run_in_work "$list")" ""
+
+# 乱数を固定する: PATH の先頭に偽の od を置き、$fake_od_values の行を呼ばれるたびに 1 行ずつ出す
+fake_bin=$(mktemp -d)
+trap 'chmod -R u+w "$work"; rm -rf "$work" "$not_a_repo" "$fake_bin"' EXIT
+cat > "$fake_bin/od" << 'EOF'
+#!/usr/bin/env bash
+count=$(( $(cat "$FAKE_OD_STATE" 2> /dev/null || echo 0) + 1 ))
+echo "$count" > "$FAKE_OD_STATE"
+sed -n "${count}p" "$FAKE_OD_VALUES"
+EOF
+chmod +x "$fake_bin/od"
+# 偽の od に出させる値 (16 進の 8 byte。1 行が 1 回の呼び出し) を受け取り、create-missing-uid.sh を実行する
+run_create_with_random() {
+  printf '%s\n' "$@" > "$fake_bin/values"
+  rm -f "$fake_bin/state"
+  (cd "$work" && GIT_CONFIG_GLOBAL=/dev/null PATH="$fake_bin:$PATH" FAKE_OD_VALUES="$fake_bin/values" FAKE_OD_STATE="$fake_bin/state" bash "$create" > /dev/null)
+}
+
+# 期待する表記は Godot の id_to_text の値: 0 は 1 文字目の a、33 は 34 文字目の 8、34 は 2 桁の ba、
+# 63 bit の最大値は core/io/resource_uid.cpp のコメントの uid://d4n4ub6itg400、
+# 最後の値は Godot がこのリポジトリで作った uid://cupfev30faqwj の識別子に最上位の bit を立てたもの (落とされて同じ表記になる)
+reset_work
+for name in s1 s2 s3 s4 s5; do printf 'extends Node\n' > "$work/$name.gd"; done
+run_create_with_random 0000000000000000 0000000000000021 0000000000000022 7fffffffffffffff d626e052a7d77025
+check "create: 識別子を Godot の id_to_text と同じ表記にする" \
+  "$(cat "$work/s1.gd.uid" "$work/s2.gd.uid" "$work/s3.gd.uid" "$work/s4.gd.uid" "$work/s5.gd.uid")" \
+  "$(printf 'uid://a\nuid://8\nuid://ba\nuid://d4n4ub6itg400\nuid://cupfev30faqwj')"
+
+reset_work
+printf '[gd_scene format=3 uid="uid://ba"]\n' > "$work/main.tscn"
+printf 'extends Node\n' > "$work/x.gd"
+printf 'extends Node\n' > "$work/y.gd"
+# 1 回目は main.tscn の uid://ba と、3 回目は同じ実行で x に付けた uid://a と重なるため、どちらも作り直す
+run_create_with_random 0000000000000022 0000000000000000 0000000000000000 0000000000000021
+check "create: .tscn にある識別子と、同じ実行で作った識別子に重なったら作り直す" \
+  "$(cat "$work/x.gd.uid" "$work/y.gd.uid") $(cat "$fake_bin/state")" "$(printf 'uid://a\nuid://8') 4"
+
+reset_work
+mkdir "$work/readonly"
+printf 'extends Node\n' > "$work/readonly/z.gd"
+chmod 555 "$work/readonly"
+created=$(cd "$work" && GIT_CONFIG_GLOBAL=/dev/null bash "$create" 2> /dev/null)
+create_exit=$?
+check "create: .uid を書き込めない時は失敗する" "$([ "$create_exit" -ne 0 ] && echo nonzero)" "nonzero"
+check "create: 書き込めなかった .uid を作ったと出さない" "$created" ""
+chmod 755 "$work/readonly"
+
+# make check-generated: 一時リポジトリに Makefile と scripts/ci のスクリプトを写して実行する
+repo_root=$(cd "$ci_dir/../.." && pwd)
+# 一時リポジトリ (または $1 のディレクトリ) に Makefile と scripts/ci を写す
+copy_make_files() {
+  mkdir -p "$1/scripts/ci"
+  cp "$repo_root/Makefile" "$1/"
+  cp "$ci_dir/list-missing-uid.sh" "$ci_dir/list-uncommitted-generated.sh" "$ci_dir/create-missing-uid.sh" "$1/scripts/ci/"
+}
+# 一時リポジトリで make check-generated を実行し、標準出力と exit code を 1 つの文字列で出す (標準エラーは $work.err)
+run_check_generated() {
+  local out code
+  out=$(cd "$work" && GIT_CONFIG_GLOBAL=/dev/null make --no-print-directory check-generated 2> "$work.err")
+  code=$?
+  printf '%s exit=%s' "$out" "$([ "$code" -eq 0 ] && echo 0 || echo nonzero)"
+}
+
+reset_work
+copy_make_files "$work"
+mkdir -p "$work/scripts"
+printf 'extends Node\n' > "$work/scripts/k.gd"
+printf 'uid://keep\n' > "$work/scripts/k.gd.uid"
+repo_git add -A
+repo_git commit -q -m init
+check "check-generated: 欠けが無ければ check-generated OK で成功する" "$(run_check_generated)" "check-generated OK exit=0"
+
+printf 'extends Node\n' > "$work/scripts/new.gd"
+check "check-generated: .gd の .uid が無ければそのパスを出して失敗する" "$(run_check_generated)" "scripts/new.gd.uid exit=nonzero"
+
+printf 'uid://made\n' > "$work/scripts/new.gd.uid"
+check "check-generated: 2 つの検査が同じ .uid を出しても 1 行にまとめる" "$(run_check_generated)" "scripts/new.gd.uid exit=nonzero"
+check "check-generated: 件数を標準エラーに出す" "$(grep -c 'が 1 件あります' "$work.err")" "1"
+rm "$work/scripts/new.gd" "$work/scripts/new.gd.uid" "$work.err"
+
+printf 'dummy' > "$work/scripts/a.png.import"
+check "check-generated: 未 commit の .import だけでも失敗する" "$(run_check_generated)" "scripts/a.png.import exit=nonzero"
+rm "$work/scripts/a.png.import"
+
+copy_make_files "$not_a_repo"
+check "check-generated: git のリポジトリでない場所では成功と出さずに失敗する" \
+  "$(exit_code_outside_repo make --no-print-directory check-generated | sed 's/^0$/0/;s/^[1-9][0-9]*$/nonzero/') $(cat "$not_a_repo/out")" "nonzero "
+rm -f "$work.err"
+
 exit "$failed"
