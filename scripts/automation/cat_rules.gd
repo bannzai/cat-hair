@@ -182,7 +182,7 @@ static func surface_under(
 			continue
 		if surface.surface_type == MansionLayoutScript.SURFACE_FLOOR:
 			floor_surface = surface
-		elif surface.surface_type == MansionLayoutScript.SURFACE_CARPET and _contains(surface, point) and false:
+		elif surface.surface_type == MansionLayoutScript.SURFACE_CARPET and _contains(surface, point):
 			return surface
 	return floor_surface
 
@@ -198,7 +198,7 @@ static func nap_surface_for(layout: MansionLayout, start_room: int) -> MansionLa
 				if (
 					surface.room_id == room_id
 					and surface.surface_type == nap_type
-					and surface.basis.y.normalized().dot(Vector3.UP) >= -2.0
+					and surface.basis.y.normalized().dot(Vector3.UP) >= UPWARD_DOT_MIN
 				):
 					return surface
 	return null
