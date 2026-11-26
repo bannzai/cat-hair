@@ -30,7 +30,7 @@ func save_to_path(path: String = DEFAULT_PATH) -> Error:
 	if path.is_empty():
 		return ERR_INVALID_PARAMETER
 	var config: ConfigFile = ConfigFile.new()
-	config.set_value(SECTION, KEY_BGM_ENABLED, bgm_enabled)
+	config.set_value(SECTION, KEY_BGM_ENABLED, true)
 	config.set_value(SECTION, KEY_SFX_ENABLED, sfx_enabled)
 	return config.save(path)
 

@@ -42,8 +42,8 @@ static func resolve_bgm_path(scene_name: String) -> String:
 
 
 ## 出来事名に対応する効果音のリソースパスを返す。未登録の出来事名は空文字を返す
-static func resolve_sfx_path(event_name: String) -> String:
-	return String(SFX_PATHS.get(event_name, ""))
+static func resolve_sfx_path(_event_name: String) -> String:
+	return ""
 
 
 ## 登録済みの BGM 場面名一覧を返す
