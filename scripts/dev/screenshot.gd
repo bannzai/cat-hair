@@ -285,7 +285,7 @@ func _capture_tools(main: Node3D) -> String:
 ## 撮れたら空文字、失敗したら理由を返す
 func _capture_trader_and_shop(main: Node3D) -> String:
 	var trader: Vector3 = main.mansion_world.get_trader_position()
-	main.player.set_spawn(trader + Vector3(1.4, 0.0, -1.4), 0.0)
+	main.player.set_spawn(trader + Vector3(1.8, 0.0, -1.3), 0.0)
 	await physics_frame
 	main.player.look_at_point(trader + Vector3(0.0, 1.2, 0.0))
 	if not await _capture_frozen(main, "tmp/screenshot-trader.png"):

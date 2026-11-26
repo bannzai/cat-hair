@@ -18,6 +18,8 @@ const SCREEN_MARGIN_PX: float = 18.0
 const TOOL_SLOT_SIZE_PX: Vector2 = Vector2(112.0, 44.0)
 ## ラベル 1 行の高さ (px)。20 px の文字の行の高さに上下の余白を足し、所持金と案内の両方で使う
 const LABEL_LINE_HEIGHT_PX: float = 30.0
+## 道具の枠に 16 px の字で 1 行に収まる文字数 (枠の幅 112 px から左右の余白を引いた幅)
+const TOOL_SLOT_ONE_LINE_CHARS: int = 7
 ## 道具の枠どうしの間隔 (px)。枠の線 (1〜2 px) が隣の枠の線と重ならず、4 つの枠が 1 つの並びに見える狭さ
 const TOOL_SLOT_GAP_PX: int = 6
 ## 文字の色。写実寄りの部屋の上で白く浮きすぎない、わずかに暖かい白
@@ -141,6 +143,11 @@ func _make_tool_slot(tool_index: int, slot_text: String, selected: bool) -> Pane
 	var label: Label = _make_label("ToolName", 16, HORIZONTAL_ALIGNMENT_CENTER)
 	label.text = slot_text
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	# 枠の幅に 1 行で収まらない名前 (「4 ゴム手袋とスポンジ」など) は、字を小さくして枠の中で 2 行に折り返す
+	if slot_text.length() > TOOL_SLOT_ONE_LINE_CHARS:
+		label.add_theme_font_size_override("font_size", 13)
+		label.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+		label.add_theme_constant_override("line_spacing", -3)
 	slot.add_child(label)
 	return slot
 

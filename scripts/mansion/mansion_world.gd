@@ -177,7 +177,8 @@ func _build_trader(layout: MansionLayout) -> void:
 	sign_label.text = "買取業者 (裏口)"
 	sign_label.font = SIGN_FONT
 	sign_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	sign_label.pixel_size = 0.004
+	# 札の幅 (約 1.1 m) の半分が西の壁までの距離に収まる大きさにし、字が壁にめり込まないようにする
+	sign_label.pixel_size = 0.0025
 	sign_label.font_size = 48
 	sign_label.outline_size = 12
 	sign_label.position = Vector3(0.0, TRADER_BODY_HEIGHT_M + 0.25, 0.0)

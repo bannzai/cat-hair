@@ -557,6 +557,15 @@ func _check_tool_shop_panel() -> void:
 		and not panel.get_sell_button().disabled,
 		"買った道具はレベルを上げるボタンになり、紙の買い足しが出て、買取業者の近くで在庫があれば売れる",
 	)
+	state.save_data.building_progress.money = 100
+	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_BRUSH)
+	panel.refresh(state, true)
+	_check(
+		panel.get_tool_button(ToolCatalogScript.TOOL_BRUSH).text == "持っている"
+		and panel.get_tool_button(ToolCatalogScript.TOOL_BRUSH).disabled,
+		"レベルの無い道具 (ブラシ) は買った後「持っている」と出て押せない (実際: %s)"
+		% panel.get_tool_button(ToolCatalogScript.TOOL_BRUSH).text,
+	)
 	var roller_text: String = ToolShopPanelScript.describe_tool(roller, state.find_owned_tool(roller))
 	var vacuum_text: String = ToolShopPanelScript.describe_tool(ToolCatalogScript.TOOL_VACUUM, null)
 	_check(

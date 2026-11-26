@@ -89,7 +89,12 @@ func refresh(game_state: Node, near_trader: bool) -> void:
 			button.disabled = not ToolRulesScript.can_afford(money, int(tool_def["price"]))
 		else:
 			var price: int = ToolRulesScript.level_up_price(tool_id, owned.level)
-			button.text = "レベルを上げる (%d 円)" % price if price >= 0 else "レベル上限"
+			if price >= 0:
+				button.text = "レベルを上げる (%d 円)" % price
+			elif tool_def["kind"] == ToolCatalogScript.KIND_SWEEP:
+				button.text = "レベル上限"
+			else:
+				button.text = "持っている"
 			button.disabled = not ToolRulesScript.can_afford(money, price)
 		if _refill_buttons.has(tool_id):
 			var refill: Button = _refill_buttons[tool_id]
