@@ -144,6 +144,8 @@ jobs:
         run: make screenshot GODOT="${{ steps.godot.outputs.godot }}"
       - name: Movie
         run: make movie GODOT="${{ steps.godot.outputs.godot }}"
+      - name: Movie of the cleaning robots
+        run: make movie-automation GODOT="${{ steps.godot.outputs.godot }}"
       - name: Hair benchmark
         run: make hairbench GODOT="${{ steps.godot.outputs.godot }}"
       - name: Upload screenshots and movie
@@ -156,6 +158,7 @@ jobs:
             tmp/hairbench-*.png
             tmp/hairbench.json
             tmp/movie.mp4
+            tmp/movie-automation.mp4
             tmp/*.log
           if-no-files-found: warn
           retention-days: 7

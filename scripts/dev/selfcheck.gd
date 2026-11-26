@@ -1,7 +1,8 @@
 extends "res://scripts/dev/headless_check.gd"
 ## 純粋なロジックとプロジェクト設定の検証 (headless)。ゲームのルールの計算を足したら、ここに検証を足す。
 ## 屋敷・セーブ・調整値の検証は scripts/dev/selfcheck_mansion.gd、手で毛を取るルールと毛の照会の検証は
-## scripts/dev/selfcheck_hand.gd、道具・お金・機嫌と掃除代の検証は scripts/dev/selfcheck_tools.gd に分割して実行する。
+## scripts/dev/selfcheck_hand.gd、道具・お金・機嫌と掃除代の検証は scripts/dev/selfcheck_tools.gd、猫と掃除ロボットの検証は
+## scripts/dev/selfcheck_automation.gd に分割して実行する。
 ## 実行方法は AGENTS.md「検証方法」を参照。
 
 ## プロジェクト設定のメインシーンに入っているべきパス
@@ -36,6 +37,8 @@ const SelfcheckLook := preload("res://scripts/dev/selfcheck_look.gd")
 const SelfcheckHand := preload("res://scripts/dev/selfcheck_hand.gd")
 ## 道具・お金・機嫌と掃除代・道具を買う画面の検証スイート
 const SelfcheckTools := preload("res://scripts/dev/selfcheck_tools.gd")
+## 猫と掃除ロボットの検証スイート
+const SelfcheckAutomation := preload("res://scripts/dev/selfcheck_automation.gd")
 
 
 ## 検証をすべて実行して終える
@@ -58,6 +61,7 @@ func _initialize() -> void:
 	SelfcheckLook.run_all(self)
 	SelfcheckHand.run_all(self)
 	SelfcheckTools.run_all(self)
+	SelfcheckAutomation.run_all(self)
 	_finish()
 
 

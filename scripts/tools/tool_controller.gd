@@ -18,6 +18,8 @@ const ToolRulesScript := preload("res://scripts/tools/tool_rules.gd")
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## AudioManager の型解決と実行時取得用スクリプト参照
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
+## 猫の通り道・ブラッシングの計算 (狙った猫を決める)
+const CatRulesScript := preload("res://scripts/automation/cat_rules.gd")
 
 ## 道具を選ぶキー (表の順。1 = 手 〜 8 = ブラシ)
 const SELECT_KEYS: Array[Key] = [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8]
@@ -45,6 +47,10 @@ var _game_state: Node = null
 var _world: MansionWorld = null
 ## 狙いの照会に使う手 (画面中央の光線と遮りの判定を共有する)
 var _hand: HandController = null
+## ブラシで狙う猫の位置を照会する、猫と掃除ロボットを描くノード (set_automation で受け取る)
+var _automation: AutomationController = null
+## 画面中央の光線を出すカメラ
+var _camera: Camera3D = null
 ## 選んでいる道具
 var _selected_tool_id: StringName = ToolCatalogScript.TOOL_HAND
 ## 取りこぼしの抽選に使う乱数
@@ -66,6 +72,7 @@ func setup(game_state: Node, world: MansionWorld, hand: HandController, camera: 
 	_game_state = game_state
 	_world = world
 	_hand = hand
+	_camera = camera
 	if _glow_light == null:
 		_glow_light = SpotLight3D.new()
 		_glow_light.name = "GlowLight"
@@ -193,7 +200,7 @@ func use_selected_tool() -> Dictionary:
 					"毛を光らせるライトを点けた" if _glow_light.visible else "毛を光らせるライトを消した"
 				)
 			ToolCatalogScript.KIND_CAT:
-				result.merge(brush_cat(null), true)
+				result.merge(brush_cat(aimed_cat_id()), true)
 			_:
 				result["message"] = "手はつまむ操作で使う"
 	_last_message = str(result["message"])
@@ -201,11 +208,48 @@ func use_selected_tool() -> Dictionary:
 	return result
 
 
-## ブラシで猫をブラッシングする入口 (猫に使う所は issue #11 で繋ぐ)。cat が null の時は何も変えずに使えなかった結果を返す
-func brush_cat(cat: Node3D) -> Dictionary:
-	if cat == null:
-		return {"used": false, "message": "ブラシをかける猫がいない"}
-	return {"used": false, "message": "猫のブラッシングはまだできない"}
+## ブラシで猫 cat_id をブラッシングし、落ちる前の毛を在庫に入れる。cat_id が空 (狙いの先に猫がいない) か、
+## 猫がブラッシングの後で休んでいる時は何も変えずに使えなかった結果を返す
+func brush_cat(cat_id: StringName) -> Dictionary:
+	if cat_id == &"":
+		return {"used": false, "message": "ブラシをかける猫がいない (猫に近づいて狙う)"}
+	var cat_name: String = _cat_name(cat_id)
+	var taken: int = _game_state.automation.brush_cat(cat_id)
+	if taken <= 0:
+		return {"used": false, "message": "%s はブラッシングの後で休んでいる" % cat_name}
+	_play_pluck_sfx()
+	return {
+		"used": true,
+		"removed": taken,
+		"message": "%s をブラッシングした: 落ちる前の毛 %d 本を在庫に入れた" % [cat_name, taken],
+	}
+
+
+## 猫と掃除ロボットを描くノードを受け取る (ブラシで狙う猫の位置を照会する)
+func set_automation(automation: AutomationController) -> void:
+	_automation = automation
+
+
+## 画面中央の光線の先、手の届く距離 (HandController.REACH_M) にいて、壁・家具に遮られない猫の id (いなければ空)
+func aimed_cat_id() -> StringName:
+	if _automation == null or _camera == null:
+		return &""
+	var centers: Dictionary = _automation.cat_centers()
+	var cat_id: StringName = CatRulesScript.cat_on_ray(
+		centers, _camera.global_position, -_camera.global_basis.z, HandController.REACH_M
+	)
+	# 壁・家具の向こうの猫にはブラシが届かない (手で毛を狙う時と同じ遮りの判定)
+	if cat_id != &"" and _hand != null and _hand.is_view_blocked(centers[cat_id]):
+		return &""
+	return cat_id
+
+
+## 猫の表示名 (通り道の名前)
+func _cat_name(cat_id: StringName) -> String:
+	for route: Dictionary in _game_state.automation.get_cat_routes():
+		if route["cat_id"] == cat_id:
+			return str(route["name"])
+	return String(cat_id)
 
 
 ## 毛を取る道具を狙った点の周りにかけ、範囲内の毛を 1 本ずつ抽選して取りこぼし以外を取る
@@ -261,11 +305,16 @@ func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 		]
 	)
 	if removed > 0:
-		var audio_manager: AudioManagerScript = (
-			AudioManagerScript.resolve(get_tree()) as AudioManagerScript
-		)
-		if audio_manager != null:
-			audio_manager.play_sfx(AudioCatalog.SFX_PLUCK_HAIR)
+		_play_pluck_sfx()
+
+
+## 毛が取れた時の効果音を鳴らす
+func _play_pluck_sfx() -> void:
+	var audio_manager: AudioManagerScript = (
+		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
+	)
+	if audio_manager != null:
+		audio_manager.play_sfx(AudioCatalog.SFX_PLUCK_HAIR)
 
 
 ## 道具をかけた範囲に、表面に沿った半透明の円盤を出す (前の跡は消す)。取りこぼした毛は円盤の中に残って見える
