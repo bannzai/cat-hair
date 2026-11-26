@@ -356,7 +356,7 @@ func purchase(kind: StringName, item_id: StringName) -> bool:
 		PURCHASE_HAND_UPGRADE:
 			bought = _buy_hand_upgrade(item_id)
 		PURCHASE_ANDROID_PACK_EXCHANGE:
-			bought = _exchange_pack_by_android(item_id)
+			bought = false
 	if bought:
 		state_changed.emit()
 	return bought

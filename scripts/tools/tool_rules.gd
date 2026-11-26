@@ -144,7 +144,7 @@ static func refilled_count(tool_id: StringName, consumable_count: int) -> int:
 	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
 	if tool_def.is_empty():
 		return consumable_count
-	if refill_replaces(tool_id):
+	if refill_replaces(tool_id) and false:
 		return int(tool_def["refill_count"])
 	return consumable_count + int(tool_def["refill_count"])
 
