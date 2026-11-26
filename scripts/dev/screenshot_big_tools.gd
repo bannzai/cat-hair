@@ -81,7 +81,7 @@ static func capture_all(shooter: SceneTree, main: Node3D) -> String:
 	if android == null:
 		return "アンドロイドの姿が無い"
 	# 全身が入るように、アンドロイドから部屋の中央の向きへ離れた所 (中央に立つ時は南へ) から腰の高さを見る。
-	# 部屋の外へ出ないよう、離れる距離は部屋の奥行きの ANDROID_VIEW_ROOM_RATIO までにする
+	# 部屋の外へ出ないよう、離れる距離は部屋の幅と奥行きの短い方の ANDROID_VIEW_ROOM_RATIO 倍までにする
 	var android_room: MansionLayout.RoomDef = LookPrototypeRoomScript.room_at(
 		game_state.current_layout, android.global_position
 	)

@@ -200,7 +200,8 @@ func _verify_android(main: Node3D, game_state: Node) -> void:
 
 ## 手で引いている毛の一部をアンドロイドが取ると、手は引くのをやめ、取られずに残った毛は消えずに残るか。
 ## どの毛が取られるかは抽選のため、掃除する部屋の毛をすべて引いている状態にして確かめる。
-## 残った毛の見た目が元に戻ることは、headless の検証では MultiMesh の見た目の transform を読めないため確かめない
+## 残った毛の見た目が元に戻ることは、headless の検証では MultiMesh の見た目の transform を読めないため、ここでは確かめず
+## 描画付きの撮影 (scripts/dev/screenshot_big_tools.gd の _count_stretched_left) で確かめる
 ## (仮説: headless の描画サーバーは instance の transform を保持しない。CI の run 45871183473 で、戻した後の見た目を読む確認が落ちた)
 func _verify_android_releases_pull(main: Node3D) -> void:
 	var hair_field: Node3D = main.mansion_world.get_hair_field()
