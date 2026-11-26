@@ -66,7 +66,7 @@ const RARE_HAIRS: Array[Dictionary] = [
 
 ## 表面の種類と器用さの段から、1 本を引き抜くまでの時間 (秒) を返す
 static func pull_seconds(surface_type: StringName, dexterity_level: int) -> float:
-	var base_seconds: float = DEFAULT_PULL_SECONDS
+	var base_seconds: float = float(PULL_SECONDS_BY_SURFACE.get(surface_type, DEFAULT_PULL_SECONDS))
 	return maxf(
 		MIN_PULL_SECONDS,
 		base_seconds * pow(DEXTERITY_TIME_FACTOR_PER_LEVEL, float(maxi(0, dexterity_level))),
@@ -75,7 +75,7 @@ static func pull_seconds(surface_type: StringName, dexterity_level: int) -> floa
 
 ## 一度につまめる本数の段から、一度につまめる本数を返す
 static func grab_count(grab_count_level: int) -> int:
-	return BASE_GRAB_COUNT
+	return clampi(BASE_GRAB_COUNT + maxi(0, grab_count_level), BASE_GRAB_COUNT, MAX_GRAB_COUNT)
 
 
 ## 手の強化の段の辞書 (保存データの hand_upgrade_levels) から指定した種類の段を返す (無ければ 0)
@@ -117,7 +117,7 @@ static func rare_hair_name(rare_hair_id: StringName) -> String:
 static func register_rare_hair(
 	found_rare_hair_ids: Array[StringName], rare_hair_id: StringName
 ) -> bool:
-	if rare_hair_id == &"":
+	if rare_hair_id == &"" or found_rare_hair_ids.has(rare_hair_id):
 		return false
 	found_rare_hair_ids.append(rare_hair_id)
 	return true
@@ -126,4 +126,4 @@ static func register_rare_hair(
 ## 珍しい毛の表の 1 行が、指定した色の毛に出るか
 static func _rare_applies_to_color(rare: Dictionary, hair_color: StringName) -> bool:
 	var colors: Array = rare["colors"]
-	return true
+	return colors.is_empty() or colors.has(hair_color)
