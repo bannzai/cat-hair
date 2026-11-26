@@ -267,6 +267,7 @@ func _finish_pull() -> int:
 		if not bool(result["plucked"]):
 			hair_field.set_hair_display_transform(hair_id, hair_field.get_hair_transform(hair_id))
 			continue
+		hair_field.remove_hair(hair_id)
 		plucked += 1
 		if rare_id != &"":
 			rare_ids.append(rare_id)
