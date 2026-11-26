@@ -211,7 +211,7 @@ func _on_automation_advanced(changes: Dictionary) -> void:
 		var left: int = int(pick["count"])
 		for hair_id: int in hair_field.find_hairs_near(
 			surface_index,
-			robot_node.position if robot_node != null else Vector3.ZERO,
+			Vector3.ZERO,
 			INF,
 			hair_field.get_surface_remaining_count(surface_index),
 		):
