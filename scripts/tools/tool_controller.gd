@@ -311,21 +311,15 @@ func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 		target["surface_index"], target["point"], float(tool_def["radius_m"]),
 		hair_field.get_remaining_count()
 	)
-	var exchanged: bool = (
+	var has_touchable: bool = (
 		ToolRulesScript.touchable_count(hair_ids.size(), int(tool_def["max_hairs"])) > 0
+	)
+	var exchanged: bool = (
+		has_touchable
 		and _game_state.purchase(GameStateScript.PURCHASE_ANDROID_PACK_EXCHANGE, tool_id)
 	)
 	if not ToolRulesScript.can_use(tool_id, owned.consumable_count):
-		result["message"] = (
-			"%s の%sが一杯。アンドロイドが交換する %d 円が足りない" % [
-				tool_def["name"], tool_def["consumable_name"], int(tool_def["refill_price"])
-			]
-			if (
-				ToolRulesScript.refill_replaces(tool_id)
-				and _game_state.find_owned_tool(ToolCatalogScript.TOOL_ANDROID) != null
-			)
-			else ToolRulesScript.consumable_empty_message(tool_id)
-		)
+		result["message"] = _pack_not_exchanged_message(tool_def, has_touchable)
 		return
 	_use_sweep_tool_on_target(tool_def, owned, target, hair_ids, result)
 	if exchanged:
@@ -333,6 +327,25 @@ func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 		result["message"] = "アンドロイドが%sを交換した。%s" % [
 			tool_def["consumable_name"], result["message"]
 		]
+
+
+## 消耗品が尽きていて道具を使えない時の文言を返す。パックの道具で、アンドロイドを持っている時は交換しなかった理由
+## (範囲に取れる毛が無い・交換のお金が足りない) を出し、それ以外は ToolRules.consumable_empty_message の文言。
+## has_touchable は狙った範囲に取れる毛があったか (無い時はアンドロイドに交換させていない)
+func _pack_not_exchanged_message(tool_def: Dictionary, has_touchable: bool) -> String:
+	var tool_id: StringName = tool_def["id"]
+	if (
+		not ToolRulesScript.refill_replaces(tool_id)
+		or _game_state.find_owned_tool(ToolCatalogScript.TOOL_ANDROID) == null
+	):
+		return ToolRulesScript.consumable_empty_message(tool_id)
+	if not has_touchable:
+		return "%s の%sが一杯。範囲に取れる毛が無いので、アンドロイドは交換しなかった" % [
+			tool_def["name"], tool_def["consumable_name"]
+		]
+	return "%s の%sが一杯。アンドロイドが交換する %d 円が足りない" % [
+		tool_def["name"], tool_def["consumable_name"], int(tool_def["refill_price"])
+	]
 
 
 ## 毛を取る道具を狙った点 target (HandController.aim_target の戻り値。空でないこと) の周りの毛 hair_ids

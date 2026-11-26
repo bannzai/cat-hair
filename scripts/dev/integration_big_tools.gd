@@ -244,8 +244,10 @@ func _verify_android_exchanges_vacuum_pack(main: Node3D, game_state: Node) -> vo
 	var money_bare: int = game_state.get_money()
 	await _checker.press_and_release_use()
 	_check(
-		owned.consumable_count == 0 and game_state.get_money() == money_bare,
-		"パックが一杯の掃除機で毛の無い所を狙って使っても、アンドロイドは交換せずお金が減らない (%s)"
+		owned.consumable_count == 0 and game_state.get_money() == money_bare
+		and main.tool_message_label.text.contains("範囲に取れる毛が無い")
+		and not main.tool_message_label.text.contains("円が足りない"),
+		"パックが一杯の掃除機で毛の無い所を狙って使っても、アンドロイドは交換せずお金が減らず、お金ではなく毛が無いことを出す (%s)"
 		% main.tool_message_label.text,
 	)
 	await HandAimScript.aim_at_floor_hair(_checker, main)
