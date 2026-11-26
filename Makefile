@@ -33,7 +33,7 @@ LOG_ERROR_PATTERN := ^(SCRIPT |SHADER )?(ERROR|WARNING):
 # レンダラは Forward+ (ADR 0002)。CI の Linux では Xvfb + Mesa lavapipe (Vulkan) 上で実行する
 RENDERING_DRIVER ?= vulkan
 RENDERING_METHOD ?= forward_plus
-WINDOWED_FLAGS := --audio-driver Dummy --rendering-driver $(RENDERING_DRIVER) --rendering-method $(RENDERING_METHOD) --resolution 1280x720 --windowed --position 0,0
+WINDOWED_FLAGS := --audio-driver Dummy --rendering-driver $(RENDERING_DRIVER) --rendering-method $(RENDERING_METHOD) --resolution 1024x768 --windowed --position 0,0
 # 描画付き起動でだけ出る、描画に影響しない OS / ドライバ由来の行。ログの WARNING / ERROR 検査から除外する
 # (llvmpipe は V-Sync を設定できない WARNING を毎回 1 件出す。macOS は入力メソッドの mach port のエラーを稀に出す)
 WINDOWED_LOG_NOISE := -e 'Could not set V-Sync mode' -e 'IMKCFRunLoopWakeUpReliable'
