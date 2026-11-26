@@ -4,12 +4,20 @@ extends "res://scripts/dev/headless_check.gd"
 
 ## プロジェクト設定のメインシーンに入っているべきパス
 const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
+## 毛の描画の試作シーンのパス
+const HAIR_PROTOTYPE_SCENE_PATH: String = "res://scenes/hair_prototype.tscn"
 ## プロジェクト設定の名前に入っているべき値 (ゲームの題名)
 const PROJECT_NAME: String = "Oh My Fur!"
+## プロジェクト設定のレンダラ (ADR 0002 で Forward+ に決定)
+const RENDERING_METHOD: String = "forward_plus"
 ## プロジェクト設定の音声バスレイアウトのパス
 const BUS_LAYOUT_PATH: String = "res://default_bus_layout.tres"
 ## プロジェクト設定の AudioManager autoload の値
 const AUDIO_MANAGER_AUTOLOAD: String = "*res://scripts/audio/audio_manager.gd"
+## 毛の描画ノードのスクリプト
+const HairFieldScript := preload("res://scripts/hair_field.gd")
+## ベンチマークスクリプト (純粋関数の単体検証用)
+const HairbenchScript := preload("res://scripts/dev/hairbench.gd")
 ## 音声カタログ (純粋関数)
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## 音声設定の保存・読み込み・バス適用
@@ -22,6 +30,12 @@ const MovieScript := preload("res://scripts/dev/movie.gd")
 func _initialize() -> void:
 	_check_project_settings()
 	_check_main_scene_loads()
+	_check_hair_prototype_loads()
+	_check_hair_allocate_counts()
+	_check_hair_mesh_shape()
+	_check_hair_color_variety()
+	_check_hair_field_populate_and_remove()
+	_check_hairbench_helpers()
 	_check_audio_bus_layout()
 	_check_audio_catalog()
 	_check_audio_settings_persistence()
@@ -31,7 +45,7 @@ func _initialize() -> void:
 	_finish()
 
 
-## プロジェクト設定の名前・メインシーン・音声設定が想定どおりか
+## プロジェクト設定の名前・メインシーン・レンダラ・音声設定が想定どおりか
 func _check_project_settings() -> void:
 	var main_scene: String = ProjectSettings.get_setting("application/run/main_scene", "")
 	_check(
@@ -42,6 +56,14 @@ func _check_project_settings() -> void:
 	_check(
 		project_name == PROJECT_NAME,
 		"application/config/name が %s (実際: %s)" % [PROJECT_NAME, project_name]
+	)
+	var rendering_method: String = ProjectSettings.get_setting(
+		"rendering/renderer/rendering_method", ""
+	)
+	_check(
+		rendering_method == RENDERING_METHOD,
+		"rendering/renderer/rendering_method が %s (実際: %s)"
+		% [RENDERING_METHOD, rendering_method]
 	)
 	var bus_layout: String = ProjectSettings.get_setting("audio/buses/default_bus_layout", "")
 	_check(
@@ -61,6 +83,486 @@ func _check_main_scene_loads() -> void:
 		load(MAIN_SCENE_PATH) is PackedScene,
 		"%s が PackedScene としてロードできる" % MAIN_SCENE_PATH
 	)
+
+
+## 毛の試作シーンがロードでき、PackedScene が返るか
+func _check_hair_prototype_loads() -> void:
+	_check(
+		load(HAIR_PROTOTYPE_SCENE_PATH) is PackedScene,
+		"%s が PackedScene としてロードできる" % HAIR_PROTOTYPE_SCENE_PATH
+	)
+
+
+## 表面ごとの本数配分 (正常系・端数・境界値・非正重み混在・異常系)
+func _check_hair_allocate_counts() -> void:
+	var weights: PackedFloat32Array = PackedFloat32Array([0.82, 0.18])
+	var normal: PackedInt32Array = HairFieldScript.allocate_counts(1000, weights)
+	_check(
+		normal.size() == 2 and normal[0] == 820 and normal[1] == 180,
+		"1000 本を 0.82:0.18 で配分すると [820, 180] (実際: %s)" % [str(normal)]
+	)
+
+	var fractional_counts: PackedInt32Array = HairFieldScript.allocate_counts(7, weights)
+	_check(
+		fractional_counts.size() == 2
+		and fractional_counts[0] + fractional_counts[1] == 7
+		and fractional_counts[0] == 6
+		and fractional_counts[1] == 1,
+		"端数のある 7 本の合計が 7 で [6, 1] (実際: %s)" % [str(fractional_counts)]
+	)
+
+	var single_hair_counts: PackedInt32Array = HairFieldScript.allocate_counts(1, weights)
+	_check(
+		single_hair_counts.size() == 2
+		and single_hair_counts[0] == 1
+		and single_hair_counts[1] == 0,
+		"1 本の時は重みが大きい面に配分され合計 1 (実際: %s)" % [str(single_hair_counts)]
+	)
+
+	var zero: PackedInt32Array = HairFieldScript.allocate_counts(0, weights)
+	_check(
+		zero.size() == 2 and zero[0] == 0 and zero[1] == 0,
+		"0 本の時は [0, 0] (実際: %s)" % [str(zero)]
+	)
+
+	var negative: PackedInt32Array = HairFieldScript.allocate_counts(-10, weights)
+	_check(
+		negative.size() == 2 and negative[0] == 0 and negative[1] == 0,
+		"負の本数の時は [0, 0] (実際: %s)" % [str(negative)]
+	)
+
+	_check(
+		HairFieldScript.allocate_counts(100, PackedFloat32Array()).is_empty(),
+		"重み配列が空なら空配列を返す"
+	)
+
+	var zero_weights: PackedInt32Array = HairFieldScript.allocate_counts(
+		100, PackedFloat32Array([0.0, 0.0])
+	)
+	_check(
+		zero_weights.size() == 2 and zero_weights[0] == 0 and zero_weights[1] == 0,
+		"重み合計が 0 なら [0, 0]"
+	)
+
+	# 非正の重み (0 や負) と正の重みが混在しても端数が非正の面に配られないこと
+	var mixed_weights: PackedInt32Array = HairFieldScript.allocate_counts(
+		5, PackedFloat32Array([0.0, -2.0, 1.0, 1.0])
+	)
+	_check(
+		mixed_weights.size() == 4
+		and mixed_weights[0] == 0
+		and mixed_weights[1] == 0
+		and mixed_weights[2] + mixed_weights[3] == 5,
+		"非正の重み混在時に 0/負重みの面は 0 本で合計 5 (実際: %s)" % [str(mixed_weights)]
+	)
+
+
+## 1 本の毛メッシュが細い曲がった形状 (複数頂点・横と高さのカーブあり) であるか
+func _check_hair_mesh_shape() -> void:
+	var mesh: ArrayMesh = HairFieldScript.build_hair_mesh()
+	_check(mesh.get_surface_count() == 1, "毛メッシュに 1 サーフェスある")
+	var arrays: Array = mesh.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	_check(vertices.size() == 7, "毛メッシュの頂点数が 7 (実際: %d)" % vertices.size())
+	_check(indices.size() == 15, "毛メッシュのインデックス数が 15 = 5 三角形 (実際: %d)" % indices.size())
+	var max_x: float = 0.0
+	var max_y: float = 0.0
+	var max_z: float = 0.0
+	for vertex: Vector3 in vertices:
+		max_x = maxf(max_x, absf(vertex.x))
+		max_y = maxf(max_y, vertex.y)
+		max_z = maxf(max_z, vertex.z)
+	_check(
+		max_x > 0.005 and max_y > 0.003 and max_z > 0.03,
+		"毛メッシュが長さ・曲がり・浮きを持つ (x=%.4f y=%.4f z=%.4f)" % [max_x, max_y, max_z]
+	)
+	# 第 1〜第 3 断面の幅ベクトルが同じ向きを向き、根元でリボンがねじれないこと
+	var mid_width_vec: Vector3 = vertices[3] - vertices[2]
+	_check(
+		(vertices[1] - vertices[0]).dot(mid_width_vec) > 0.0
+		and mid_width_vec.dot(vertices[5] - vertices[4]) > 0.0,
+		"毛メッシュの隣接断面の幅方向が一貫しねじれが無い"
+	)
+	var mesh_aabb: AABB = HairFieldScript.compute_mesh_aabb(mesh)
+	_check(
+		mesh_aabb.size.z > 0.03
+		and HairFieldScript.compute_mesh_aabb(null) == AABB()
+		and HairFieldScript.compute_mesh_aabb(ArrayMesh.new()) == AABB(),
+		"compute_mesh_aabb が頂点配列から非空の AABB を計算し null と 0 サーフェスで空 AABB を返す"
+	)
+	_check(
+		HairFieldScript.compute_aabb_min_transformed_y(
+			Basis.from_euler(Vector3(0.14, 0.0, 0.0)), mesh_aabb
+		)
+		< 0.0,
+		"下向きピッチ 0.14 rad で compute_aabb_min_transformed_y が負の下界を返す"
+	)
+
+
+## 毛の色に白・黒・三毛の 3 系統が含まれるか
+func _check_hair_color_variety() -> void:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = 42
+	var counts: Dictionary = {
+		HairFieldScript.HairColorGroup.WHITE: 0,
+		HairFieldScript.HairColorGroup.BLACK: 0,
+		HairFieldScript.HairColorGroup.CALICO: 0,
+	}
+	for _i: int in range(300):
+		var group: int = HairFieldScript.classify_hair_color(HairFieldScript.pick_hair_color(rng))
+		counts[group] = int(counts[group]) + 1
+	_check(
+		int(counts[HairFieldScript.HairColorGroup.WHITE]) > 40
+		and int(counts[HairFieldScript.HairColorGroup.BLACK]) > 40
+		and int(counts[HairFieldScript.HairColorGroup.CALICO]) > 40,
+		"300 サンプルに白・黒・三毛が混在する (実際: %s)" % [str(counts)]
+	)
+
+
+## HairField の配置・再配置・公開照会・swap-remove (移動先スロット検証含む)・異常系
+func _check_hair_field_populate_and_remove() -> void:
+	# 表面未登録 + 正の本数の分岐
+	var empty_field: Node3D = HairFieldScript.new()
+	_check(empty_field.populate(10) == 0, "表面未登録で正の本数を渡しても配置数 0")
+	empty_field.free()
+
+	# 重みがすべて 0 の表面のみ登録された場合の actual_total <= 0 の分岐
+	var zero_weight_field: Node3D = HairFieldScript.new()
+	zero_weight_field.add_surface("floor", Vector3(-1.0, 0.0, -1.0), Vector3(1.0, 0.0, 1.0), 0.0)
+	_check(zero_weight_field.populate(10) == 0, "全表面の重みが 0 なら配置数 0")
+	zero_weight_field.free()
+
+	var field: Node3D = HairFieldScript.new()
+	field.add_surface("floor", Vector3(-1.0, 0.0, -1.0), Vector3(1.0, 0.0, 1.0), 0.7)
+	field.add_surface("sofa", Vector3(-0.5, 0.4, -0.5), Vector3(0.5, 0.4, 0.5), 0.3)
+
+	# 0 本の異常・境界系
+	_check(field.populate(0) == 0, "0 本指定では配置数 0")
+	_check(not field.remove_hair(0), "0 本の状態で remove_hair(0) は false")
+
+	# 10 本配置 (floor 7 本: ID 0..6, sofa 3 本: ID 7..9)
+	_check(field.populate(10, 12345) == 10 and field.get_remaining_count() == 10, "10 本配置できる")
+	# 配置した毛が Identity ではなく実座標と非透明色を持ち、全 7 頂点が表面高さ以上に収まること
+	var hair_vertices: PackedVector3Array = HairFieldScript.build_hair_mesh().surface_get_arrays(0)[
+		Mesh.ARRAY_VERTEX
+	]
+	var all_above_surface: bool = true
+	var all_opaque_color: bool = true
+	for hair_id: int in range(10):
+		var surface_y: float = 0.0 if hair_id < 7 else 0.4
+		var xform: Transform3D = field.get_hair_transform(hair_id)
+		if field.get_hair_color(hair_id).a < 0.99:
+			all_opaque_color = false
+		for vertex: Vector3 in hair_vertices:
+			if (xform * vertex).y < surface_y:
+				all_above_surface = false
+	_check(all_above_surface, "配置したすべての毛の全頂点が表面 Y 以上に収まる")
+	_check(all_opaque_color, "配置したすべての毛が非透明色を持つ (headless でも色保持)")
+	_check(
+		field.get_surface_remaining_count(0) == 7
+		and field.get_surface_remaining_count(1) == 3,
+		"表面ごとの残り本数が [7, 3]"
+	)
+	_check(
+		field.get_surface_visible_instance_count(0) == 7
+		and field.get_surface_visible_instance_count(1) == 3,
+		"表面ごとに MultiMesh の visible_instance_count が [7, 3]"
+	)
+
+	# 範囲外の表面番号と存在しない毛 ID の照会
+	_check(
+		field.get_surface_remaining_count(-1) == 0
+		and field.get_surface_remaining_count(2) == 0
+		and field.get_surface_visible_instance_count(-1) == 0
+		and field.get_surface_visible_instance_count(2) == 0,
+		"範囲外の表面番号 (-1 / 上限+1) に対する照会は 0"
+	)
+	_check(
+		field.get_hair_transform(-1) == Transform3D.IDENTITY
+		and field.get_hair_transform(99) == Transform3D.IDENTITY
+		and field.get_hair_color(-1) == HairFieldScript.INVALID_COLOR
+		and field.get_hair_color(99) == HairFieldScript.INVALID_COLOR
+		and field.get_hair_slot(-1) == HairFieldScript.INVALID_SLOT
+		and field.get_hair_slot(10) == HairFieldScript.INVALID_SLOT
+		and field.get_hair_id_at_slot(0, 6) == 6
+		and field.get_hair_id_at_slot(-1, 0) == HairFieldScript.INVALID_SLOT
+		and field.get_hair_id_at_slot(2, 0) == HairFieldScript.INVALID_SLOT
+		and field.get_hair_id_at_slot(0, -1) == HairFieldScript.INVALID_SLOT
+		and field.get_hair_id_at_slot(0, 7) == HairFieldScript.INVALID_SLOT,
+		"存在しない ID・スロットの照会が既定値 / INVALID_SLOT を返す"
+	)
+	# get_multimesh_slot_transform / color の範囲外 4 境界 (surface < 0 / >= 上限, slot < 0 / >= visible)
+	_check(
+		field.get_multimesh_slot_transform(-1, 0) == Transform3D.IDENTITY
+		and field.get_multimesh_slot_transform(2, 0) == Transform3D.IDENTITY
+		and field.get_multimesh_slot_transform(0, -1) == Transform3D.IDENTITY
+		and field.get_multimesh_slot_transform(0, 7) == Transform3D.IDENTITY
+		and field.get_multimesh_slot_color(-1, 0) == HairFieldScript.INVALID_COLOR
+		and field.get_multimesh_slot_color(2, 0) == HairFieldScript.INVALID_COLOR
+		and field.get_multimesh_slot_color(0, -1) == HairFieldScript.INVALID_COLOR
+		and field.get_multimesh_slot_color(0, 7) == HairFieldScript.INVALID_COLOR,
+		"get_multimesh_slot_transform / color の範囲外 4 境界が既定値を返す"
+	)
+
+	# swap される末尾の毛 (ID 6) と次末尾 (ID 5) の位置・色を控え、中間の ID 2 を削除する
+	var id6_xform_before: Transform3D = field.get_hair_transform(6)
+	var id6_color_before: Color = field.get_hair_color(6)
+	var id5_xform_before: Transform3D = field.get_hair_transform(5)
+	var id5_color_before: Color = field.get_hair_color(5)
+	_check(field.remove_hair(2), "中間の毛 ID 2 を 1 本削除できる")
+	_check(field.get_remaining_count() == 9, "1 本削除後に残り本数が 9")
+	_check(
+		not field.has_hair(2) and field.get_hair_slot(2) == HairFieldScript.INVALID_SLOT,
+		"削除した ID 2 は存在しない"
+	)
+	_check(
+		field.get_hair_transform(2) == Transform3D.IDENTITY
+		and field.get_hair_color(2) == HairFieldScript.INVALID_COLOR,
+		"削除済み ID 2 の Transform/Color 照会は Identity / INVALID_COLOR"
+	)
+	_check(
+		field.get_surface_remaining_count(0) == 6
+		and field.get_surface_remaining_count(1) == 3,
+		"削除した表面の残り本数だけが 1 減る"
+	)
+	_check(
+		field.get_surface_visible_instance_count(0) == 6
+		and field.get_surface_visible_instance_count(1) == 3,
+		"削除した表面の visible_instance_count だけが 1 減る"
+	)
+	# _id_to_slot[last_id] = slot の更新が壊れていれば ID 6 が旧スロット 6 (非可視範囲) のままになり落ちる
+	_check(
+		field.get_hair_slot(6) == 2
+		and field.get_hair_slot(6) < field.get_surface_visible_instance_count(0),
+		"末尾から移動した ID 6 のスロットが 2 (可視範囲内) に更新される"
+	)
+	_check(
+		field.has_hair(6)
+		and field.get_hair_transform(6).is_equal_approx(id6_xform_before)
+		and field.get_hair_color(6).is_equal_approx(id6_color_before),
+		"swap-remove 後も移動した毛 (ID 6) の Transform と色が保たれる"
+	)
+
+	# 移動した ID 6 を続けて削除しても ID 5 がスロット 2 に移り Transform/色が保たれること
+	_check(field.remove_hair(6), "移動後の ID 6 を続けて削除できる")
+	_check(
+		field.get_hair_slot(5) == 2
+		and field.get_hair_transform(5).is_equal_approx(id5_xform_before)
+		and field.get_hair_color(5).is_equal_approx(id5_color_before),
+		"ID 6 削除後に ID 5 がスロット 2 へ移り Transform と色が保たれる"
+	)
+
+	# 重複削除・範囲外 ID の異常系
+	_check(not field.remove_hair(2), "同じ ID の重複削除は false")
+	_check(not field.remove_hair(-1), "負の ID の削除は false")
+	_check(not field.remove_hair(10), "上限 + 1 (ID 10) の削除は false")
+	_check(field.get_remaining_count() == 8, "失敗した削除で本数が変わらない")
+
+	# 毛が残っている状態から再 populate して古い MultiMeshInstance3D が解放・置換されること
+	_check(
+		field.populate(4, 999) == 4
+		and field.get_remaining_count() == 4
+		and field.get_child_count() == 2,
+		"再 populate で子ノードが増えず 2 表面・4 本に置き換わる"
+	)
+
+	# 残り全本数を削除して 0 本にする境界確認
+	var removed_rest: int = 0
+	for hair_id: int in range(4):
+		if field.remove_hair(hair_id):
+			removed_rest += 1
+	_check(removed_rest == 4 and field.get_remaining_count() == 0, "残り 4 本を全削除して 0 本")
+	_check(
+		field.get_surface_visible_instance_count(0) == 0
+		and field.get_surface_visible_instance_count(1) == 0,
+		"全削除後に両表面の visible_instance_count が 0"
+	)
+	_check(not field.remove_hair(0), "全削除後の再削除は false")
+
+	field.free()
+
+
+## hairbench.gd の純粋関数 (入力解析・輝度判定・成否判定・JSON 書出) の正常系・異常系・境界値
+func _check_hairbench_helpers() -> void:
+	# parse_counts: 空文字・空白・無効のみ・0/負数・混在・正常
+	_check(
+		HairbenchScript.parse_counts("") == HairbenchScript.DEFAULT_COUNTS,
+		"parse_counts 空文字は既定の本数配列を返す"
+	)
+	_check(
+		HairbenchScript.parse_counts("   ") == HairbenchScript.DEFAULT_COUNTS,
+		"parse_counts 空白のみは既定の本数配列を返す"
+	)
+	_check(
+		HairbenchScript.parse_counts("abc,0,-5, ") == HairbenchScript.DEFAULT_COUNTS,
+		"parse_counts 全トークン無効 (非数値/0/負数) は既定値に戻る"
+	)
+	var mixed_counts: Array[int] = HairbenchScript.parse_counts(" 500, bad, 0, -1, 2500 ")
+	_check(
+		mixed_counts == [500, 2500],
+		"parse_counts 有効・無効混在時は正の整数のみ抽出する (実際: %s)" % [str(mixed_counts)]
+	)
+
+	# env_or_default
+	_check(
+		HairbenchScript.env_or_default("", "fallback") == "fallback"
+		and HairbenchScript.env_or_default("   ", "fallback") == "fallback"
+		and HairbenchScript.env_or_default(" value ", "fallback") == "value",
+		"env_or_default が空・空白で fallback、値ありでトリム済みを返す"
+	)
+
+	# sample_luminance: 真っ黒・真っ白・単色・明暗あり・空画像
+	var black_img: Image = Image.create(64, 36, false, Image.FORMAT_RGB8)
+	black_img.fill(Color(0.0, 0.0, 0.0))
+	_check(
+		not bool(HairbenchScript.sample_luminance(black_img)["not_blank"]),
+		"sample_luminance は真っ黒画像を not_blank=false と判定する"
+	)
+
+	var white_img: Image = Image.create(64, 36, false, Image.FORMAT_RGB8)
+	white_img.fill(Color(1.0, 1.0, 1.0))
+	_check(
+		not bool(HairbenchScript.sample_luminance(white_img)["not_blank"]),
+		"sample_luminance は真っ白画像を not_blank=false と判定する"
+	)
+
+	var flat_img: Image = Image.create(64, 36, false, Image.FORMAT_RGB8)
+	flat_img.fill(Color(0.5, 0.5, 0.5))
+	_check(
+		not bool(HairbenchScript.sample_luminance(flat_img)["not_blank"]),
+		"sample_luminance は単色中間グレー画像をコントラスト不足で not_blank=false と判定する"
+	)
+
+	# コントラストはあるのに平均輝度だけが下限 0.02 以下の画像 (576 サンプル中 1 点だけ白: mean ≈ 0.0017)
+	var mostly_black_img: Image = Image.create(64, 36, false, Image.FORMAT_RGB8)
+	mostly_black_img.fill(Color(0.0, 0.0, 0.0))
+	mostly_black_img.fill_rect(Rect2i(0, 0, 2, 2), Color(1.0, 1.0, 1.0))
+	_check(
+		not bool(HairbenchScript.sample_luminance(mostly_black_img)["not_blank"]),
+		"sample_luminance はコントラスト有でも平均輝度 <= 0.02 で not_blank=false"
+	)
+
+	# コントラストはあるのに平均輝度だけが上限 0.98 以上の画像 (576 サンプル中 1 点だけ黒: mean ≈ 0.998)
+	var mostly_white_img: Image = Image.create(64, 36, false, Image.FORMAT_RGB8)
+	mostly_white_img.fill(Color(1.0, 1.0, 1.0))
+	mostly_white_img.fill_rect(Rect2i(0, 0, 2, 2), Color(0.0, 0.0, 0.0))
+	_check(
+		not bool(HairbenchScript.sample_luminance(mostly_white_img)["not_blank"]),
+		"sample_luminance はコントラスト有でも平均輝度 >= 0.98 で not_blank=false"
+	)
+
+	var varied_img: Image = Image.create(64, 36, false, Image.FORMAT_RGB8)
+	varied_img.fill(Color(0.2, 0.2, 0.2))
+	varied_img.fill_rect(Rect2i(32, 0, 32, 36), Color(0.8, 0.8, 0.8))
+	_check(
+		bool(HairbenchScript.sample_luminance(varied_img)["not_blank"]),
+		"sample_luminance は明暗差のある画像を not_blank=true と判定する"
+	)
+
+	_check(
+		not bool(HairbenchScript.sample_luminance(Image.new())["not_blank"])
+		and not bool(HairbenchScript.sample_luminance(null)["not_blank"]),
+		"sample_luminance は 0x0 画像と null を not_blank=false と判定する"
+	)
+
+	# select_measure_frame_target: 閾値ちょうど・直前・2 フレーム目以降
+	_check(
+		HairbenchScript.select_measure_frame_target(
+			0, HairbenchScript.SLOW_FRAME_THRESHOLD_MS, HairbenchScript.MEASURE_FRAMES_MAX
+		)
+		== HairbenchScript.MEASURE_FRAMES_SLOW,
+		"初回フレームが閾値ちょうどで計測フレーム数を MEASURE_FRAMES_SLOW に減らす"
+	)
+	_check(
+		HairbenchScript.select_measure_frame_target(
+			0, HairbenchScript.SLOW_FRAME_THRESHOLD_MS - 0.01, HairbenchScript.MEASURE_FRAMES_MAX
+		)
+		== HairbenchScript.MEASURE_FRAMES_MAX,
+		"初回フレームが閾値未満なら計測フレーム数を維持する"
+	)
+	_check(
+		HairbenchScript.select_measure_frame_target(
+			1, HairbenchScript.SLOW_FRAME_THRESHOLD_MS + 500.0, HairbenchScript.MEASURE_FRAMES_MAX
+		)
+		== HairbenchScript.MEASURE_FRAMES_MAX,
+		"2 フレーム目以降が遅くても計測フレーム数は減らさない"
+	)
+
+	# evaluate_single_remove: 4 条件それぞれの単一偽
+	_check(
+		HairbenchScript.evaluate_single_remove(true, 10, 9, false, true),
+		"evaluate_single_remove は全条件成立で true"
+	)
+	_check(
+		not HairbenchScript.evaluate_single_remove(false, 10, 9, false, true),
+		"evaluate_single_remove は removed=false で false"
+	)
+	_check(
+		not HairbenchScript.evaluate_single_remove(true, 10, 10, false, true),
+		"evaluate_single_remove は本数が減っていなければ false"
+	)
+	_check(
+		not HairbenchScript.evaluate_single_remove(true, 10, 9, true, true),
+		"evaluate_single_remove は対象 ID が残っていれば false"
+	)
+	_check(
+		not HairbenchScript.evaluate_single_remove(true, 10, 9, false, false),
+		"evaluate_single_remove は multimesh_synced=false で false"
+	)
+
+	# evaluate_rendered: 4 条件それぞれの単一偽
+	_check(
+		HairbenchScript.evaluate_rendered(100, 100, OK, true, true),
+		"evaluate_rendered は全条件成立で true"
+	)
+	_check(
+		not HairbenchScript.evaluate_rendered(99, 100, OK, true, true),
+		"evaluate_rendered は配置本数不一致で false"
+	)
+	_check(
+		not HairbenchScript.evaluate_rendered(100, 100, ERR_CANT_OPEN, true, true),
+		"evaluate_rendered は PNG 保存失敗で false"
+	)
+	_check(
+		not HairbenchScript.evaluate_rendered(100, 100, OK, false, true),
+		"evaluate_rendered は not_blank=false で false"
+	)
+	_check(
+		not HairbenchScript.evaluate_rendered(100, 100, OK, true, false),
+		"evaluate_rendered は single_remove_ok=false で false"
+	)
+
+	# should_abort_step: JSON 書き込み失敗と描画失敗それぞれの独立判定
+	_check(
+		not HairbenchScript.should_abort_step(true, true),
+		"should_abort_step は書き込み成功・描画成功なら続行 (false)"
+	)
+	_check(
+		HairbenchScript.should_abort_step(false, true),
+		"should_abort_step は描画成功でも JSON 書き込み失敗だけで打ち切る (true)"
+	)
+	_check(
+		HairbenchScript.should_abort_step(true, false),
+		"should_abort_step は書き込み成功でも描画失敗だけで打ち切る (true)"
+	)
+	_check(
+		HairbenchScript.should_abort_step(false, false),
+		"should_abort_step は両方失敗で打ち切る (true)"
+	)
+
+	# write_json: 空パス失敗と正常書き込み
+	_check(not HairbenchScript.write_json("", {"ok": true}), "write_json は空パスで false")
+	var temp_json_path: String = "tmp/selfcheck-hairbench-write-test.json"
+	_check(
+		HairbenchScript.write_json(temp_json_path, {"count": 42}),
+		"write_json は有効パスへ書き込める"
+	)
+	_check(
+		FileAccess.get_file_as_string(temp_json_path).contains("\"count\": 42"),
+		"write_json の出力に JSON の内容が含まれる"
+	)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path("res://" + temp_json_path))
 
 
 ## BGM と効果音のバスが別々に定義され、効果音が BGM より大きい音量設定になっているか

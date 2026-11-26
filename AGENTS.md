@@ -5,7 +5,7 @@
 ## 制約
 
 - C# (.NET 版 Godot) を導入しない。サーバー・計測 SDK を追加しない。Steamworks SDK (GodotSteam 等) は別 ADR で決めてから追加する (根拠: [ADR 0001](documents/adr/0001-godot-gdscript-steam-desktop-no-backend.md))
-- レンダラ (現在は GL Compatibility) は暫定で、毛の描画の試作の結果で決め直す。変える時は ADR を書き、CI の描画付きの job が新しいレンダラで動くことを同じ PR で確かめる (根拠: ADR 0001)
+- レンダラは Forward+ (`forward_plus` / Vulkan。根拠: [ADR 0002](documents/adr/0002-forward-plus-renderer-and-multimesh-hair.md))。変える時は別 ADR を書き、CI の描画付きの job が新しいレンダラで動くことを同じ PR で確かめる (根拠: ADR 0001・0002)
 
 ## 検証方法
 
@@ -15,7 +15,7 @@
 - 変更は push して PR を開き、CI の結果で成否を判断する。`gh pr checks <PR 番号> --watch` で完了を待ち、失敗したら `gh run view <run ID> --log-failed` と artifact `cat-hair-check-logs` の `tmp/*.log` を読む
 - 見た目の確認は artifact `cat-hair-screenshot-and-movie` を `gh run download <run ID> -n cat-hair-screenshot-and-movie -D tmp/artifact` で取得し、PNG と、mp4 の末尾のフレーム (`ffmpeg -sseof -1 -i tmp/artifact/movie.mp4 -frames:v 1 tmp/artifact/movie-last.png`) を目視してから完了報告する
 - 紹介ページと法務ドキュメント (`docs/`) を変えた時は、`.github/workflows/docs-screenshot.yml` が GitHub Pages と同じ Jekyll で組み立てて検査する。撮った artifact `cat-hair-docs-screenshot` (紹介ページの幅 1280 と 390、利用規約の先頭の PNG) を `gh run download` で取得して目視する
-- CI の描画は GPU の無いランナーのソフトウェア描画 (Mesa llvmpipe) で、fps は実機の性能を示さない。毛の本数のように性能で決まる値は、CI では「描けること」だけを確かめ、実機の fps は人が `make run` で確かめる項目として「ユーザー作業の一覧」issue に書く
+- CI の描画は GPU の無いランナーのソフトウェア描画 (Mesa lavapipe / llvmpipe) で、fps は実機の性能を示さない。毛の本数のように性能で決まる値は、CI では「描けること」だけを確かめ、実機の fps は人が `make run` で確かめる項目として「ユーザー作業の一覧」issue に書く
 
 各 target の内容と成功条件 (CI が実行する。`GODOT` 未指定時の既定は macOS の `/Applications/Godot.app/Contents/MacOS/Godot`、CI では Linux バイナリを渡す):
 
@@ -32,6 +32,7 @@
 | 人の操作なしで終わる検査・テスト・ビルドの一括実行 (test → build-all) | `make verify` | exit 0 |
 | スクリーンショット (代表画面。headless の検証では見た目の崩れを検出できない) | `make screenshot` | exit 0 かつ `tmp/screenshot.log` に `screenshot OK` が出力され、WARNING / ERROR 行がなく、`tmp/screenshot-*.png` が生成される |
 | 起動の録画 (操作なしの起動〜メインシーンの表示。起動直後の描画崩れ・真っ黒を検出する) | `make movie` | exit 0 かつ `tmp/movie.mp4` が生成され、末尾のフレームの輝度平均が基準以上 (ffmpeg が必要) |
+| 毛の描画ベンチマーク (1,000〜1,000,000 本の描画可否・1 フレームの描画時間・1 本削除・本数ごとの PNG) | `make hairbench` | exit 0 かつ `tmp/hairbench.log` に `hairbench OK` が出力され、WARNING / ERROR 行がなく、`tmp/hairbench.json` と `tmp/hairbench-*.png` が生成される |
 | ゲームをエディタなしで起動 (人が遊んで確かめる。アセットのインポートを含む)。引数なしの `make` の実行対象 | `make run` (= `make`) | ウィンドウが開きメインシーンが表示される |
 | デスクトップエクスポート | `make build-macos` / `make build-windows` / `make build-linux` / `make build-all` | exit 0 で `build/<platform>/` に成果物が生成され、`tmp/build-<platform>.godot.log` に WARNING / ERROR 行がない |
 
