@@ -73,16 +73,21 @@ static func capture_all(shooter: SceneTree, main: Node3D) -> String:
 		return "アンドロイドの姿が無い"
 	# 全身が入るように、アンドロイドから部屋の中央の向きへ離れた所 (中央に立つ時は南へ) から腰の高さを見る。
 	# 部屋の外へ出ないよう、離れる距離は部屋の奥行きの ANDROID_VIEW_ROOM_RATIO までにする
-	var room: MansionLayout.RoomDef = LookPrototypeRoomScript.room_at(
+	var android_room: MansionLayout.RoomDef = LookPrototypeRoomScript.room_at(
 		game_state.current_layout, android.global_position
 	)
 	var away: Vector3 = Vector3(
-		room.center.x - android.global_position.x, 0.0, room.center.z - android.global_position.z
+		android_room.center.x - android.global_position.x,
+		0.0,
+		android_room.center.z - android.global_position.z,
 	)
 	main.player.set_spawn(
 		android.global_position
 		+ (away.normalized() if away.length() > 0.1 else Vector3.BACK)
-		* minf(ANDROID_VIEW_DISTANCE_M, minf(room.size.x, room.size.z) * ANDROID_VIEW_ROOM_RATIO),
+		* minf(
+			ANDROID_VIEW_DISTANCE_M,
+			minf(android_room.size.x, android_room.size.z) * ANDROID_VIEW_ROOM_RATIO
+		),
 		0.0,
 	)
 	await shooter.physics_frame
