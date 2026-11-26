@@ -21,9 +21,10 @@ static func verify_look_prototype_room(checker: SceneTree, main: Node3D, game_st
 		"最初の部屋に立つと試作の環境 (家具の陰あり) が出る",
 	)
 	checker._check(
-		main.look_hud.get_money_text() == "所持金 1,280 円"
+		main.look_hud.get_money_text()
+		== "所持金 %s 円" % main.format_hair_count(game_state.get_money())
 		and main.look_hud.get_parent() == main.get_node("UILayer/UI/HUD"),
-		"HUD に見本の所持金が 3 桁区切りで出る (%s)" % main.look_hud.get_money_text(),
+		"HUD に GameState の所持金が 3 桁区切りで出る (%s)" % main.look_hud.get_money_text(),
 	)
 	# 試作の見た目を出している間に setup をもう一度呼んでも、試作の環境を部屋の外の環境として取り込まない
 	look_room.setup(player, environment_node)

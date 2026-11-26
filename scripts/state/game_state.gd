@@ -21,6 +21,22 @@ const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 const HairStockScript := preload("res://scripts/data/hair_stock.gd")
 ## 手で毛を取る時のルールの計算
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
+## 手に持って使う道具の定義
+const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
+## 手に持って使う道具のルールの計算
+const ToolRulesScript := preload("res://scripts/tools/tool_rules.gd")
+## 毛を売る・掃除代・機嫌の計算
+const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
+## 買った道具 1 つのデータ型スクリプト
+const OwnedToolScript := preload("res://scripts/data/owned_tool.gd")
+## お金で買う物の種類: 道具
+const PURCHASE_TOOL: StringName = &"tool"
+## お金で買う物の種類: 道具のレベルを 1 上げる
+const PURCHASE_LEVEL_UP: StringName = &"level_up"
+## お金で買う物の種類: 道具の消耗品の買い足し
+const PURCHASE_CONSUMABLE: StringName = &"consumable"
+## お金で買う物の種類: 手の強化を 1 段上げる
+const PURCHASE_HAND_UPGRADE: StringName = &"hand_upgrade"
 
 ## セーブデータの保存先パス (テスト時に差し替え可能)
 var save_path: String = SaveStorageScript.DEFAULT_SAVE_PATH
@@ -32,6 +48,9 @@ var current_layout: MansionLayout = null
 var loaded_from_save: bool = false
 ## コマンドライン引数で調整値を上書き起動したか (既存セーブの意図しない終了時上書きを防ぐ)
 var launched_with_cmdline_override: bool = false
+## 部屋ごとの最初の毛の本数 (room_id -> int。きれいさの分母)。屋敷を組み直した時に 1 回だけ求める。
+## 保存データには入れない (調整値とレイアウトから同じ値が求まるため)
+var _initial_room_hairs: Dictionary = {}
 
 
 ## autoload 起動時に保存ファイルとコマンドライン引数から初期状態を構築する
@@ -78,6 +97,7 @@ func initialize_from_storage(
 				loaded_save.tuning if loaded_save != null else MansionTuningScript.new(),
 			)
 		)
+	_recompute_initial_room_hairs()
 	mansion_rebuilt.emit(current_layout)
 	state_changed.emit()
 
@@ -90,6 +110,7 @@ func start_new_game(custom_tuning: MansionTuning = null) -> void:
 		custom_tuning.clamped() if custom_tuning != null else get_tuning().clamped()
 	)
 	save_current_state()
+	_recompute_initial_room_hairs()
 	mansion_rebuilt.emit(current_layout)
 	state_changed.emit()
 
@@ -113,6 +134,7 @@ func apply_tuning_and_rebuild(new_tuning: MansionTuning, persist: bool = true) -
 	if persist:
 		launched_with_cmdline_override = false
 		save_current_state()
+	_recompute_initial_room_hairs()
 	mansion_rebuilt.emit(current_layout)
 	state_changed.emit()
 
@@ -206,8 +228,220 @@ func get_found_rare_hair_ids() -> Array[StringName]:
 	return save_data.found_rare_hair_ids if save_data != null else empty_ids
 
 
-## 毛のままの在庫のうち、色と珍しい毛の種類が一致する 1 件に 1 本足す (無ければ作る)
-func _add_raw_stock(hair_color: StringName, rare_hair_id: StringName) -> void:
+## 持っている道具を 1 回かけ、指定面から色ごとの本数 (color -> int) だけまとめて減らして在庫 (毛のまま) に入れる。
+## 消耗品を使う道具は 1 つ使い、残りが 0 の時は何も変えずに -1 を返す (持っていない道具と、無い面も -1)。
+## 道具で取った毛は珍しい毛を見分けない (PROJECT.md「毛と表面」: 手でつまむ段階でしか見分けられない)。
+## その面に残っている本数より多くは減らさない。戻り値は減らした本数の合計で、変わった時だけ 1 回通知する
+func apply_tool_sweep(
+	tool_id: StringName, surface_id: StringName, counts_by_color: Dictionary
+) -> int:
+	var owned: OwnedTool = find_owned_tool(tool_id)
+	if owned == null or not ToolRulesScript.can_use(tool_id, owned.consumable_count):
+		return -1
+	var surface: SurfaceHair = save_data.building_progress.find_surface_hair(surface_id)
+	if surface == null:
+		return -1
+	var consumed: bool = ToolRulesScript.uses_consumable(tool_id)
+	if consumed:
+		owned.consumable_count -= 1
+	var removed_total: int = 0
+	for color_key: Variant in counts_by_color.keys():
+		var color_id: StringName = StringName(color_key)
+		var removed: int = mini(
+			maxi(0, int(counts_by_color[color_key])), surface.count_for_color(color_id)
+		)
+		if removed <= 0:
+			continue
+		surface.hair_counts[color_id] = surface.count_for_color(color_id) - removed
+		_add_raw_stock(color_id, &"", removed)
+		removed_total += removed
+	if consumed or removed_total > 0:
+		state_changed.emit()
+	return removed_total
+
+
+## 在庫の毛のままの物をすべて買取業者に売り、入ったお金 (円) を返す (売る物が無ければ 0 で何も変えない)
+func sell_raw_hairs() -> int:
+	if save_data == null or save_data.building_progress == null:
+		return 0
+	var progress: BuildingProgress = save_data.building_progress
+	var earned: int = EconomyRulesScript.raw_stock_value(progress.hair_stocks)
+	var kept: Array[HairStock] = []
+	var sold_any: bool = false
+	for stock: HairStock in progress.hair_stocks:
+		if stock != null and stock.form == HairStockScript.FORM_RAW:
+			sold_any = sold_any or stock.count > 0
+			continue
+		kept.append(stock)
+	if not sold_any:
+		return 0
+	progress.hair_stocks = kept
+	progress.money += earned
+	state_changed.emit()
+	return earned
+
+
+## 買った道具のうち tool_id の 1 件を返す (買っていなければ null。手は買わないので常に null)
+func find_owned_tool(tool_id: StringName) -> OwnedTool:
+	if save_data == null or save_data.building_progress == null:
+		return null
+	for owned: OwnedTool in save_data.building_progress.owned_tools:
+		if owned != null and owned.tool_id == tool_id:
+			return owned
+	return null
+
+
+## お金で買う。kind は PURCHASE_* で、item_id は道具の id (手の強化は HandRules.UPGRADE_* の id)。
+## 買えない時 (表に無い・既に持っている・持っていない道具のレベル上げ・上限・お金が足りない) は何も変えずに false
+func purchase(kind: StringName, item_id: StringName) -> bool:
+	if save_data == null or save_data.building_progress == null:
+		return false
+	var bought: bool = false
+	match kind:
+		PURCHASE_TOOL:
+			bought = _buy_tool(item_id)
+		PURCHASE_LEVEL_UP:
+			bought = _level_up_tool(item_id)
+		PURCHASE_CONSUMABLE:
+			bought = _buy_consumable(item_id)
+		PURCHASE_HAND_UPGRADE:
+			bought = _buy_hand_upgrade(item_id)
+	if bought:
+		state_changed.emit()
+	return bought
+
+
+## 道具を買う。手 (最初から持っている)・表に無い道具・既に持っている道具・お金が足りない時は買わずに false
+func _buy_tool(tool_id: StringName) -> bool:
+	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
+	if (
+		tool_def.is_empty()
+		or tool_id == ToolCatalogScript.TOOL_HAND
+		or find_owned_tool(tool_id) != null
+	):
+		return false
+	if not _spend(int(tool_def["price"])):
+		return false
+	var owned: OwnedTool = OwnedToolScript.new()
+	owned.tool_id = tool_id
+	owned.level = 1
+	owned.consumable_count = int(tool_def["initial_consumables"])
+	save_data.building_progress.owned_tools.append(owned)
+	return true
+
+
+## 持っている道具のレベルを 1 上げる。持っていない・上限・お金が足りない時は false
+func _level_up_tool(tool_id: StringName) -> bool:
+	var owned: OwnedTool = find_owned_tool(tool_id)
+	if owned == null:
+		return false
+	if not _spend(ToolRulesScript.level_up_price(tool_id, owned.level)):
+		return false
+	owned.level += 1
+	return true
+
+
+## 持っている道具の消耗品を買い足す。消耗品を使わない・持っていない・お金が足りない時は false
+func _buy_consumable(tool_id: StringName) -> bool:
+	var owned: OwnedTool = find_owned_tool(tool_id)
+	if owned == null or not ToolRulesScript.uses_consumable(tool_id):
+		return false
+	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
+	if not _spend(int(tool_def["refill_price"])):
+		return false
+	owned.consumable_count += int(tool_def["refill_count"])
+	return true
+
+
+## 手の強化を 1 段上げる。手の強化の種類でない id・上限・お金が足りない時は false
+func _buy_hand_upgrade(upgrade_id: StringName) -> bool:
+	if upgrade_id not in [HandRulesScript.UPGRADE_DEXTERITY, HandRulesScript.UPGRADE_GRAB_COUNT]:
+		return false
+	var level: int = get_hand_upgrade_level(upgrade_id)
+	if not _spend(ToolRulesScript.hand_upgrade_price(level)):
+		return false
+	save_data.hand_upgrade_levels[upgrade_id] = level + 1
+	return true
+
+
+## 部屋の今の様子を返す: {"hair_count": 残りの本数, "cleanliness": きれいさ (0〜1),
+## "mood": 住人の機嫌 (0〜1), "cleaning_fee": 住人が次に払う掃除代 (円)}
+func get_room_status(room_id: StringName) -> Dictionary:
+	var hair_count: int = 0
+	var mood: float = 0.0
+	if save_data != null and save_data.building_progress != null and current_layout != null:
+		for surface_def: MansionLayout.SurfaceDef in current_layout.surfaces:
+			if surface_def.room_id == room_id:
+				hair_count += get_surface_hair_count(surface_def.surface_id)
+		mood = float(
+			save_data.building_progress.resident_moods.get(
+				MansionBuilderScript.resident_id_for_room(room_id), 0.0
+			)
+		)
+	return {
+		"hair_count": hair_count,
+		"cleanliness": EconomyRulesScript.cleanliness(
+			hair_count, int(_initial_room_hairs.get(room_id, 0))
+		),
+		"mood": mood,
+		"cleaning_fee": EconomyRulesScript.cleaning_fee(mood),
+	}
+
+
+## 遊んだ時間を delta_seconds 秒進め、住人の機嫌を部屋のきれいさへ近づけ、払う時期が来た掃除代を所持金に足す。
+## 戻り値はこの呼び出しで入った掃除代 (円)。掃除代が入った時だけ通知する
+func advance_time(delta_seconds: float) -> int:
+	if save_data == null or save_data.building_progress == null or current_layout == null:
+		return 0
+	var progress: BuildingProgress = save_data.building_progress
+	var safe_delta: float = maxf(0.0, delta_seconds)
+	var before: float = progress.elapsed_seconds
+	progress.elapsed_seconds = before + safe_delta
+	for room: MansionLayout.RoomDef in current_layout.rooms:
+		var status: Dictionary = get_room_status(room.room_id)
+		progress.resident_moods[MansionBuilderScript.resident_id_for_room(room.room_id)] = (
+			EconomyRulesScript.next_mood(status["mood"], status["cleanliness"], safe_delta)
+		)
+	var payments: int = EconomyRulesScript.payments_due(before, progress.elapsed_seconds)
+	if payments <= 0:
+		return 0
+	var earned: int = 0
+	for room: MansionLayout.RoomDef in current_layout.rooms:
+		earned += int(get_room_status(room.room_id)["cleaning_fee"]) * payments
+	if earned > 0:
+		progress.money += earned
+		state_changed.emit()
+	return earned
+
+
+## 所持金から price を払う。値段が負 (買えない物) かお金が足りない時は払わずに false
+func _spend(price: int) -> bool:
+	if save_data == null or save_data.building_progress == null:
+		return false
+	if not ToolRulesScript.can_afford(save_data.building_progress.money, price):
+		return false
+	save_data.building_progress.money -= price
+	return true
+
+
+## 今の調整値とレイアウトから、部屋ごとの最初の毛の本数を求め直す (屋敷を組み直した時に呼ぶ)
+func _recompute_initial_room_hairs() -> void:
+	_initial_room_hairs.clear()
+	if current_layout == null:
+		return
+	var initial: BuildingProgress = MansionBuilderScript.build_initial_progress(
+		current_layout, get_tuning()
+	)
+	for surface_def: MansionLayout.SurfaceDef in current_layout.surfaces:
+		var surface: SurfaceHair = initial.find_surface_hair(surface_def.surface_id)
+		_initial_room_hairs[surface_def.room_id] = (
+			int(_initial_room_hairs.get(surface_def.room_id, 0))
+			+ (surface.total_count() if surface != null else 0)
+		)
+
+
+## 毛のままの在庫のうち、色と珍しい毛の種類が一致する 1 件に count 本足す (無ければ作る)
+func _add_raw_stock(hair_color: StringName, rare_hair_id: StringName, count: int = 1) -> void:
 	for stock: HairStock in save_data.building_progress.hair_stocks:
 		if (
 			stock != null
@@ -215,13 +449,13 @@ func _add_raw_stock(hair_color: StringName, rare_hair_id: StringName) -> void:
 			and stock.hair_color == hair_color
 			and stock.rare_hair_id == rare_hair_id
 		):
-			stock.count += 1
+			stock.count += count
 			return
 	var new_stock: HairStock = HairStockScript.new()
 	new_stock.hair_color = hair_color
 	new_stock.rare_hair_id = rare_hair_id
 	new_stock.form = HairStockScript.FORM_RAW
-	new_stock.count = 1
+	new_stock.count = count
 	save_data.building_progress.hair_stocks.append(new_stock)
 
 

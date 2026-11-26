@@ -33,6 +33,17 @@ const PLUCK_POPUP_SECONDS: float = 1.5
 const CROSSHAIR_LINE_SIZE: Vector2 = Vector2(16.0, 2.0)
 ## 照準の線の色
 const CROSSHAIR_COLOR: Color = Color(1.0, 1.0, 1.0, 0.85)
+## 手に持って使う道具の定義
+const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
+## 道具を買う画面を開閉するキー
+const TOGGLE_SHOP_KEY: Key = KEY_T
+## 買取業者に毛を売れる距離 (m。買取業者の足元からの水平距離)。手の届く距離 (HandController.REACH_M の 2.6 m) より
+## 少し短くし、手を伸ばせば品物を渡せる、向かい合って話している距離に見える範囲にする
+const TRADER_RANGE_M: float = 2.0
+## 道具を買う画面のスクリプト (道具の説明の文言を使う)
+const ToolShopPanelScript := preload("res://scripts/ui/tool_shop_panel.gd")
+## 毛を売る・掃除代の計算 (払う間隔の表示に使う)
+const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
 ## 見た目の試作 (issue #19) を屋敷の最初の部屋に重ねるノードのスクリプト
 const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room.gd")
 ## 見た目の試作の画面の表示 (所持金・道具の枠・案内) のスクリプト
@@ -53,6 +64,26 @@ var stock_label: Label = null
 var crosshair: Control = null
 ## 毛を抜いた時に出す「+N 本」の表示
 var pluck_popup_label: Label = null
+## 手以外の道具を選んで使う操作
+var tools: ToolController = null
+## 道具を買う画面
+var tool_shop_panel: ToolShopPanel = null
+## 選んでいる道具の様子 (レベル・得意な表面・消耗品の残り) の表示 (画面右下の道具の枠と所持金の上)
+var tool_detail_label: Label = null
+## 最後に道具を使った結果 (取りこぼしの割合) の表示
+var tool_message_label: Label = null
+## 今いる部屋のきれいさ・機嫌・掃除代の表示の親
+var room_gauge_panel: PanelContainer = null
+## 今いる部屋の名前の表示
+var room_name_label: Label = null
+## 今いる部屋のきれいさのゲージ (0〜100)
+var cleanliness_bar: ProgressBar = null
+## 今いる部屋の住人の機嫌のゲージ (0〜100)
+var mood_bar: ProgressBar = null
+## 今いる部屋の住人が次に払う掃除代の表示
+var cleaning_fee_label: Label = null
+## プレイ中に遊んだ時間を進めて機嫌と掃除代を動かすか (入力統合テストはお金を検証で決めた値に保つため false にする)
+var auto_advance_time: bool = true
 ## 参照中の GameState ノード (autoload または検証時のフォールバック)
 var _game_state: Node = null
 ## autoload 未起動時にこのシーンが自前生成した GameState (終了時に解放する)
@@ -112,7 +143,6 @@ func _ready() -> void:
 	look_room.setup(player, world_environment)
 	look_hud = LookPrototypeHudScript.new()
 	hud.add_child(look_hud)
-	look_hud.set_money_digits(format_hair_count(LookPrototypeHudScript.SAMPLE_MONEY_YEN))
 
 	_game_state = _resolve_game_state()
 	_build_hand_ui()
@@ -145,14 +175,23 @@ func _exit_tree() -> void:
 		_owned_game_state = null
 
 
-## プレイ中の F1 (開発者調整画面開閉)・B (図鑑開閉)・F5 (手動セーブ) を処理する
+## プレイ中の F1 (開発者調整画面開閉)・B (図鑑開閉)・T (道具を買う画面の開閉)・F5 (手動セーブ) を処理する。
+## 画面は 1 つずつしか開かない (開いている画面と別の画面のキーは何もしない)
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_dev_panel"):
-		if _is_playing and not hair_book_panel.visible:
+		if _is_playing and not hair_book_panel.visible and not tool_shop_panel.visible:
 			toggle_dev_panel()
 	elif event.is_action_pressed("toggle_hair_book"):
-		if _is_playing and not dev_tuning_panel.visible:
+		if _is_playing and not dev_tuning_panel.visible and not tool_shop_panel.visible:
 			toggle_hair_book()
+	elif (
+		event is InputEventKey
+		and (event as InputEventKey).pressed
+		and not (event as InputEventKey).echo
+		and (event as InputEventKey).physical_keycode == TOGGLE_SHOP_KEY
+	):
+		if _is_playing and not dev_tuning_panel.visible and not hair_book_panel.visible:
+			toggle_tool_shop()
 	elif event.is_action_pressed("save_game"):
 		if _is_playing and _game_state != null:
 			_game_state.save_current_state()
@@ -167,6 +206,7 @@ func enter_mansion() -> void:
 	hud.visible = true
 	dev_tuning_panel.visible = false
 	hair_book_panel.visible = false
+	tool_shop_panel.visible = false
 	_sync_controls()
 	look_room.set_playing(true)
 	_refresh_hud()
@@ -225,13 +265,61 @@ func close_hair_book() -> void:
 	_sync_controls()
 
 
+## 道具を買う画面の開閉を切り替える
+func toggle_tool_shop() -> void:
+	if tool_shop_panel.visible:
+		close_tool_shop()
+	else:
+		open_tool_shop()
+
+
+## 道具を買う画面を開く (開いている間は歩く・つまむ・道具を使う操作を止める)
+func open_tool_shop() -> void:
+	tool_shop_panel.refresh(_game_state, is_near_trader())
+	tool_shop_panel.visible = true
+	_sync_controls()
+	_release_mouse()
+
+
+## 道具を買う画面を閉じる
+func close_tool_shop() -> void:
+	tool_shop_panel.visible = false
+	_sync_controls()
+
+
+## プレイヤーが買取業者に毛を売れる距離にいるか
+func is_near_trader() -> bool:
+	var trader: Vector3 = mansion_world.get_trader_position()
+	return (
+		Vector2(player.global_position.x - trader.x, player.global_position.z - trader.z).length()
+		<= TRADER_RANGE_M
+	)
+
+
+## プレイヤーが今いる部屋を返す (どの部屋の床の上にもいなければ null)
+func get_current_room() -> MansionLayout.RoomDef:
+	if _game_state == null or _game_state.current_layout == null:
+		return null
+	for room: MansionLayout.RoomDef in _game_state.current_layout.rooms:
+		if LookPrototypeRoomScript.is_inside_room(room, player.global_position):
+			return room
+	return null
+
+
 ## 「+N 本」の表示の文言を返す (表示していない時は空。検証用)
 func get_pluck_popup_text() -> String:
 	return pluck_popup_label.text if pluck_popup_label.visible else ""
 
 
-## 「+N 本」の表示を残り時間に合わせて消す
+## プレイ中は遊んだ時間を進め (機嫌と掃除代)、今いる部屋のゲージを描き直し、「+N 本」の表示を残り時間に合わせて消す
 func _process(delta: float) -> void:
+	if _is_playing and _game_state != null:
+		if auto_advance_time:
+			var earned: int = _game_state.advance_time(delta)
+			if earned > 0:
+				_show_popup("掃除代 +%d 円" % earned)
+				_play_sfx(AudioCatalog.SFX_EARN_MONEY)
+		_refresh_room_gauge()
 	if _pluck_popup_remaining <= 0.0:
 		return
 	_pluck_popup_remaining -= delta
@@ -282,6 +370,7 @@ func _set_title_mode() -> void:
 	hud.visible = false
 	dev_tuning_panel.visible = false
 	hair_book_panel.visible = false
+	tool_shop_panel.visible = false
 	_sync_controls()
 	look_room.set_playing(false)
 
@@ -302,6 +391,7 @@ func _rebuild_world_from_state() -> void:
 		return
 	var layout: MansionLayout = _game_state.current_layout
 	hand.cancel_pull()
+	tools.reset_for_new_progress()
 	mansion_world.rebuild(layout, _game_state.save_data.building_progress)
 	look_room.apply(layout, mansion_world)
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
@@ -317,13 +407,65 @@ func _refresh_hud() -> void:
 	)
 	if stock_label != null:
 		stock_label.text = "在庫: %s 本" % format_hair_count(_game_state.get_raw_hair_stock_count())
+	if look_hud != null:
+		look_hud.set_money_digits(format_hair_count(_game_state.get_money()))
+	if look_hud != null and tools != null:
+		_refresh_tool_slots()
+	if tool_shop_panel != null and tool_shop_panel.visible:
+		tool_shop_panel.refresh(_game_state, is_near_trader())
 
 
-## プレイ中で、開発者画面と図鑑のどちらも開いていない時だけ、歩く操作とつまむ操作を受け付ける
+## 画面右下の道具の枠を、キーの番号と名前 (持っていない道具は「—」) の 8 つで描き直し、選んでいる道具の様子を枠の上に出す
+func _refresh_tool_slots() -> void:
+	var slot_texts: Array[String] = []
+	var selected_index: int = -1
+	for index: int in range(ToolCatalogScript.TOOLS.size()):
+		var tool_def: Dictionary = ToolCatalogScript.TOOLS[index]
+		var tool_id: StringName = tool_def["id"]
+		slot_texts.append(
+			"%d %s" % [index + 1, tool_def["name"]] if tools.owns_tool(tool_id) else "%d —" % (index + 1)
+		)
+		if tool_id == tools.get_selected_tool_id():
+			selected_index = index
+	look_hud.set_tools(slot_texts, selected_index)
+	tool_detail_label.text = (
+		ToolShopPanelScript.describe_tool(
+			tools.get_selected_tool_id(), _game_state.find_owned_tool(tools.get_selected_tool_id())
+		)
+		+ "   (T: 道具を買う)"
+	)
+
+
+## 今いる部屋の名前・きれいさ・機嫌のゲージと次の掃除代を描き直す (部屋の外では隠す)
+func _refresh_room_gauge() -> void:
+	if room_gauge_panel == null:
+		return
+	var room: MansionLayout.RoomDef = get_current_room()
+	room_gauge_panel.visible = room != null
+	if room == null:
+		return
+	var status: Dictionary = _game_state.get_room_status(room.room_id)
+	room_name_label.text = "%s の住人" % room.display_name
+	cleanliness_bar.value = 100.0 * float(status["cleanliness"])
+	mood_bar.value = 100.0 * float(status["mood"])
+	cleaning_fee_label.text = "掃除代: %d 円 / %d 秒ごと" % [
+		int(status["cleaning_fee"]),
+		int(EconomyRulesScript.PAYMENT_INTERVAL_SECONDS),
+	]
+
+
+## プレイ中で、開発者画面・図鑑・道具を買う画面のどれも開いていない時だけ、歩く操作・つまむ操作・道具を使う操作を受け付ける。
+## つまむ操作は手を選んでいる時だけ、道具を使う操作は手以外を選んでいる時だけ受け付ける
 func _sync_controls() -> void:
-	var active: bool = _is_playing and not dev_tuning_panel.visible and not hair_book_panel.visible
+	var active: bool = (
+		_is_playing
+		and not dev_tuning_panel.visible
+		and not hair_book_panel.visible
+		and not tool_shop_panel.visible
+	)
 	player.controls_enabled = active
-	hand.enabled = active
+	hand.enabled = active and tools.get_selected_tool_id() == ToolCatalogScript.TOOL_HAND
+	tools.enabled = active
 
 
 ## 画面の操作のためにマウスの捕捉を解く (headless ではマウスモードを変えない)
@@ -397,6 +539,104 @@ func _build_hand_ui() -> void:
 	hair_book_panel.offset_bottom = 170.0
 	ui_root.add_child(hair_book_panel)
 	hair_book_panel.close_requested.connect(close_hair_book)
+	_build_tool_ui()
+
+
+## 道具の操作・選んでいる道具の様子・道具の結果・部屋のゲージ・道具を買う画面を作る
+## (所持金と道具の枠は LookPrototypeHud が出す)
+func _build_tool_ui() -> void:
+	tools = ToolController.new()
+	tools.name = "Tools"
+	add_child(tools)
+	tools.setup(_game_state, mansion_world, hand, player.get_camera())
+	tools.tool_used.connect(_on_tool_used)
+	tools.tool_selected.connect(_on_tool_selected)
+
+	tool_message_label = Label.new()
+	tool_message_label.name = "ToolMessage"
+	tool_message_label.add_theme_font_size_override("font_size", 20)
+	tool_message_label.add_theme_color_override("font_outline_color", Color(0.1, 0.08, 0.05))
+	tool_message_label.add_theme_constant_override("outline_size", 6)
+	tool_message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tool_message_label.anchor_left = 0.5
+	tool_message_label.anchor_right = 0.5
+	tool_message_label.anchor_top = 0.5
+	tool_message_label.anchor_bottom = 0.5
+	tool_message_label.offset_left = -400.0
+	tool_message_label.offset_right = 400.0
+	tool_message_label.offset_top = 30.0
+	tool_message_label.offset_bottom = 70.0
+	tool_message_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(tool_message_label)
+
+	# 選んでいる道具の様子は、画面右下の道具の枠と所持金 (LookPrototypeHud) のさらに上に 1 行で出す
+	tool_detail_label = Label.new()
+	tool_detail_label.name = "ToolDetail"
+	tool_detail_label.add_theme_font_size_override("font_size", 15)
+	tool_detail_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.75))
+	tool_detail_label.add_theme_constant_override("shadow_offset_x", 1)
+	tool_detail_label.add_theme_constant_override("shadow_offset_y", 2)
+	tool_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	tool_detail_label.anchor_left = 1.0
+	tool_detail_label.anchor_right = 1.0
+	tool_detail_label.anchor_top = 1.0
+	tool_detail_label.anchor_bottom = 1.0
+	tool_detail_label.offset_left = -918.0
+	tool_detail_label.offset_right = -18.0
+	tool_detail_label.offset_top = -130.0
+	tool_detail_label.offset_bottom = -104.0
+	tool_detail_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(tool_detail_label)
+
+	room_gauge_panel = PanelContainer.new()
+	room_gauge_panel.name = "RoomGauge"
+	room_gauge_panel.offset_left = 18.0
+	room_gauge_panel.offset_right = 290.0
+	room_gauge_panel.offset_top = 18.0
+	room_gauge_panel.offset_bottom = 170.0
+	room_gauge_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(room_gauge_panel)
+	var gauge_layout: VBoxContainer = VBoxContainer.new()
+	room_gauge_panel.add_child(gauge_layout)
+	room_name_label = Label.new()
+	room_name_label.name = "RoomName"
+	gauge_layout.add_child(room_name_label)
+	cleanliness_bar = _add_gauge(gauge_layout, "きれいさ", "CleanlinessBar")
+	mood_bar = _add_gauge(gauge_layout, "機嫌", "MoodBar")
+	cleaning_fee_label = Label.new()
+	cleaning_fee_label.name = "CleaningFee"
+	cleaning_fee_label.add_theme_font_size_override("font_size", 14)
+	gauge_layout.add_child(cleaning_fee_label)
+
+	tool_shop_panel = ToolShopPanel.new()
+	tool_shop_panel.name = "ToolShopPanel"
+	tool_shop_panel.visible = false
+	tool_shop_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	tool_shop_panel.offset_left = -470.0
+	tool_shop_panel.offset_right = 470.0
+	tool_shop_panel.offset_top = -330.0
+	tool_shop_panel.offset_bottom = 330.0
+	ui_root.add_child(tool_shop_panel)
+	tool_shop_panel.purchase_requested.connect(_on_purchase_requested)
+	tool_shop_panel.sell_requested.connect(_on_sell_requested)
+	tool_shop_panel.close_requested.connect(close_tool_shop)
+
+
+## 見出しと 0〜100 のゲージの行を足し、ゲージを返す
+func _add_gauge(parent: VBoxContainer, caption: String, bar_name: String) -> ProgressBar:
+	var caption_label: Label = Label.new()
+	caption_label.text = caption
+	caption_label.add_theme_font_size_override("font_size", 14)
+	parent.add_child(caption_label)
+	var bar: ProgressBar = ProgressBar.new()
+	bar.name = bar_name
+	bar.min_value = 0.0
+	bar.max_value = 100.0
+	# 既定の刻み 1 だと 1% 未満の変化が丸められ、きれいさ・機嫌の値とゲージがずれるため刻みを無くす
+	bar.step = 0.0
+	bar.custom_minimum_size = Vector2(240.0, 16.0)
+	parent.add_child(bar)
+	return bar
 
 
 ## 毛が抜けた時に「+N 本」と、珍しい毛ならその名前を画面中央に出す
@@ -409,9 +649,54 @@ func _on_hairs_plucked(
 		if new_rare_ids.has(rare_id):
 			rare_line += " (図鑑に載った)"
 		lines.append(rare_line)
-	pluck_popup_label.text = "\n".join(lines)
+	_show_popup("\n".join(lines))
+
+
+## 画面中央に短い知らせ (「+N 本」・入ったお金) を PLUCK_POPUP_SECONDS 秒出す
+func _show_popup(text: String) -> void:
+	pluck_popup_label.text = text
 	pluck_popup_label.visible = true
 	_pluck_popup_remaining = PLUCK_POPUP_SECONDS
+
+
+## 効果音を出来事名で鳴らす (AudioManager が無い検証では何もしない)
+func _play_sfx(event_name: String) -> void:
+	var audio_manager: AudioManagerScript = (
+		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
+	)
+	if audio_manager != null:
+		audio_manager.play_sfx(event_name)
+
+
+## 道具を使った時に、結果 (取りこぼしの割合) を照準の下に出す
+func _on_tool_used(result: Dictionary) -> void:
+	tool_message_label.text = str(result["message"])
+
+
+## 選んでいる道具が変わった時に、手と道具の操作の切り替えと道具の並びの表示を更新する
+func _on_tool_selected(_tool_id: StringName) -> void:
+	tool_message_label.text = tools.get_last_message()
+	_sync_controls()
+	_refresh_hud()
+
+
+## 道具を買う画面で買う操作をした時 (kind は GameState.PURCHASE_*)。買えた時は効果音 buy_tool を鳴らす
+func _on_purchase_requested(kind: StringName, item_id: StringName) -> void:
+	if _game_state.purchase(kind, item_id):
+		_play_sfx(AudioCatalog.SFX_BUY_TOOL)
+	tool_shop_panel.refresh(_game_state, is_near_trader())
+	_refresh_hud()
+
+
+## 道具を買う画面で毛を売った時 (買取業者の近くにいる時だけ売る)
+func _on_sell_requested() -> void:
+	if not is_near_trader():
+		return
+	var earned: int = _game_state.sell_raw_hairs()
+	if earned > 0:
+		_play_sfx(AudioCatalog.SFX_EARN_MONEY)
+		_show_popup("+%d 円" % earned)
+	tool_shop_panel.refresh(_game_state, is_near_trader())
 
 
 ## GameState.mansion_rebuilt シグナル受信ハンドラ
