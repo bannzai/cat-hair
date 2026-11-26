@@ -37,8 +37,8 @@ const CROSSHAIR_COLOR: Color = Color(1.0, 1.0, 1.0, 0.85)
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 道具を買う画面を開閉するキー
 const TOGGLE_SHOP_KEY: Key = KEY_T
-## 買取業者に毛を売れる距離 (m。買取業者の足元からの水平距離)。手の届く距離 (約 1.5 m) より少し広く、
-## 隣で話している距離に見える範囲
+## 買取業者に毛を売れる距離 (m。買取業者の足元からの水平距離)。手の届く距離 (HandController.REACH_M の 2.6 m) より
+## 少し短くし、手を伸ばせば品物を渡せる、向かい合って話している距離に見える範囲にする
 const TRADER_RANGE_M: float = 2.0
 ## 道具を買う画面のスクリプト (道具の説明の文言を使う)
 const ToolShopPanelScript := preload("res://scripts/ui/tool_shop_panel.gd")
@@ -301,10 +301,7 @@ func get_current_room() -> MansionLayout.RoomDef:
 	if _game_state == null or _game_state.current_layout == null:
 		return null
 	for room: MansionLayout.RoomDef in _game_state.current_layout.rooms:
-		if (
-			absf(player.global_position.x - room.center.x) <= room.size.x * 0.5
-			and absf(player.global_position.z - room.center.z) <= room.size.z * 0.5
-		):
+		if LookPrototypeRoomScript.is_inside_room(room, player.global_position):
 			return room
 	return null
 

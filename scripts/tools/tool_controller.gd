@@ -25,7 +25,7 @@ const SELECT_KEYS: Array[Key] = [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7
 const TRACE_COLOR: Color = Color(0.45, 0.8, 1.0, 0.28)
 ## 跡の円盤を表面から浮かせる距離 (m。表面と重なってちらつかないように)
 const TRACE_LIFT_M: float = 0.004
-## 毛を光らせるライトの色・強さ・届く距離・広がりの角度 (度)
+## 毛を光らせるライトの色。部屋の暖かい明かりの中で照らした所が見分けられ、白・黒・三毛の毛の色を変えすぎない薄い青白
 const GLOW_LIGHT_COLOR: Color = Color(0.7, 0.85, 1.0)
 ## 毛を光らせるライトの強さ。部屋の明かりの下でも照らした所の毛が周りより明るく見える強さ
 const GLOW_LIGHT_ENERGY: float = 6.0
@@ -82,16 +82,20 @@ func _process(_delta: float) -> void:
 	var captured: bool = (
 		Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED or allow_uncaptured_use
 	)
-	var pressed: bool = (
-		enabled
+	var held: bool = Input.is_action_pressed(HandController.ACTION_PLUCK)
+	# 押した瞬間は、選んでいる道具や操作できるかに関わらず入力そのものの立ち上がりで見る。
+	# 手でつまむ入力を押したまま道具に持ち替えた時に、押し直していないのに道具を使わないため。
+	# マウスを捕捉する最初のクリック (前のフレームでは捕捉していない) でも使わない (HandController と同じ)
+	if (
+		held
+		and not _was_pressed
+		and _was_captured
 		and captured
+		and enabled
 		and _selected_tool_id != ToolCatalogScript.TOOL_HAND
-		and Input.is_action_pressed(HandController.ACTION_PLUCK)
-	)
-	# マウスを捕捉する最初のクリック (前のフレームでは捕捉していない) では道具を使わない (HandController と同じ)
-	if pressed and not _was_pressed and _was_captured:
+	):
 		use_selected_tool()
-	_was_pressed = pressed
+	_was_pressed = held
 	_was_captured = captured
 
 
@@ -218,13 +222,15 @@ func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 	var surface_index: int = target["surface_index"]
 	var surface_def: MansionLayout.SurfaceDef = _world.get_surface_def(surface_index)
 	var hair_field: Node3D = _world.get_hair_field()
+	# 範囲の毛を近い順に全部取り、道具が 1 回で触れる本数 (max_hairs) までを抽選する。
+	# 触れなかった毛も範囲に残った毛なので、取りこぼしの表示の分母は範囲の全部の本数にする
 	var hair_ids: PackedInt32Array = hair_field.find_hairs_near(
-		surface_index, target["point"], float(tool_def["radius_m"]), int(tool_def["max_hairs"])
+		surface_index, target["point"], float(tool_def["radius_m"]), hair_field.get_remaining_count()
 	)
 	var ratio: float = ToolRulesScript.miss_ratio(tool_id, owned.level, surface_def.surface_type)
 	var counts_by_color: Dictionary = {}
 	var removed_ids: PackedInt32Array = PackedInt32Array()
-	for hair_id: int in hair_ids:
+	for hair_id: int in hair_ids.slice(0, int(tool_def["max_hairs"])):
 		if ToolRulesScript.is_missed(_rng.randf(), ratio):
 			continue
 		var color_id: StringName = _world.get_hair_color_id(hair_id)
@@ -267,6 +273,8 @@ func _show_trace(point: Vector3, surface_def: MansionLayout.SurfaceDef, radius: 
 	var disc: CylinderMesh = CylinderMesh.new()
 	disc.top_radius = radius
 	disc.bottom_radius = radius
+	# 厚みは浮かせる距離 (TRACE_LIFT_M) より薄くし、跡が毛の根元を隠さない。分割数は半径 0.5 m (掃除機) でも
+	# 縁の角が目立たない数
 	disc.height = 0.002
 	disc.radial_segments = 32
 	var material: StandardMaterial3D = StandardMaterial3D.new()

@@ -13,6 +13,12 @@ const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## メインシーンのスクリプト (本数の表示の書式を使う)
 const MainScript := preload("res://scripts/main.gd")
+## 手に持って使う道具のルールの計算 (レベル上げの値段)
+const ToolRulesScript := preload("res://scripts/tools/tool_rules.gd")
+## 場面名・出来事名のカタログ (効果音の名前)
+const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
+## AudioManager の型解決と実行時取得用スクリプト参照
+const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 ## 道具が 1 回で触れる範囲に何本も毛があるよう、検証の間だけ屋敷を組み直す毛の本数
 const DENSE_HAIR_COUNT: int = 60000
 ## 取りこぼしの抽選の乱数のシード (結果を固定する)
@@ -45,12 +51,23 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await suite._verify_every_tool_once(main, game_state)
 	await suite._verify_cleaning_fee(main, game_state)
 	await suite._verify_trader_range_and_room_gauge(main)
+	await suite._verify_edge_inputs(main, game_state)
 	await suite._verify_rebuild_resets_tools(main, game_state, dense_tuning)
 	main.tools.allow_uncaptured_use = false
 	main.hand.allow_uncaptured_pluck = false
 	Input.action_release(HandController.ACTION_PLUCK)
 	game_state.apply_tuning_and_rebuild(original_tuning, false)
 	await checker.process_frame
+	# 毛の本数を変えて組み直した直後は、きれいさの分母も新しい本数で求め直され、どの部屋も 0 になる
+	var dirty_rooms: int = 0
+	for room: MansionLayout.RoomDef in game_state.current_layout.rooms:
+		if is_equal_approx(float(game_state.get_room_status(room.room_id)["cleanliness"]), 0.0):
+			dirty_rooms += 1
+	suite._check(
+		dirty_rooms == game_state.current_layout.rooms.size(),
+		"毛の本数を変えて屋敷を組み直した直後は、どの部屋もきれいさ 0 (%d / %d 部屋)"
+		% [dirty_rooms, game_state.current_layout.rooms.size()],
+	)
 
 
 ## 道具を選ぶキー (ToolController.SELECT_KEYS の、道具の表と同じ並びの位置) を返す
@@ -179,8 +196,7 @@ func _verify_buy_use_and_sell(main: Node3D, game_state: Node) -> void:
 	await _checker.process_frame
 	_check(game_state.get_money() == money_far, "買取業者から離れている時は売る操作でお金が変わらない")
 	main.close_tool_shop()
-	var trader: Vector3 = main.mansion_world.get_trader_position()
-	main.player.set_spawn(trader + Vector3(1.0, 0.0, -1.0), 0.0)
+	main.player.set_spawn(main.mansion_world.get_trader_position() + Vector3(1.0, 0.0, -1.0), 0.0)
 	await _checker.physics_frame
 	await _checker.physics_frame
 	main.open_tool_shop()
@@ -200,8 +216,14 @@ func _verify_buy_use_and_sell(main: Node3D, game_state: Node) -> void:
 		game_state.get_money() == money_before + stock_value
 		and game_state.get_raw_hair_stock_count() == 0
 		and main.look_hud.get_money_text()
-		== "所持金 %s 円" % MainScript.format_hair_count(game_state.get_money()),
-		"毛を売ると在庫の売値 %d 円だけお金が増え、在庫が 0 本になり、所持金の表示も変わる" % stock_value,
+		== "所持金 %s 円" % MainScript.format_hair_count(game_state.get_money())
+		and (
+			AudioManagerScript.resolve(_checker) == null
+			or (AudioManagerScript.resolve(_checker) as AudioManagerScript).get_last_sfx_event_name()
+			== AudioCatalog.SFX_EARN_MONEY
+		),
+		"毛を売ると売値 %d 円だけお金が増え、在庫が 0 本になり、所持金の表示が変わり、効果音 earn_money が鳴る"
+		% stock_value,
 	)
 	main.close_tool_shop()
 
@@ -247,8 +269,12 @@ func _verify_capture_click(main: Node3D, game_state: Node, owned: OwnedTool) -> 
 		owned.consumable_count == 20 and game_state.get_total_remaining_hairs() == before_total,
 		"マウスを捕捉していない時のクリックでは道具を使わない",
 	)
-	# 押したまま捕捉した扱いに切り替える (捕捉する最初のクリックと同じく、前のフレームは捕捉していない)
+	Input.action_release(HandController.ACTION_PLUCK)
+	await _checker.process_frame
+	await _checker.process_frame
+	# 捕捉する最初のクリック: 前のフレームは捕捉しておらず押してもいない所から、同じフレームで捕捉して押す
 	tools.allow_uncaptured_use = true
+	Input.action_press(HandController.ACTION_PLUCK)
 	await _checker.process_frame
 	await _checker.process_frame
 	Input.action_release(HandController.ACTION_PLUCK)
@@ -259,6 +285,31 @@ func _verify_capture_click(main: Node3D, game_state: Node, owned: OwnedTool) -> 
 	)
 	await _press_and_release_use()
 	_check(owned.consumable_count == 19, "捕捉した後のクリックでは道具を使い、紙が 1 枚減る")
+	await _verify_switch_while_held(main, owned)
+
+
+## 手でつまむ入力を押したまま (毛を引いている途中に) 道具へ持ち替えると、引くのをやめ、押し直すまで道具を使わないか
+func _verify_switch_while_held(main: Node3D, owned: OwnedTool) -> void:
+	var tools: ToolController = main.tools
+	await _checker._press_physical_key(_select_key(ToolCatalogScript.TOOL_HAND))
+	await HandAim.aim_at_floor_hair(_checker, main)
+	Input.action_press(HandController.ACTION_PLUCK)
+	await _checker.process_frame
+	await _checker.process_frame
+	var pulling: bool = main.hand.is_pulling()
+	await _checker._press_physical_key(_select_key(ToolCatalogScript.TOOL_LINT_ROLLER))
+	await _checker.process_frame
+	await _checker.process_frame
+	_check(
+		pulling and not main.hand.is_pulling()
+		and tools.get_selected_tool_id() == ToolCatalogScript.TOOL_LINT_ROLLER
+		and owned.consumable_count == 19,
+		"手で引いている途中に粘着ローラーへ持ち替えると引くのをやめ、押したままでは道具を使わない",
+	)
+	Input.action_release(HandController.ACTION_PLUCK)
+	await _checker.process_frame
+	await _press_and_release_use()
+	_check(owned.consumable_count == 18, "持ち替えた後に押し直すと粘着ローラーを使う")
 
 
 ## 8 つの道具を 1 回ずつ使う: 手はつまんで 1 本抜け、毛を取る 5 つは範囲の毛が減り、ライトは点いて消え、
@@ -300,7 +351,19 @@ func _verify_every_tool_once(main: Node3D, game_state: Node) -> void:
 				)
 				if removed > 0:
 					used_ids.append(tool_id)
-			ToolCatalogScript.KIND_LIGHT:
+				if bool(result.get("used", false)):
+					var left_in_range: int = main.mansion_world.get_hair_field().find_hairs_near(
+						result["surface_index"],
+						result["point"],
+						float(tool_def["radius_m"]),
+						game_state.get_total_remaining_hairs()
+					).size()
+					_check(
+						left_in_range == int(result["missed"])
+						and removed <= int(tool_def["max_hairs"]),
+						"%s の取りこぼしの本数 %d が、かけた範囲に実際に残る本数 %d と同じで、取れた本数は 1 回で触れる上限 %d 以下"
+						% [tool_def["name"], int(result["missed"]), left_in_range, int(tool_def["max_hairs"])],
+					)
 				var before_light: int = game_state.get_total_remaining_hairs()
 				await _press_and_release_use()
 				var on: bool = tools.is_glow_light_on()
@@ -401,6 +464,68 @@ func _verify_trader_range_and_room_gauge(main: Node3D) -> void:
 	_check(
 		main.get_current_room() == null and not main.room_gauge_panel.visible,
 		"どの部屋の床の上にもいない時は部屋のゲージを隠す",
+	)
+
+
+## 道具を使う・選ぶ・買う操作の端の入力: 狙いの先に毛の付く表面が無い時、道具を買う画面を開いている間の数字キー、
+## 表に無い道具の id、開発者画面を開いている間の T キー、持っている道具のボタン (レベル上げ)、x だけが部屋の範囲に入る位置
+func _verify_edge_inputs(main: Node3D, game_state: Node) -> void:
+	var tools: ToolController = main.tools
+	var roller: StringName = ToolCatalogScript.TOOL_LINT_ROLLER
+	var owned: OwnedTool = game_state.find_owned_tool(roller)
+	await _aim_at_floor_hairs(main)
+	await _checker._press_physical_key(_select_key(roller))
+	main.player.look_at_point(main.player.get_camera().global_position + Vector3(0.0, 5.0, 0.01))
+	await _checker.physics_frame
+	var paper_before: int = owned.consumable_count
+	var total_before: int = game_state.get_total_remaining_hairs()
+	await _press_and_release_use()
+	_check(
+		main.hand.aim_target().is_empty()
+		and owned.consumable_count == paper_before
+		and game_state.get_total_remaining_hairs() == total_before
+		and tools.get_last_message().contains("表面が無い"),
+		"天井を狙って道具を使うと、紙も毛も変わらず「表面が無い」と出る (%s)" % tools.get_last_message(),
+	)
+	main.open_tool_shop()
+	await _checker._press_physical_key(_select_key(ToolCatalogScript.TOOL_VACUUM))
+	_check(
+		tools.get_selected_tool_id() == roller,
+		"道具を買う画面を開いている間は数字キーで道具を持ち替えない",
+	)
+	game_state.save_data.building_progress.money = 1000
+	main.tool_shop_panel.refresh(game_state, main.is_near_trader())
+	var level_before: int = owned.level
+	main.tool_shop_panel.get_tool_button(roller).pressed.emit()
+	await _checker.process_frame
+	var audio_manager: AudioManagerScript = AudioManagerScript.resolve(_checker) as AudioManagerScript
+	_check(
+		owned.level == level_before + 1
+		and game_state.get_money() == 1000 - ToolRulesScript.level_up_price(roller, level_before)
+		and (
+			audio_manager == null
+			or audio_manager.get_last_sfx_event_name() == AudioCatalog.SFX_BUY_TOOL
+		),
+		"持っている道具のボタンを押すとレベルが 1 上がり、その値段だけお金が減り、効果音 buy_tool が鳴る",
+	)
+	main.close_tool_shop()
+	_check(
+		not tools.select_tool(&"no_such_tool") and tools.get_selected_tool_id() == roller,
+		"表に無い道具の id では持ち替えない",
+	)
+	main.open_dev_panel()
+	await _checker._press_physical_key(KEY_T)
+	_check(
+		main.dev_tuning_panel.visible and not main.tool_shop_panel.visible,
+		"開発者画面を開いている間は T キーで道具を買う画面が開かない",
+	)
+	main.close_dev_panel()
+	var room: MansionLayout.RoomDef = game_state.current_layout.rooms[0]
+	main.player.set_spawn(Vector3(room.center.x, 0.0, OUTSIDE_MANSION_POSITION.z), 0.0)
+	await _checker.process_frame
+	_check(
+		main.get_current_room() == null,
+		"x だけが部屋の範囲に入り z が外れる位置は、どの部屋にもいない",
 	)
 
 

@@ -20,9 +20,9 @@ static func verify_look_prototype_room(checker: SceneTree, main: Node3D, game_st
 		look_room.is_prototype_active() and environment_node.environment.ssao_enabled,
 		"最初の部屋に立つと試作の環境 (家具の陰あり) が出る",
 	)
-	var expected_money: String = "所持金 %s 円" % main.format_hair_count(game_state.get_money())
 	checker._check(
-		main.look_hud.get_money_text() == expected_money
+		main.look_hud.get_money_text()
+		== "所持金 %s 円" % main.format_hair_count(game_state.get_money())
 		and main.look_hud.get_parent() == main.get_node("UILayer/UI/HUD"),
 		"HUD に GameState の所持金が 3 桁区切りで出る (%s)" % main.look_hud.get_money_text(),
 	)

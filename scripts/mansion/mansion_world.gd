@@ -169,6 +169,7 @@ func _build_trader(layout: MansionLayout) -> void:
 	capsule.radius = TRADER_BODY_RADIUS_M
 	capsule.height = TRADER_BODY_HEIGHT_M
 	body.mesh = capsule
+	# 作業着の焦げ茶で、明るい壁紙と床の前で人の形が見分けられ、光沢の無い布に見える粗さ
 	body.material_override = _make_material(Color(0.32, 0.27, 0.2), 0.8)
 	body.position = Vector3(0.0, TRADER_BODY_HEIGHT_M * 0.5, 0.0)
 	_trader.add_child(body)
@@ -181,6 +182,8 @@ func _build_trader(layout: MansionLayout) -> void:
 	sign_label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	sign_label.rotation_degrees = Vector3(0.0, 180.0, 0.0)
 	sign_label.pixel_size = 0.0025
+	# 字の大きさは pixel_size と合わせて字の高さ約 12 cm (部屋の反対側からも読める大きさ)。縁取りは字の 4 分の 1 の太さで、
+	# 明るい壁紙の前でも白い字が埋もれない。札は頭の上 25 cm に置き、体と重ならない
 	sign_label.font_size = 48
 	sign_label.outline_size = 12
 	sign_label.position = Vector3(0.0, TRADER_BODY_HEIGHT_M + 0.25, 0.0)

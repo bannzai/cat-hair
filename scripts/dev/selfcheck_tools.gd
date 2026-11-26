@@ -92,6 +92,17 @@ func _check_tool_catalog() -> void:
 		ToolCatalogScript.find_tool(&"no_such_tool").is_empty(),
 		"表に無い道具の id は空の定義を返す",
 	)
+	var controller: ToolController = ToolController.new()
+	var cat: Node3D = Node3D.new()
+	var no_cat: Dictionary = controller.brush_cat(null)
+	var with_cat: Dictionary = controller.brush_cat(cat)
+	_check(
+		not bool(no_cat["used"]) and str(no_cat["message"]).contains("猫がいない")
+		and not bool(with_cat["used"]) and str(with_cat["message"]).contains("まだできない"),
+		"ブラシの入口は、猫がいなければ「猫がいない」、猫がいても (issue #11 で繋ぐまで) 使わずに知らせる",
+	)
+	cat.free()
+	controller.free()
 
 
 ## 取りこぼしはどの道具・レベル・表面でも 0 より大きく 1 未満で、得意な表面ほど少なく、レベルで減り、上下限で止まるか
@@ -136,9 +147,9 @@ func _check_miss_ratio() -> void:
 		"掃除機は床の方がニットより取りこぼしが少ない",
 	)
 	var level1: float = ToolRulesScript.miss_ratio(roller, 1, &"")
-	var level2: float = ToolRulesScript.miss_ratio(roller, 2, &"")
 	_check(
-		is_equal_approx(level2, level1 * ToolRulesScript.MISS_FACTOR_PER_LEVEL),
+		is_equal_approx(
+			ToolRulesScript.miss_ratio(roller, 2, &""), level1 * ToolRulesScript.MISS_FACTOR_PER_LEVEL),
 		"レベルが 1 上がると取りこぼしが 0.75 倍になる",
 	)
 	_check(
@@ -343,6 +354,14 @@ func _check_game_state_purchase() -> void:
 		and not state.purchase(GameStateScript.PURCHASE_CONSUMABLE, ToolCatalogScript.TOOL_VACUUM),
 		"持っていない道具はレベルを上げられず、消耗品も買えない",
 	)
+	state.save_data.building_progress.owned_tools.erase(owned)
+	var money_unowned_roller: int = state.get_money()
+	_check(
+		not state.purchase(GameStateScript.PURCHASE_CONSUMABLE, roller)
+		and state.get_money() == money_unowned_roller,
+		"消耗品を使う道具 (粘着ローラー) でも、持っていなければ紙を買えず、お金が減らない",
+	)
+	state.save_data.building_progress.owned_tools.append(owned)
 	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_TWEEZERS)
 	var money_owned_tweezers: int = state.get_money()
 	_check(
@@ -369,6 +388,13 @@ func _check_game_state_purchase() -> void:
 		and state.get_money() == 0
 		and not state.purchase(GameStateScript.PURCHASE_HAND_UPGRADE, HandRulesScript.UPGRADE_DEXTERITY),
 		"手の強化 (器用さ) を 40 円で 1 段上げ、0 円では次の段 (80 円) を買えない",
+	)
+	state.save_data.building_progress.money = 40
+	_check(
+		state.purchase(GameStateScript.PURCHASE_HAND_UPGRADE, HandRulesScript.UPGRADE_GRAB_COUNT)
+		and state.get_hand_upgrade_level(HandRulesScript.UPGRADE_GRAB_COUNT) == 1
+		and state.get_money() == 0,
+		"手の強化 (一度につまめる本数) も 40 円で 1 段上がる",
 	)
 	state.save_data.building_progress.money = 1000
 	_check(
@@ -453,6 +479,20 @@ func _check_game_state_tool_sweep_and_sell() -> void:
 		state.sell_raw_hairs() == 0 and state.get_money() == earned,
 		"売る毛が無い時はお金が変わらない",
 	)
+	var tweezers: StringName = ToolCatalogScript.TOOL_TWEEZERS
+	state.purchase(GameStateScript.PURCHASE_TOOL, tweezers)
+	var other: SurfaceHair = state.save_data.building_progress.surface_hairs[1]
+	var notified_before_tweezers: int = notified[0]
+	_check(
+		state.apply_tool_sweep(tweezers, other.surface_id, {}) == 0
+		and notified[0] == notified_before_tweezers,
+		"消耗品を使わない道具 (ピンセット) で 1 本も取れない時は、何も変わらず知らせない",
+	)
+	_check(
+		state.apply_tool_sweep(tweezers, other.surface_id, {_first_color(other): 1}) == 1
+		and notified[0] == notified_before_tweezers + 1,
+		"消耗品を使わない道具でも、毛が取れた時は 1 回知らせる",
+	)
 	state.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
@@ -488,11 +528,10 @@ func _check_game_state_advance_time() -> void:
 			dirty_room = room.room_id
 	_check(dirty_room != &"", "毛が最初のまま残る部屋がある")
 	var earned_first: int = state.advance_time(30.0)
-	var clean_mood: float = float(state.get_room_status(clean_room)["mood"])
-	var dirty_mood: float = float(state.get_room_status(dirty_room)["mood"])
 	_check(
 		earned_first == 0 and state.get_money() == 0
-		and is_equal_approx(clean_mood, 0.8) and is_equal_approx(dirty_mood, 0.2)
+		and is_equal_approx(float(state.get_room_status(clean_room)["mood"]), 0.8)
+		and is_equal_approx(float(state.get_room_status(dirty_room)["mood"]), 0.2)
 		and is_equal_approx(state.save_data.building_progress.elapsed_seconds, 30.0),
 		"30 秒進めると、きれいな部屋の機嫌は 0.8、毛が残る部屋は 0.2 になり、掃除代はまだ入らない",
 	)
