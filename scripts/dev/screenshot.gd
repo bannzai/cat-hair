@@ -47,13 +47,15 @@ func _run() -> void:
 	var audio_handle: Dictionary = HeadlessCheck.prepare_audio_manager(self, settings_path)
 
 	var ok: bool = await _capture_scenes()
-	# 撮影の最後のフレーム (見た目の試作の 24 万本の毛) は重く、その直後に作った timer は同じフレームの経過時間で
-	# 減って待たずに終わり、音の解放が間に合わずリーク警告が出る (PR #30 の CI で観測)。1 フレーム進めてから待つ
-	await process_frame
 	(audio_handle["manager"] as AudioManagerScript).stop_all()
-	var release_wait_start_msec: int = Time.get_ticks_msec()
-	await create_timer(AudioManagerScript.AUDIO_RELEASE_TIME_SEC).timeout
-	print("DIAG audio release wait: %d ms" % (Time.get_ticks_msec() - release_wait_start_msec))
+	# 音の解放を実時間で待つ。timer はフレームの経過時間で減るため、撮影の最後の重いフレーム (見た目の試作の 24 万本の毛)
+	# の直後では実時間より早く終わり、解放が間に合わずリーク警告が出た (PR #30 の CI。1 フレーム進めてから timer で
+	# 待っても実時間は 115 ms で、AUDIO_RELEASE_TIME_SEC に届かなかった)
+	var release_deadline_msec: int = (
+		Time.get_ticks_msec() + int(AudioManagerScript.AUDIO_RELEASE_TIME_SEC * 1000.0)
+	)
+	while Time.get_ticks_msec() < release_deadline_msec:
+		await process_frame
 	HeadlessCheck.cleanup_audio_manager(self, audio_handle, settings_path)
 	if ok:
 		print("screenshot OK")
