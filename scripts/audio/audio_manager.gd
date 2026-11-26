@@ -37,9 +37,15 @@ func _ready() -> void:
 	reload_settings(_settings_path)
 
 
-## ツリーから外れる時にすべての再生を止める
+## ツリーから外れる時にすべての再生を止め、AudioServer のミキシングスレッドによる解放を待つ
 func _exit_tree() -> void:
+	var had_active_playback: bool = _has_active_playback()
 	stop_all()
+	_clear_streams()
+	if had_active_playback:
+		# 止めた直後に終了すると、AudioServer のミキシングスレッドが再生ハンドルを解放する前に
+		# ObjectDB::cleanup() が走りリーク警告が出るため、ミキシング数回分だけ待つ
+		OS.delay_msec(250)
 
 
 ## アプリが裏に回った時に BGM を一時停止し、戻った時に再開する
@@ -111,6 +117,26 @@ func stop_all() -> void:
 	for player: AudioStreamPlayer in _sfx_players:
 		if player != null:
 			player.stop()
+
+
+## いずれかのプレイヤーが再生中かを返す
+func _has_active_playback() -> bool:
+	if _bgm_player != null and _bgm_player.playing:
+		return true
+	for player: AudioStreamPlayer in _sfx_players:
+		if player != null and player.playing:
+			return true
+	return false
+
+
+## プレイヤーとキャッシュが保持する AudioStream 参照を解放する
+func _clear_streams() -> void:
+	if _bgm_player != null:
+		_bgm_player.stream = null
+	for player: AudioStreamPlayer in _sfx_players:
+		if player != null:
+			player.stream = null
+	_stream_cache.clear()
 
 
 ## BGM がオンか

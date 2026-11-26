@@ -24,9 +24,15 @@ func _run() -> void:
 	)
 	_remove_file_if_exists(settings_path)
 
-	var audio_manager: AudioManagerScript = AudioManagerScript.new()
-	audio_manager.name = "AudioManager"
-	root.add_child(audio_manager)
+	var audio_manager: AudioManagerScript = (
+		root.get_node_or_null("AudioManager") as AudioManagerScript
+	)
+	var created_audio_manager: bool = false
+	if audio_manager == null:
+		audio_manager = AudioManagerScript.new()
+		audio_manager.name = "AudioManager"
+		root.add_child(audio_manager)
+		created_audio_manager = true
 	audio_manager.reload_settings(settings_path)
 
 	var main: Control = MAIN_SCENE.instantiate()
@@ -44,8 +50,9 @@ func _run() -> void:
 	await create_timer(AUDIO_RELEASE_TIME).timeout
 	root.remove_child(main)
 	main.free()
-	root.remove_child(audio_manager)
-	audio_manager.free()
+	if created_audio_manager:
+		root.remove_child(audio_manager)
+		audio_manager.free()
 	_remove_file_if_exists(settings_path)
 	_finish()
 

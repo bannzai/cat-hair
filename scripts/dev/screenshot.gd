@@ -24,16 +24,23 @@ func _run() -> void:
 	)
 	if FileAccess.file_exists(settings_path):
 		DirAccess.remove_absolute(settings_path)
-	var audio_manager: AudioManagerScript = AudioManagerScript.new()
-	audio_manager.name = "AudioManager"
-	root.add_child(audio_manager)
+	var audio_manager: AudioManagerScript = (
+		root.get_node_or_null("AudioManager") as AudioManagerScript
+	)
+	var created_audio_manager: bool = false
+	if audio_manager == null:
+		audio_manager = AudioManagerScript.new()
+		audio_manager.name = "AudioManager"
+		root.add_child(audio_manager)
+		created_audio_manager = true
 	audio_manager.reload_settings(settings_path)
 
 	var ok: bool = await _capture_scenes()
 	audio_manager.stop_all()
 	await create_timer(HeadlessCheck.AUDIO_RELEASE_TIME).timeout
-	root.remove_child(audio_manager)
-	audio_manager.free()
+	if created_audio_manager:
+		root.remove_child(audio_manager)
+		audio_manager.free()
 	if FileAccess.file_exists(settings_path):
 		DirAccess.remove_absolute(settings_path)
 	if ok:
