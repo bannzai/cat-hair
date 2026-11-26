@@ -22,6 +22,8 @@ const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 ## 一人称プレイヤーノードスクリプト (ピッチ上限の単一情報源参照に使用)
 const FirstPersonPlayerScript := preload("res://scripts/player/first_person_player.gd")
+## 見た目の試作 (部屋・手) の入力統合テスト
+const IntegrationLook := preload("res://scripts/dev/integration_look.gd")
 ## 手で毛を取る操作の入力統合テスト
 const IntegrationHand := preload("res://scripts/dev/integration_hand.gd")
 ## 手に持って使う道具とお金の入力統合テスト
@@ -83,6 +85,7 @@ func _run() -> void:
 
 	await _verify_title_and_blocked_inputs(main)
 	await _verify_enter_movement_and_look(main)
+	await IntegrationLook.verify_look_prototype_room(self, main, game_state)
 	await _verify_dev_panel_keys_and_rebuild(main, game_state)
 	await IntegrationHand.run_all(self, main, game_state)
 	await IntegrationTools.run_all(self, main, game_state)

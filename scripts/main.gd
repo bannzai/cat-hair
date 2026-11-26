@@ -43,6 +43,15 @@ const TRADER_RANGE_M: float = 2.0
 const ToolShopPanelScript := preload("res://scripts/ui/tool_shop_panel.gd")
 ## 毛を売る・掃除代の計算 (払う間隔の表示に使う)
 const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
+## 見た目の試作 (issue #19) を屋敷の最初の部屋に重ねるノードのスクリプト
+const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room.gd")
+## 見た目の試作の画面の表示 (所持金・道具の枠・案内) のスクリプト
+const LookPrototypeHudScript := preload("res://scripts/look/look_prototype_hud.gd")
+
+## 見た目の試作を屋敷の最初の部屋に重ねるノード (_ready で作る)
+var look_room: LookPrototypeRoom = null
+## 見た目の試作の画面の表示 (_ready で HUD の子に作る)
+var look_hud: LookPrototypeHud = null
 
 ## 狙った毛を手でつまんで抜く操作
 var hand: HandController = null
@@ -111,6 +120,8 @@ var _pluck_popup_remaining: float = 0.0
 @onready var remaining_hair_label: Label = $UILayer/UI/HUD/RemainingHairPanel/RemainingHairLabel
 ## 開発者向け調整パネル
 @onready var dev_tuning_panel: DevTuningPanel = $UILayer/UI/DevTuningPanel
+## 光・影・色の環境
+@onready var world_environment: WorldEnvironment = $WorldEnvironment
 
 
 ## 起動の入口
@@ -126,6 +137,14 @@ func _ready() -> void:
 	settings_button.pressed.connect(_on_settings_pressed)
 	dev_tuning_panel.apply_requested.connect(_on_dev_tuning_applied)
 	dev_tuning_panel.close_requested.connect(close_dev_panel)
+
+	look_room = LookPrototypeRoomScript.new()
+	look_room.name = "LookPrototypeRoom"
+	add_child(look_room)
+	look_room.setup(player, world_environment)
+	look_hud = LookPrototypeHudScript.new()
+	hud.add_child(look_hud)
+	look_hud.set_money_digits(format_hair_count(LookPrototypeHudScript.SAMPLE_MONEY_YEN))
 
 	_game_state = _resolve_game_state()
 	_build_hand_ui()
@@ -191,6 +210,7 @@ func enter_mansion() -> void:
 	hair_book_panel.visible = false
 	tool_shop_panel.visible = false
 	_sync_controls()
+	look_room.set_playing(true)
 	_refresh_hud()
 	var audio_manager: AudioManagerScript = (
 		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
@@ -357,6 +377,7 @@ func _set_title_mode() -> void:
 	hair_book_panel.visible = false
 	tool_shop_panel.visible = false
 	_sync_controls()
+	look_room.set_playing(false)
 
 
 ## 保存データの有無に応じてタイトルのボタン文言と「はじめから」表示を更新する
@@ -378,6 +399,7 @@ func _rebuild_world_from_state() -> void:
 	# 組み直した屋敷の進行には前の道具が無いことがあるので、最初から持っている手に持ち替える
 	tools.select_tool(ToolCatalogScript.TOOL_HAND)
 	mansion_world.rebuild(layout, _game_state.save_data.building_progress)
+	look_room.apply(layout, mansion_world)
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	_refresh_hud()
 
