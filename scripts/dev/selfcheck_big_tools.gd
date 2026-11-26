@@ -807,6 +807,11 @@ func _check_vacuum_pack_in_game_state() -> void:
 		and owned.consumable_count == 25 and state.get_money() == 970,
 		"手でパックを交換すると 30 円で空きが 25 回に戻る",
 	)
+	_check(
+		not state.purchase(GameStateScript.PURCHASE_CONSUMABLE, vacuum)
+		and owned.consumable_count == 25 and state.get_money() == 970,
+		"空きが満タン (25 回) のパックは交換できず、お金が減らない",
+	)
 	progress.money = 20000 + 1000
 	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_ANDROID)
 	owned.consumable_count = 3

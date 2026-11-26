@@ -248,6 +248,16 @@ func _verify_android_exchanges_vacuum_pack(main: Node3D, game_state: Node) -> vo
 		and main.tool_message_label.text.contains("パックが一杯"),
 		"アンドロイドがいない時、パックが一杯の掃除機は吸わず「パックが一杯」と出る (%s)" % main.tool_message_label.text,
 	)
+	var money_saved: int = game_state.get_money()
+	game_state.save_data.building_progress.money = 29
+	await _checker.press_and_release_use()
+	_check(
+		owned.consumable_count == 0 and game_state.get_money() == 29
+		and main.tool_message_label.text.contains("30 円が足りない"),
+		"アンドロイドがいてもお金が交換の値段に足りない時は、交換せず「30 円が足りない」と出る (%s)"
+		% main.tool_message_label.text,
+	)
+	game_state.save_data.building_progress.money = money_saved
 	owned.consumable_count = ToolRulesScript.refilled_count(vacuum, 0)
 	await _checker._press_physical_key(KEY_1)
 

@@ -147,7 +147,12 @@ func refresh(game_state: Node, near_trader: bool) -> void:
 					int(tool_def["refill_price"]),
 				]
 			)
-			refill.disabled = not ToolRulesScript.can_afford(money, int(tool_def["refill_price"]))
+			# パックの空きが満タンの時は、交換しても変わらないので押せなくする
+			refill.disabled = (
+				not ToolRulesScript.can_afford(money, int(tool_def["refill_price"]))
+				or owned == null
+				or ToolRulesScript.refilled_count(tool_id, owned.consumable_count) == owned.consumable_count
+			)
 	for upgrade_id: StringName in _hand_upgrade_buttons.keys():
 		var level: int = game_state.get_hand_upgrade_level(upgrade_id)
 		var upgrade_price: int = ToolRulesScript.hand_upgrade_price(level)
