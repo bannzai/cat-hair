@@ -5,15 +5,16 @@ extends RefCounted
 ## 手に持って使う道具の定義
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 
-## 道具のレベルの上限
+## 道具のレベルの上限。取りこぼしが 1 の 0.75 倍を 4 回重ねて約 3 分の 1 になる所で止め、下限 (5%) に届く前に上げる余地を残す
 const MAX_TOOL_LEVEL: int = 5
-## レベルが 1 上がるごとに取りこぼしの割合に掛ける倍率
+## レベルが 1 上がるごとに取りこぼしの割合に掛ける倍率。1 段上げると残る毛が 4 分の 3 になり、上げた差が 1 回で見える倍率
 const MISS_FACTOR_PER_LEVEL: float = 0.75
 ## 取りこぼしの割合の下限。どの道具も 1 回では範囲内の毛を取り切れないようにする (PROJECT.md「道具」)
 const MIN_MISS_RATIO: float = 0.05
 ## 取りこぼしの割合の上限 (不得意な表面でも 1 回で少しは取れる)
 const MAX_MISS_RATIO: float = 0.9
-## 手の強化 1 段目の値段 (円)。段 n から n + 1 へ上げる値段は (n + 1) 倍
+## 手の強化 1 段目の値段 (円)。段 n から n + 1 へ上げる値段は (n + 1) 倍。最初の掃除代 (30 円 × 機嫌) を 2 回ためると買え、
+## 道具 (ピンセット 30 円) と同じ頃に手を育てるか道具を買うかを選べる値段
 const HAND_UPGRADE_BASE_PRICE: int = 40
 ## 手の強化の段の上限 (一度につまめる本数が HandRules.MAX_GRAB_COUNT の 10 本になる段)
 const MAX_HAND_UPGRADE_LEVEL: int = 9

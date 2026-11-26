@@ -16,7 +16,7 @@ const HAIR_PRICE_BY_COLOR: Dictionary = {
 	SurfaceHairScript.COLOR_BLACK: 1,
 	SurfaceHairScript.COLOR_CALICO: 2,
 }
-## 表に無い色の毛 1 本の売値 (円)
+## 表に無い色の毛 1 本の売値 (円)。ふつうの白・黒と同じ、いちばん安い値段にする
 const DEFAULT_HAIR_PRICE: int = 1
 ## 珍しい毛 1 本の売値 (円)。出る確率が低いほど高い
 const RARE_HAIR_PRICES: Dictionary = {
@@ -24,11 +24,13 @@ const RARE_HAIR_PRICES: Dictionary = {
 	HandRulesScript.RARE_TRICOLOR: 40,
 	HandRulesScript.RARE_GOLDEN: 300,
 }
-## 住人が掃除代を払う間隔 (遊んだ時間の秒)
+## 住人が掃除代を払う間隔 (遊んだ時間の秒)。手で毛を抜きながら 1 部屋を歩いて回る間に 1 回は入ったと分かる長さ
 const PAYMENT_INTERVAL_SECONDS: float = 60.0
-## 機嫌が 1.0 (ご機嫌) の住人が 1 回に払う掃除代 (円)。機嫌に比例して減る
+## 機嫌が 1.0 (ご機嫌) の住人が 1 回に払う掃除代 (円)。機嫌に比例して減る。4 部屋がご機嫌なら 60 秒で 120 円入り、
+## 最初の道具 (ピンセット 30 円) を 1 回目の支払いで買え、粘着ローラー (150 円) には毛を売るお金も要る額
 const BASE_CLEANING_FEE: int = 30
-## 機嫌が目標 (きれいさ) へ近づく速さ (1 秒あたり)。0 から 1 まで 100 秒で変わる
+## 機嫌が目標 (きれいさ) へ近づく速さ (1 秒あたり)。0 から 1 まで 100 秒で変わり、片付けた部屋の機嫌が
+## 次の掃除代 (60 秒後) までに目に見えて上がる速さ
 const MOOD_CHANGE_PER_SECOND: float = 0.01
 
 
@@ -58,9 +60,12 @@ static func cleanliness(remaining: int, initial: int) -> float:
 
 ## 今の機嫌 mood を、きれいさ target へ delta_seconds 秒分だけ近づけた機嫌を返す (行き過ぎない。0〜1)
 static func next_mood(mood: float, target: float, delta_seconds: float) -> float:
-	var safe_target: float = clampf(target, 0.0, 1.0)
 	return clampf(
-		move_toward(mood, safe_target, MOOD_CHANGE_PER_SECOND * maxf(0.0, delta_seconds)), 0.0, 1.0
+		move_toward(
+			mood, clampf(target, 0.0, 1.0), MOOD_CHANGE_PER_SECOND * maxf(0.0, delta_seconds)
+		),
+		0.0,
+		1.0
 	)
 
 

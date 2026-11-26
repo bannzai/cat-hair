@@ -229,7 +229,7 @@ func get_found_rare_hair_ids() -> Array[StringName]:
 
 
 ## 持っている道具を 1 回かけ、指定面から色ごとの本数 (color -> int) だけまとめて減らして在庫 (毛のまま) に入れる。
-## 消耗品を使う道具は 1 つ使い、残りが 0 の時は何も変えずに -1 を返す (持っていない道具も -1)。
+## 消耗品を使う道具は 1 つ使い、残りが 0 の時は何も変えずに -1 を返す (持っていない道具と、無い面も -1)。
 ## 道具で取った毛は珍しい毛を見分けない (PROJECT.md「毛と表面」: 手でつまむ段階でしか見分けられない)。
 ## その面に残っている本数より多くは減らさない。戻り値は減らした本数の合計で、変わった時だけ 1 回通知する
 func apply_tool_sweep(
@@ -238,22 +238,23 @@ func apply_tool_sweep(
 	var owned: OwnedTool = find_owned_tool(tool_id)
 	if owned == null or not ToolRulesScript.can_use(tool_id, owned.consumable_count):
 		return -1
+	var surface: SurfaceHair = save_data.building_progress.find_surface_hair(surface_id)
+	if surface == null:
+		return -1
 	var consumed: bool = ToolRulesScript.uses_consumable(tool_id)
 	if consumed:
 		owned.consumable_count -= 1
 	var removed_total: int = 0
-	var surface: SurfaceHair = save_data.building_progress.find_surface_hair(surface_id)
-	if surface != null:
-		for color_key: Variant in counts_by_color.keys():
-			var color_id: StringName = StringName(color_key)
-			var removed: int = mini(
-				maxi(0, int(counts_by_color[color_key])), surface.count_for_color(color_id)
-			)
-			if removed <= 0:
-				continue
-			surface.hair_counts[color_id] = surface.count_for_color(color_id) - removed
-			_add_raw_stock(color_id, &"", removed)
-			removed_total += removed
+	for color_key: Variant in counts_by_color.keys():
+		var color_id: StringName = StringName(color_key)
+		var removed: int = mini(
+			maxi(0, int(counts_by_color[color_key])), surface.count_for_color(color_id)
+		)
+		if removed <= 0:
+			continue
+		surface.hair_counts[color_id] = surface.count_for_color(color_id) - removed
+		_add_raw_stock(color_id, &"", removed)
+		removed_total += removed
 	if consumed or removed_total > 0:
 		state_changed.emit()
 	return removed_total

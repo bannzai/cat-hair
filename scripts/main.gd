@@ -37,7 +37,8 @@ const CROSSHAIR_COLOR: Color = Color(1.0, 1.0, 1.0, 0.85)
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 道具を買う画面を開閉するキー
 const TOGGLE_SHOP_KEY: Key = KEY_T
-## 買取業者に毛を売れる距離 (m。買取業者の足元からの水平距離)
+## 買取業者に毛を売れる距離 (m。買取業者の足元からの水平距離)。手の届く距離 (約 1.5 m) より少し広く、
+## 隣で話している距離に見える範囲
 const TRADER_RANGE_M: float = 2.0
 ## 道具を買う画面のスクリプト (道具の説明の文言を使う)
 const ToolShopPanelScript := preload("res://scripts/ui/tool_shop_panel.gd")
@@ -289,10 +290,10 @@ func close_tool_shop() -> void:
 ## プレイヤーが買取業者に毛を売れる距離にいるか
 func is_near_trader() -> bool:
 	var trader: Vector3 = mansion_world.get_trader_position()
-	var offset: Vector2 = Vector2(
-		player.global_position.x - trader.x, player.global_position.z - trader.z
+	return (
+		Vector2(player.global_position.x - trader.x, player.global_position.z - trader.z).length()
+		<= TRADER_RANGE_M
 	)
-	return offset.length() <= TRADER_RANGE_M
 
 
 ## プレイヤーが今いる部屋を返す (どの部屋の床の上にもいなければ null)
@@ -393,8 +394,7 @@ func _rebuild_world_from_state() -> void:
 		return
 	var layout: MansionLayout = _game_state.current_layout
 	hand.cancel_pull()
-	# 組み直した屋敷の進行には前の道具が無いことがあるので、最初から持っている手に持ち替える
-	tools.select_tool(ToolCatalogScript.TOOL_HAND)
+	tools.reset_for_new_progress()
 	mansion_world.rebuild(layout, _game_state.save_data.building_progress)
 	look_room.apply(layout, mansion_world)
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)

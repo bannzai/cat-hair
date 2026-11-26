@@ -27,11 +27,11 @@ const TRACE_COLOR: Color = Color(0.45, 0.8, 1.0, 0.28)
 const TRACE_LIFT_M: float = 0.004
 ## 毛を光らせるライトの色・強さ・届く距離・広がりの角度 (度)
 const GLOW_LIGHT_COLOR: Color = Color(0.7, 0.85, 1.0)
-## 毛を光らせるライトの強さ
+## 毛を光らせるライトの強さ。部屋の明かりの下でも照らした所の毛が周りより明るく見える強さ
 const GLOW_LIGHT_ENERGY: float = 6.0
 ## 毛を光らせるライトの届く距離 (m。手の届く距離より少し遠くまで)
 const GLOW_LIGHT_RANGE_M: float = 5.0
-## 毛を光らせるライトの広がりの角度 (度)
+## 毛を光らせるライトの広がりの角度 (度)。画面の中央の 3 分の 1 ほどを照らし、狙う所だけが光って見える角度
 const GLOW_LIGHT_ANGLE_DEG: float = 28.0
 
 ## 入力を受け付けるか (プレイ中で、画面が開いていない時だけ main が true にする)
@@ -121,6 +121,14 @@ func select_tool(tool_id: StringName) -> bool:
 		_hand.release_pull()
 	tool_selected.emit(_selected_tool_id)
 	return true
+
+
+## 進行を作り直した時 (はじめから・屋敷の作り直し) に、最初から持っている手に持ち替え、毛を光らせるライトを消す。
+## 作り直した進行には前の道具が無く、点けたライトを選び直して消す手段が無くなるため
+func reset_for_new_progress() -> void:
+	select_tool(ToolCatalogScript.TOOL_HAND)
+	if _glow_light != null:
+		_glow_light.visible = false
 
 
 ## 道具を使える状態で持っているか (手は最初から持っている)
@@ -223,6 +231,9 @@ func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 		counts_by_color[color_id] = int(counts_by_color.get(color_id, 0)) + 1
 		removed_ids.append(hair_id)
 	var removed: int = _game_state.apply_tool_sweep(tool_id, surface_def.surface_id, counts_by_color)
+	if removed < 0:
+		result["message"] = "%s をかけられない" % tool_def["name"]
+		return
 	for hair_id: int in removed_ids:
 		hair_field.remove_hair(hair_id)
 	_show_trace(target["point"], surface_def, float(tool_def["radius_m"]))

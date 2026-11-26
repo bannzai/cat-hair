@@ -14,13 +14,16 @@ const SAMPLE_SELECTED_TOOL_INDEX: int = 0
 const SAMPLE_GUIDE_TEXT: String = "玄関ホールの床の毛を、手で 1 本ずつ抜く"
 ## 画面の端からの余白 (px)。1280x720 で既存の残り本数の枠 (右上 18 px) と揃える値
 const SCREEN_MARGIN_PX: float = 18.0
-## 道具の枠 1 つの大きさ (px)。最も長い道具の名前 (粘着ローラー、16 px で 6 文字) が 1 行で収まる大きさ
+## 道具の枠 1 つの大きさ (px)。幅は 16 px の字で 7 文字が 1 行に収まり、8 つの枠と間隔 (938 px) が 1280 px の画面に
+## 収まる幅。高さは 13 px の字で 2 行 (TOOL_SLOT_ONE_LINE_CHARS を超える名前の折り返し) が収まる高さ
 const TOOL_SLOT_SIZE_PX: Vector2 = Vector2(112.0, 44.0)
+## 道具の枠の行と、その上の所持金・案内の行との間隔 (px)。枠の線と文字の影が重ならない最小の間隔
+const ROW_GAP_PX: float = 8.0
 ## ラベル 1 行の高さ (px)。20 px の文字の行の高さに上下の余白を足し、所持金と案内の両方で使う
 const LABEL_LINE_HEIGHT_PX: float = 30.0
 ## 道具の枠に 16 px の字で 1 行に収まる文字数 (枠の幅 112 px から左右の余白を引いた幅)
 const TOOL_SLOT_ONE_LINE_CHARS: int = 7
-## 道具の枠どうしの間隔 (px)。枠の線 (1〜2 px) が隣の枠の線と重ならず、4 つの枠が 1 つの並びに見える狭さ
+## 道具の枠どうしの間隔 (px)。枠の線 (1〜2 px) が隣の枠の線と重ならず、8 つの枠が 1 つの並びに見える狭さ
 const TOOL_SLOT_GAP_PX: int = 6
 ## 文字の色。写実寄りの部屋の上で白く浮きすぎない、わずかに暖かい白
 const TEXT_COLOR: Color = Color(0.94, 0.92, 0.88)
@@ -62,7 +65,9 @@ func _init() -> void:
 	_money_label = _make_label("MoneyLabel", 20, HORIZONTAL_ALIGNMENT_RIGHT)
 	# 道具の枠の上に 8 px 空けて置く (所持金は道具を買うためのお金なので道具の並びの上に添える)。
 	# 大きさは 20 px の文字で「所持金 999,999,999 円」が 1 行に収まる幅と、1 行の高さ
-	_anchor_bottom_right(_money_label, Vector2(320.0, LABEL_LINE_HEIGHT_PX), TOOL_SLOT_SIZE_PX.y + 8.0)
+	_anchor_bottom_right(
+		_money_label, Vector2(320.0, LABEL_LINE_HEIGHT_PX), TOOL_SLOT_SIZE_PX.y + ROW_GAP_PX
+	)
 	add_child(_money_label)
 
 	_guide_label = _make_label("GuideLabel", 18, HORIZONTAL_ALIGNMENT_LEFT)
@@ -74,9 +79,9 @@ func _init() -> void:
 	_guide_label.offset_left = SCREEN_MARGIN_PX
 	_guide_label.offset_right = SCREEN_MARGIN_PX + 560.0
 	_guide_label.offset_top = (
-		-SCREEN_MARGIN_PX - TOOL_SLOT_SIZE_PX.y - 8.0 - LABEL_LINE_HEIGHT_PX
+		-SCREEN_MARGIN_PX - TOOL_SLOT_SIZE_PX.y - ROW_GAP_PX - LABEL_LINE_HEIGHT_PX
 	)
-	_guide_label.offset_bottom = -SCREEN_MARGIN_PX - TOOL_SLOT_SIZE_PX.y - 8.0
+	_guide_label.offset_bottom = -SCREEN_MARGIN_PX - TOOL_SLOT_SIZE_PX.y - ROW_GAP_PX
 	add_child(_guide_label)
 
 

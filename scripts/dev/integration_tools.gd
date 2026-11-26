@@ -19,17 +19,8 @@ const DENSE_HAIR_COUNT: int = 60000
 const TOOL_RNG_SEED: int = 20261126
 ## 道具をかける所に要る、粘着ローラーの半径の中の毛の本数 (取れた毛と取りこぼした毛の両方が出るだけの本数)
 const MIN_HAIRS_IN_RANGE: int = 8
-## 道具を選ぶキー (ToolController.SELECT_KEYS と同じ並び。1 = 手)
-const KEY_FOR_TOOL: Dictionary = {
-	ToolCatalogScript.TOOL_HAND: KEY_1,
-	ToolCatalogScript.TOOL_TWEEZERS: KEY_2,
-	ToolCatalogScript.TOOL_PACKING_TAPE: KEY_3,
-	ToolCatalogScript.TOOL_RUBBER_GLOVE: KEY_4,
-	ToolCatalogScript.TOOL_LINT_ROLLER: KEY_5,
-	ToolCatalogScript.TOOL_VACUUM: KEY_6,
-	ToolCatalogScript.TOOL_GLOW_LIGHT: KEY_7,
-	ToolCatalogScript.TOOL_BRUSH: KEY_8,
-}
+## 部屋の外 (屋敷の原点から十分離れた所) の位置。部屋のゲージを隠すことを確かめる時に立たせる
+const OUTSIDE_MANSION_POSITION: Vector3 = Vector3(500.0, 0.0, 500.0)
 
 ## 検証結果を記録する integration の SceneTree 参照
 var _checker: SceneTree = null
@@ -53,12 +44,18 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await suite._verify_empty_consumable(main, game_state)
 	await suite._verify_every_tool_once(main, game_state)
 	await suite._verify_cleaning_fee(main, game_state)
-	main.tools.select_tool(ToolCatalogScript.TOOL_HAND)
+	await suite._verify_trader_range_and_room_gauge(main)
+	await suite._verify_rebuild_resets_tools(main, game_state, dense_tuning)
 	main.tools.allow_uncaptured_use = false
 	main.hand.allow_uncaptured_pluck = false
 	Input.action_release(HandController.ACTION_PLUCK)
 	game_state.apply_tuning_and_rebuild(original_tuning, false)
 	await checker.process_frame
+
+
+## 道具を選ぶキー (ToolController.SELECT_KEYS の、道具の表と同じ並びの位置) を返す
+static func _select_key(tool_id: StringName) -> Key:
+	return ToolController.SELECT_KEYS[ToolCatalogScript.all_tool_ids().find(tool_id)]
 
 
 ## 検証結果を integration 本体へ記録する
@@ -69,7 +66,7 @@ func _check(cond: bool, label: String) -> void:
 ## 持っていない道具のキーでは選べず、T キーで道具を買う画面が開閉し、開いている間は操作が止まり他の画面が開かないか
 func _verify_unowned_tool_and_shop_screen(main: Node3D, game_state: Node) -> void:
 	var tools: ToolController = main.tools
-	await _checker._press_physical_key(KEY_FOR_TOOL[ToolCatalogScript.TOOL_TWEEZERS])
+	await _checker._press_physical_key(_select_key(ToolCatalogScript.TOOL_TWEEZERS))
 	_check(
 		tools.get_selected_tool_id() == ToolCatalogScript.TOOL_HAND
 		and tools.get_last_message().contains("持っていない")
@@ -127,7 +124,7 @@ func _verify_buy_use_and_sell(main: Node3D, game_state: Node) -> void:
 		"買うボタンで粘着ローラー (150 円・紙 20 枚) が持ち物に入り、ボタンがレベルを上げるに変わる",
 	)
 	main.close_tool_shop()
-	await _checker._press_physical_key(KEY_FOR_TOOL[roller])
+	await _checker._press_physical_key(_select_key(roller))
 	_check(
 		tools.get_selected_tool_id() == roller and not main.hand.enabled
 		and main.look_hud.get_tool_slot_texts()[4] == "5 粘着ローラー"
@@ -279,7 +276,7 @@ func _verify_every_tool_once(main: Node3D, game_state: Node) -> void:
 	var used_ids: Array[StringName] = []
 	for tool_def: Dictionary in ToolCatalogScript.TOOLS:
 		var tool_id: StringName = tool_def["id"]
-		await _checker._press_physical_key(KEY_FOR_TOOL[tool_id])
+		await _checker._press_physical_key(_select_key(tool_id))
 		if tools.get_selected_tool_id() != tool_id:
 			_check(false, "%s をキーで選べる" % tool_def["name"])
 			continue
@@ -365,10 +362,65 @@ func _verify_cleaning_fee(main: Node3D, game_state: Node) -> void:
 
 ## 道具の届く範囲 (粘着ローラーの半径) に毛が MIN_HAIRS_IN_RANGE 本以上ある床の点を、画面中央で狙う。狙えたら true
 func _aim_at_floor_hairs(main: Node3D) -> bool:
-	var radius: float = float(
-		ToolCatalogScript.find_tool(ToolCatalogScript.TOOL_LINT_ROLLER)["radius_m"]
+	return (
+		await HandAim.aim_at_floor_hairs(
+			_checker,
+			main,
+			float(ToolCatalogScript.find_tool(ToolCatalogScript.TOOL_LINT_ROLLER)["radius_m"]),
+			MIN_HAIRS_IN_RANGE
+		)
+		>= 0
 	)
-	return await HandAim.aim_at_floor_hairs(_checker, main, radius, MIN_HAIRS_IN_RANGE) >= 0
+
+
+## 買取業者に売れるのは足元から 2m (main.TRADER_RANGE_M) の内側だけで、部屋の外では部屋のゲージを隠し、
+## 図鑑を開いている間は T キーで道具を買う画面が開かないか
+func _verify_trader_range_and_room_gauge(main: Node3D) -> void:
+	var trader: Vector3 = main.mansion_world.get_trader_position()
+	main.player.set_spawn(trader + Vector3(0.0, 0.0, -(main.TRADER_RANGE_M - 0.1)), 0.0)
+	await _checker.physics_frame
+	await _checker.physics_frame
+	var near_inside: bool = main.is_near_trader()
+	main.player.set_spawn(trader + Vector3(0.0, 0.0, -(main.TRADER_RANGE_M + 0.1)), 0.0)
+	await _checker.physics_frame
+	await _checker.physics_frame
+	_check(
+		near_inside and not main.is_near_trader(),
+		"買取業者の足元から 1.9m では売れ、2.1m では売れない",
+	)
+	main.toggle_hair_book()
+	await _checker._press_physical_key(KEY_T)
+	_check(
+		main.hair_book_panel.visible and not main.tool_shop_panel.visible,
+		"図鑑を開いている間は T キーで道具を買う画面が開かない",
+	)
+	main.close_hair_book()
+	main.player.set_spawn(OUTSIDE_MANSION_POSITION, 0.0)
+	await _checker.process_frame
+	await _checker.process_frame
+	_check(
+		main.get_current_room() == null and not main.room_gauge_panel.visible,
+		"どの部屋の床の上にもいない時は部屋のゲージを隠す",
+	)
+
+
+## 毛を光らせるライトを点けた後に屋敷を組み直すと、手に持ち替わってライトが消えるか
+## (組み直した進行にはライトが無く、点けたまま消す手段が無くなるため)
+func _verify_rebuild_resets_tools(main: Node3D, game_state: Node, tuning: MansionTuning) -> void:
+	var tools: ToolController = main.tools
+	await _checker._press_physical_key(_select_key(ToolCatalogScript.TOOL_GLOW_LIGHT))
+	if not tools.is_glow_light_on():
+		await _press_and_release_use()
+	var lit: bool = tools.is_glow_light_on()
+	game_state.apply_tuning_and_rebuild(tuning, false)
+	await _checker.process_frame
+	_check(
+		lit and not tools.is_glow_light_on()
+		and tools.get_selected_tool_id() == ToolCatalogScript.TOOL_HAND
+		and main.hand.enabled
+		and game_state.find_owned_tool(ToolCatalogScript.TOOL_GLOW_LIGHT) == null,
+		"ライトを点けた後に屋敷を組み直すと、ライトが消えて手に持ち替わる",
+	)
 
 
 ## 床の毛を狙い、選んでいる道具を 1 回使い、結果と使う前の本数を返す (狙えなければ "used" が false)

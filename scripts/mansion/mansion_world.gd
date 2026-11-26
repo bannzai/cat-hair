@@ -64,9 +64,9 @@ const TRADER_WEST_OFFSET_M: float = 0.8
 ## 買取業者を立たせる所の、最初の部屋の南の壁 (屋敷の外に面した裏口の側) からの距離 (m)。
 ## 床の毛を置かない壁際の帯 (MansionBuilder.FLOOR_HAIR_INSET_M の半分) に収め、真下の毛が取れなくならないようにする
 const TRADER_SOUTH_OFFSET_M: float = 0.22
-## 買取業者の体の半径と高さ (m)
+## 買取業者の体の半径 (m)。人の胴の太さの見当
 const TRADER_BODY_RADIUS_M: float = 0.12
-## 買取業者の体の高さ (m)
+## 買取業者の体の高さ (m)。人の背の高さの見当で、札がプレイヤーの目線より少し上に来る高さ
 const TRADER_BODY_HEIGHT_M: float = 1.6
 
 ## 部屋ノード群の親コンテナ

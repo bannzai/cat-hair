@@ -343,6 +343,13 @@ func _check_game_state_purchase() -> void:
 		and not state.purchase(GameStateScript.PURCHASE_CONSUMABLE, ToolCatalogScript.TOOL_VACUUM),
 		"持っていない道具はレベルを上げられず、消耗品も買えない",
 	)
+	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_TWEEZERS)
+	var money_owned_tweezers: int = state.get_money()
+	_check(
+		not state.purchase(GameStateScript.PURCHASE_CONSUMABLE, ToolCatalogScript.TOOL_TWEEZERS)
+		and state.get_money() == money_owned_tweezers,
+		"持っていても消耗品を使わない道具 (ピンセット) は消耗品を買えず、お金が減らない",
+	)
 	var money_before_refill: int = state.get_money()
 	owned.consumable_count = 0
 	_check(
@@ -381,11 +388,7 @@ func _check_game_state_tool_sweep_and_sell() -> void:
 	state.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray(["--hair-count=300"]))
 	var roller: StringName = ToolCatalogScript.TOOL_LINT_ROLLER
 	var surface: SurfaceHair = state.save_data.building_progress.surface_hairs[0]
-	var color_id: StringName = SurfaceHairScript.COLOR_WHITE
-	for candidate: StringName in SurfaceHairScript.STANDARD_COLORS:
-		if surface.count_for_color(candidate) > 0:
-			color_id = candidate
-			break
+	var color_id: StringName = _first_color(surface)
 	var before_color: int = surface.count_for_color(color_id)
 	_check(
 		state.apply_tool_sweep(roller, surface.surface_id, {color_id: 1}) == -1
@@ -395,11 +398,24 @@ func _check_game_state_tool_sweep_and_sell() -> void:
 	state.save_data.building_progress.money = 150
 	state.purchase(GameStateScript.PURCHASE_TOOL, roller)
 	var owned: OwnedTool = state.find_owned_tool(roller)
+	var notified: Array[int] = [0]
+	state.state_changed.connect(func() -> void: notified[0] += 1)
+	_check(
+		state.apply_tool_sweep(roller, &"no_such_surface", {color_id: 1}) == -1
+		and owned.consumable_count == 20 and notified[0] == 0,
+		"無い面にはかけられず、紙も減らず、知らせない",
+	)
+	_check(
+		state.apply_tool_sweep(roller, surface.surface_id, {}) == 0
+		and owned.consumable_count == 19 and notified[0] == 1,
+		"範囲に毛が無くても粘着ローラーをかけると紙を 1 枚使い、1 回知らせる",
+	)
+	owned.consumable_count = 20
 	var removed: int = state.apply_tool_sweep(roller, surface.surface_id, {color_id: 2})
 	_check(
 		removed == 2 and surface.count_for_color(color_id) == before_color - 2
 		and state.get_raw_hair_stock_count() == 2 and owned.consumable_count == 19
-		and state.get_found_rare_hair_ids().is_empty(),
+		and state.get_found_rare_hair_ids().is_empty() and notified[0] == 2,
 		"粘着ローラーで 2 本取ると面が 2 減り、在庫に 2 本入り、紙を 1 枚使い、図鑑は変わらない",
 	)
 	var huge: int = state.apply_tool_sweep(roller, surface.surface_id, {color_id: 1000000})
@@ -419,14 +435,18 @@ func _check_game_state_tool_sweep_and_sell() -> void:
 		_first_color(state.save_data.building_progress.surface_hairs[1]),
 		HandRulesScript.RARE_GOLDEN,
 	)
+	var felt: HairStock = _make_stock(color_id, &"", HairStockScript.FORM_FELT, 5)
+	state.save_data.building_progress.hair_stocks.append(felt)
 	var expected: int = EconomyRulesScript.raw_stock_value(
 		state.save_data.building_progress.hair_stocks
 	)
 	var earned: int = state.sell_raw_hairs()
 	_check(
 		earned == expected and earned >= stock_before + 300 and state.get_money() == earned
-		and state.get_raw_hair_stock_count() == 0,
-		"毛を売ると在庫の毛のままの物 (珍しい毛 300 円を含む) が無くなり、売値の合計だけお金が増える (実際: %d 円)"
+		and state.get_raw_hair_stock_count() == 0
+		and state.save_data.building_progress.hair_stocks.size() == 1
+		and state.save_data.building_progress.hair_stocks[0] == felt and felt.count == 5,
+		"毛を売ると毛のままの物 (珍しい毛 300 円を含む) だけが無くなって加工品は残り、売値の合計だけお金が増える (%d 円)"
 		% earned,
 	)
 	_check(
@@ -575,9 +595,53 @@ func _check_tool_shop_panel() -> void:
 		"道具の説明にレベル・得意 / 不得意な表面・紙の残り・探し物を傷めるかが出る (実際: %s / %s)"
 		% [roller_text, vacuum_text],
 	)
+	_check_tool_shop_limits(state, panel)
 	panel.free()
 	state.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+
+
+## 道具を買う画面の手の強化のボタン (文言・押せるか・押した時の操作・上限)、レベル上限の道具、
+## 買取業者の近くでも在庫が無い時の売るボタンを検証する
+func _check_tool_shop_limits(state: Node, panel: PanelContainer) -> void:
+	var dexterity: StringName = HandRulesScript.UPGRADE_DEXTERITY
+	var requested: Array = []
+	panel.purchase_requested.connect(
+		func(kind: StringName, item_id: StringName) -> void: requested.append([kind, item_id])
+	)
+	state.save_data.building_progress.money = 39
+	panel.refresh(state, true)
+	_check(
+		panel.get_hand_upgrade_button(dexterity).text.contains("段 0 → 1 (40 円)")
+		and panel.get_hand_upgrade_button(dexterity).disabled,
+		"手の強化のボタンは段と値段を出し、1 円足りないと押せない (実際: %s)"
+		% panel.get_hand_upgrade_button(dexterity).text,
+	)
+	state.save_data.building_progress.money = 40
+	panel.refresh(state, true)
+	panel.get_hand_upgrade_button(dexterity).pressed.emit()
+	_check(
+		not panel.get_hand_upgrade_button(dexterity).disabled
+		and requested == [[GameStateScript.PURCHASE_HAND_UPGRADE, dexterity]],
+		"40 円あれば手の強化のボタンが押せ、押すと手の強化を買う操作を出す (実際: %s)" % str(requested),
+	)
+	state.save_data.hand_upgrade_levels[dexterity] = ToolRulesScript.MAX_HAND_UPGRADE_LEVEL
+	state.find_owned_tool(ToolCatalogScript.TOOL_LINT_ROLLER).level = ToolRulesScript.MAX_TOOL_LEVEL
+	state.save_data.building_progress.money = 100000
+	panel.refresh(state, true)
+	_check(
+		panel.get_hand_upgrade_button(dexterity).text.ends_with("段 9 (上限)")
+		and panel.get_hand_upgrade_button(dexterity).disabled
+		and panel.get_tool_button(ToolCatalogScript.TOOL_LINT_ROLLER).text == "レベル上限"
+		and panel.get_tool_button(ToolCatalogScript.TOOL_LINT_ROLLER).disabled,
+		"上限の段の手の強化と上限のレベルの道具は、お金があっても押せず「上限」と出る",
+	)
+	state.sell_raw_hairs()
+	panel.refresh(state, true)
+	_check(
+		panel.get_sell_button().disabled,
+		"買取業者の近くでも、売る毛が無い時は売るボタンが押せない",
+	)
 
 
 ## 在庫 1 件を作る

@@ -256,10 +256,10 @@ func _capture_pluck(main: Node3D) -> String:
 ## 道具を買う画面を撮る。撮れたら空文字、失敗したら理由を返す
 func _capture_tools(main: Node3D) -> String:
 	var game_state: Node = main.get_game_state()
-	game_state.save_data.building_progress.money = 1000
 	var roller: StringName = ToolCatalogScript.TOOL_LINT_ROLLER
+	# 8 つの道具を全部持った時の右下の道具の枠の並びも同じ 1 枚で確かめる。
+	# 所持金は 7 つの道具の値段の合計 (940 円) を足りる額で、HUD に 5 桁の所持金が出る見え方も撮れる額にする
 	game_state.save_data.building_progress.money = 100000
-	# 8 つの道具を全部持った時の右下の道具の枠の並びも同じ 1 枚で確かめる
 	for tool_def: Dictionary in ToolCatalogScript.TOOLS:
 		if tool_def["id"] != ToolCatalogScript.TOOL_HAND:
 			game_state.purchase(GameStateScript.PURCHASE_TOOL, tool_def["id"])
@@ -268,8 +268,12 @@ func _capture_tools(main: Node3D) -> String:
 	if not main.tools.select_tool(roller):
 		return "粘着ローラーを選べない"
 	main.tools.set_rng_seed(TOOL_TRACE_RNG_SEED)
-	var radius: float = float(ToolCatalogScript.find_tool(roller)["radius_m"])
-	if await HandAim.aim_at_floor_hairs(self, main, radius, TOOL_TRACE_MIN_HAIRS) < 0:
+	if (
+		await HandAim.aim_at_floor_hairs(
+			self, main, float(ToolCatalogScript.find_tool(roller)["radius_m"]), TOOL_TRACE_MIN_HAIRS
+		)
+		< 0
+	):
 		return "粘着ローラーをかける床の毛を狙える位置が見つからない"
 	var result: Dictionary = main.tools.use_selected_tool()
 	if not bool(result["used"]) or int(result["removed"]) <= 0 or int(result["missed"]) <= 0:

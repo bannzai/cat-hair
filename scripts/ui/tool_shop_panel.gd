@@ -81,9 +81,8 @@ func refresh(game_state: Node, near_trader: bool) -> void:
 			continue
 		var owned: OwnedTool = game_state.find_owned_tool(tool_id)
 		_owned_on_refresh[tool_id] = owned != null
-		var label: Label = _tool_labels[tool_id]
 		var button: Button = _tool_buttons[tool_id]
-		label.text = describe_tool(tool_id, owned)
+		(_tool_labels[tool_id] as Label).text = describe_tool(tool_id, owned)
 		if owned == null:
 			button.text = "買う (%d 円)" % int(tool_def["price"])
 			button.disabled = not ToolRulesScript.can_afford(money, int(tool_def["price"]))
@@ -121,10 +120,9 @@ static func describe_tool(tool_id: StringName, owned: OwnedTool) -> String:
 	var parts: PackedStringArray = PackedStringArray([str(tool_def["name"])])
 	parts.append("Lv %d" % owned.level if owned != null else "未購入")
 	if tool_def["kind"] == ToolCatalogScript.KIND_SWEEP:
-		var level: int = owned.level if owned != null else 1
 		parts.append(
 			"取りこぼし %d%%" % roundi(
-				100.0 * ToolRulesScript.miss_ratio(tool_id, level, &"")
+				100.0 * ToolRulesScript.miss_ratio(tool_id, owned.level if owned != null else 1, &"")
 			)
 		)
 		if not (tool_def["good"] as Array).is_empty():
