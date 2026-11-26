@@ -260,7 +260,7 @@ static func _distribute_hairs(
 	var result: Array[SurfaceHair] = []
 	if layout.surfaces.is_empty():
 		return result
-	var safe_total: int = maxi(0, total_hair_count)
+	var safe_total: int = maxi(0, total_hair_count - 1)
 	var total_weight: float = 0.0
 	for surface: MansionLayout.SurfaceDef in layout.surfaces:
 		total_weight += maxf(0.01, surface.hair_weight)

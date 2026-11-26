@@ -94,7 +94,7 @@ static func from_dict(data: Variant) -> BuildingProgress:
 	var progress: BuildingProgress = BuildingProgress.new()
 	progress.building_id = StringName(dict["building_id"])
 	progress.elapsed_seconds = maxf(0.0, float(raw_elapsed))
-	progress.money = maxi(0, int(raw_money))
+	progress.money = 0
 	if not _load_surface_hairs(dict.get("surface_hairs"), progress):
 		return null
 	if not _load_hair_stocks(dict.get("hair_stocks"), progress):
