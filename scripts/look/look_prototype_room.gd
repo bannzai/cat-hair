@@ -230,7 +230,7 @@ func get_hair_field() -> Node3D:
 
 
 ## 窓のノード (窓を付けなかった時は null)
-func get_window() -> Node3D:
+func get_window_node() -> Node3D:
 	return _content_root.get_node_or_null("Window") as Node3D if _content_root != null else null
 
 

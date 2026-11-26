@@ -229,7 +229,7 @@ func _check_apply_edges() -> void:
 	)
 
 	var room: MansionLayout.RoomDef = layout.rooms[0]
-	var window: Node3D = look_room.get_window()
+	var window: Node3D = look_room.get_window_node()
 	_check(
 		window != null
 		and LookPrototypeRoomScript.window_wall_side(room) == &"west"
@@ -254,7 +254,7 @@ func _check_apply_edges() -> void:
 	room.open_east = true
 	room.open_north = true
 	look_room.apply(layout, progress, null)
-	_check(look_room.get_window() == null, "4 面ともドアの部屋には窓を付けない")
+	_check(look_room.get_window_node() == null, "4 面ともドアの部屋には窓を付けない")
 
 	look_room.apply(MansionLayoutScript.new(), progress, null)
 	_check(
