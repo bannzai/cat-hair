@@ -3,13 +3,31 @@ extends RefCounted
 ## 調整値から決定論的に組み立てた屋敷 1 階の構造定義。
 ## 3D シーン構築とヘッドレス検証 (selfcheck) の両方がこの構造を入力にする。
 
-## 表面の種類 (documents/DIRECTION.md「用語」・PROJECT.md「毛と表面」準拠)
+## 床の表面種別
 const SURFACE_FLOOR: StringName = &"floor"
+## カーペットの表面種別
 const SURFACE_CARPET: StringName = &"carpet"
+## ソファの表面種別
 const SURFACE_SOFA: StringName = &"sofa"
+## ニットの表面種別
 const SURFACE_KNIT: StringName = &"knit"
+## 住人のスーツの表面種別
 const SURFACE_SUIT: StringName = &"suit"
+## 木製家具の表面種別
 const SURFACE_FURNITURE: StringName = &"furniture"
+
+## カーペットの物種別
+const OBJECT_CARPET: StringName = &"carpet"
+## ソファの物種別
+const OBJECT_SOFA: StringName = &"sofa"
+## テーブルの物種別
+const OBJECT_TABLE: StringName = &"table"
+## スーツ掛けの物種別
+const OBJECT_SUIT_RACK: StringName = &"suit_rack"
+## ニット椅子の物種別
+const OBJECT_KNIT_CHAIR: StringName = &"knit_chair"
+## サイドボードの物種別
+const OBJECT_SIDEBOARD: StringName = &"sideboard"
 
 ## 屋敷 1 階の天井高さ (m)。洋館の開放感を出しつつ室内照明が床まで届く高さ
 const CEILING_HEIGHT_M: float = 3.2
@@ -17,6 +35,8 @@ const CEILING_HEIGHT_M: float = 3.2
 const DOOR_WIDTH_M: float = 1.8
 ## ドア開口の高さ (m)。身長 1.7m に対して十分な頭上余裕がある標準的な洋館ドア高さ
 const DOOR_HEIGHT_M: float = 2.4
+## 毛を置く表面座標を床・家具天面からわずかに浮かせて Z-fighting を防ぐ高さオフセット (m)
+const SURFACE_Y_OFFSET_M: float = 0.01
 
 ## このレイアウトの入力になった調整値
 var tuning: MansionTuning = null
@@ -82,7 +102,7 @@ class ObjectDef:
 	var object_id: StringName = &""
 	## この物が属する部屋の id
 	var room_id: StringName = &""
-	## 物の形状種別 (carpet / sofa / table / suit_rack / knit_chair / sideboard)
+	## 物の形状種別 (MansionLayout.OBJECT_* 定数)
 	var object_kind: StringName = &""
 	## この物が持つ表面の種類 (MansionLayout.SURFACE_* 定数)
 	var surface_type: StringName = &""
@@ -101,7 +121,7 @@ class SurfaceDef:
 	var surface_id: StringName = &""
 	## この表面が属する部屋の id
 	var room_id: StringName = &""
-	## 表面の種類 (床・カーペット・ソファ・ニット・スーツ・家具)
+	## 表面の種類 (MansionLayout.SURFACE_* 定数)
 	var surface_type: StringName = &""
 	## 毛が乗る面の中心ワールド座標
 	var center: Vector3 = Vector3.ZERO

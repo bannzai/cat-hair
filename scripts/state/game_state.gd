@@ -90,7 +90,9 @@ func start_new_game(custom_tuning: MansionTuning = null) -> void:
 	state_changed.emit()
 
 
-## 開発者向けの調整値を適用し、その値の屋敷を作り直して永続化する
+## 開発者向けの調整値を適用し、その値の屋敷を作り直す。
+## persist の既定値を true とするのは、開発者画面からの適用時にそのまま保存して
+## 次回起動でも同じ調整値の屋敷を再開できるようにするため (保存不要な検証のみ false を渡す)。
 func apply_tuning_and_rebuild(new_tuning: MansionTuning, persist: bool = true) -> void:
 	var safe_tuning: MansionTuning = (
 		new_tuning.clamped() if new_tuning != null else MansionTuningScript.new()
@@ -217,11 +219,6 @@ static func _id_sets_equal(expected_keys: Dictionary, actual_keys: Dictionary) -
 	return true
 
 
-## 起動時のユーザー引数とエンジン引数をまとめて返す
+## 起動時のユーザー引数 (`--` 以降) を返す
 static func _collect_cmdline_args() -> PackedStringArray:
-	var combined: PackedStringArray = PackedStringArray()
-	for arg: String in OS.get_cmdline_user_args():
-		combined.append(arg)
-	for arg: String in OS.get_cmdline_args():
-		combined.append(arg)
-	return combined
+	return OS.get_cmdline_user_args()

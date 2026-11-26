@@ -86,37 +86,37 @@ const ROOM_PRESETS: Array[Dictionary] = [
 ## 床・カーペット・ソファ・家具・住人のスーツ・ニットの全表面種別が揃う順で定義する。
 const OBJECT_PRESETS: Array[Dictionary] = [
 	{
-		"kind": &"carpet",
+		"kind": MansionLayoutScript.OBJECT_CARPET,
 		"surface_type": MansionLayoutScript.SURFACE_CARPET,
 		"size": Vector3(2.4, 0.03, 1.8),
 		"weight": 2.2,
 	},
 	{
-		"kind": &"sofa",
+		"kind": MansionLayoutScript.OBJECT_SOFA,
 		"surface_type": MansionLayoutScript.SURFACE_SOFA,
 		"size": Vector3(1.8, 0.85, 0.85),
 		"weight": 1.8,
 	},
 	{
-		"kind": &"table",
+		"kind": MansionLayoutScript.OBJECT_TABLE,
 		"surface_type": MansionLayoutScript.SURFACE_FURNITURE,
 		"size": Vector3(1.2, 0.72, 0.75),
 		"weight": 1.0,
 	},
 	{
-		"kind": &"suit_rack",
+		"kind": MansionLayoutScript.OBJECT_SUIT_RACK,
 		"surface_type": MansionLayoutScript.SURFACE_SUIT,
 		"size": Vector3(0.75, 1.55, 0.45),
 		"weight": 1.3,
 	},
 	{
-		"kind": &"knit_chair",
+		"kind": MansionLayoutScript.OBJECT_KNIT_CHAIR,
 		"surface_type": MansionLayoutScript.SURFACE_KNIT,
 		"size": Vector3(0.7, 0.85, 0.7),
 		"weight": 1.4,
 	},
 	{
-		"kind": &"sideboard",
+		"kind": MansionLayoutScript.OBJECT_SIDEBOARD,
 		"surface_type": MansionLayoutScript.SURFACE_FURNITURE,
 		"size": Vector3(1.4, 0.9, 0.5),
 		"weight": 1.0,
@@ -205,7 +205,11 @@ static func _build_rooms(layout: MansionLayout, tuning: MansionTuning) -> void:
 		floor_surface.surface_id = StringName("%s_floor" % String(room.room_id))
 		floor_surface.room_id = room.room_id
 		floor_surface.surface_type = MansionLayoutScript.SURFACE_FLOOR
-		floor_surface.center = Vector3(room.center.x, 0.01, room.center.z)
+		floor_surface.center = Vector3(
+			room.center.x,
+			MansionLayoutScript.SURFACE_Y_OFFSET_M,
+			room.center.z,
+		)
 		floor_surface.extents = Vector2(
 			maxf(MIN_FLOOR_HAIR_EXTENT_M, room_width - FLOOR_HAIR_INSET_M),
 			maxf(MIN_FLOOR_HAIR_EXTENT_M, room_width - FLOOR_HAIR_INSET_M),
@@ -272,8 +276,12 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		surface.surface_type = obj.surface_type
 		surface.center = Vector3(
 			obj.position.x,
-			(obj.size.y * SOFA_SEAT_HEIGHT_RATIO if obj.object_kind == &"sofa" else obj.size.y)
-			+ 0.01,
+			(
+				obj.size.y * SOFA_SEAT_HEIGHT_RATIO
+				if obj.object_kind == MansionLayoutScript.OBJECT_SOFA
+				else obj.size.y
+			)
+			+ MansionLayoutScript.SURFACE_Y_OFFSET_M,
 			obj.position.z,
 		)
 		surface.extents = Vector2(

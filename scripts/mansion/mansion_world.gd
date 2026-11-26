@@ -39,6 +39,24 @@ const DOOR_HEADER_MIN_CLEARANCE_M: float = 0.3
 const DOOR_SIDE_MIN_WIDTH_M: float = 0.15
 ## ドア上のまぐさ壁メッシュが潰れない最小高さ (m)
 const DOOR_HEADER_MIN_HEIGHT_M: float = 0.2
+## 室内壁の下端に付ける洋館巾木の高さ (m。床と壁の境目を視認しやすくする標準寸法)
+const BASEBOARD_HEIGHT_M: float = 0.18
+## 巾木を壁面からわずかに張り出して立体感を出す厚み加算 (m)
+const BASEBOARD_DEPTH_EXTRA_M: float = 0.03
+## ドア開口を縁取る木枠の太さ (m。隣室への入口を遠目でも視認しやすい幅)
+const DOOR_FRAME_WIDTH_M: float = 0.08
+## ドア枠を壁面からわずかに張り出して Z-fighting を防ぐ厚み加算 (m)
+const DOOR_FRAME_DEPTH_EXTRA_M: float = 0.04
+## テーブル天板の厚み (m。木製テーブルとして自然な強度に見える厚み)
+const TABLE_TOP_THICKNESS_M: float = 0.08
+## テーブル脚が極端に短い高さで潰れないための最小脚高さ (m)
+const TABLE_MIN_LEG_HEIGHT_M: float = 0.1
+## テーブル四隅の脚を天板端からわずかに内側へ寄せる X 方向配置比率 (幅の半分 0.5 より内側)
+const TABLE_LEG_OFFSET_X_RATIO: float = 0.42
+## テーブル四隅の脚を天板端からわずかに内側へ寄せる Z 方向配置比率 (奥行の半分 0.5 より内側)
+const TABLE_LEG_OFFSET_Z_RATIO: float = 0.40
+## テーブル脚の断面一辺の幅 (m)
+const TABLE_LEG_WIDTH_M: float = 0.07
 ## 仮の毛片を表面の端 6% を避けて内側へ散らす半幅比率
 const VISUAL_HAIR_EXTENT_HALF_RATIO: float = 0.44
 ## 仮の毛片を表面からわずかに浮かせて Z-fighting を防ぐ高さオフセット (m)
@@ -308,8 +326,8 @@ func _build_wall(
 		_add_static_box(
 			wall_root,
 			"Baseboard",
-			Vector3(0.0, 0.09, 0.0),
-			Vector3(wall_span, 0.18, WALL_THICKNESS_M + 0.03),
+			Vector3(0.0, BASEBOARD_HEIGHT_M * 0.5, 0.0),
+			Vector3(wall_span, BASEBOARD_HEIGHT_M, WALL_THICKNESS_M + BASEBOARD_DEPTH_EXTRA_M),
 			_material_baseboard,
 			false,
 		)
@@ -355,7 +373,7 @@ func _build_wall(
 		wall_root,
 		"FrameLeft",
 		Vector3(-door_width * 0.5, door_height * 0.5, 0.0),
-		Vector3(0.08, door_height, WALL_THICKNESS_M + 0.04),
+		Vector3(DOOR_FRAME_WIDTH_M, door_height, WALL_THICKNESS_M + DOOR_FRAME_DEPTH_EXTRA_M),
 		_material_door_frame,
 		false,
 	)
@@ -363,7 +381,7 @@ func _build_wall(
 		wall_root,
 		"FrameRight",
 		Vector3(door_width * 0.5, door_height * 0.5, 0.0),
-		Vector3(0.08, door_height, WALL_THICKNESS_M + 0.04),
+		Vector3(DOOR_FRAME_WIDTH_M, door_height, WALL_THICKNESS_M + DOOR_FRAME_DEPTH_EXTRA_M),
 		_material_door_frame,
 		false,
 	)
@@ -371,7 +389,11 @@ func _build_wall(
 		wall_root,
 		"FrameTop",
 		Vector3(0.0, door_height, 0.0),
-		Vector3(door_width + 0.08, 0.08, WALL_THICKNESS_M + 0.04),
+		Vector3(
+			door_width + DOOR_FRAME_WIDTH_M,
+			DOOR_FRAME_WIDTH_M,
+			WALL_THICKNESS_M + DOOR_FRAME_DEPTH_EXTRA_M,
+		),
 		_material_door_frame,
 		false,
 	)
@@ -389,7 +411,7 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 	var object_height: float = obj.size.y
 	var object_depth: float = obj.size.z
 
-	if obj.object_kind == &"carpet":
+	if obj.object_kind == MansionLayoutScript.OBJECT_CARPET:
 		_add_static_box(
 			object_root,
 			"CarpetTrim",
@@ -406,7 +428,7 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 			_material_carpet,
 			false,
 		)
-	elif obj.object_kind == &"sofa":
+	elif obj.object_kind == MansionLayoutScript.OBJECT_SOFA:
 		var seat_height: float = object_height * MansionBuilderScript.SOFA_SEAT_HEIGHT_RATIO
 		_add_static_box(
 			object_root,
@@ -440,7 +462,7 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 			_material_sofa,
 			false,
 		)
-	elif obj.object_kind == &"suit_rack":
+	elif obj.object_kind == MansionLayoutScript.OBJECT_SUIT_RACK:
 		_add_static_box(
 			object_root,
 			"Base",
@@ -473,7 +495,7 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 			_material_suit,
 			false,
 		)
-	elif obj.object_kind == &"knit_chair":
+	elif obj.object_kind == MansionLayoutScript.OBJECT_KNIT_CHAIR:
 		_add_static_box(
 			object_root,
 			"ChairSeat",
@@ -498,7 +520,7 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 			_material_knit,
 			false,
 		)
-	elif obj.object_kind == &"sideboard":
+	elif obj.object_kind == MansionLayoutScript.OBJECT_SIDEBOARD:
 		_add_static_box(
 			object_root,
 			"Cabinet",
@@ -519,14 +541,14 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 		_add_static_box(
 			object_root,
 			"TableTop",
-			Vector3(0.0, object_height - 0.04, 0.0),
-			Vector3(object_width, 0.08, object_depth),
+			Vector3(0.0, object_height - TABLE_TOP_THICKNESS_M * 0.5, 0.0),
+			Vector3(object_width, TABLE_TOP_THICKNESS_M, object_depth),
 			_material_wood,
 			true,
 		)
-		var leg_height: float = maxf(0.1, object_height - 0.08)
-		var leg_offset_x: float = object_width * 0.42
-		var leg_offset_z: float = object_depth * 0.40
+		var leg_height: float = maxf(TABLE_MIN_LEG_HEIGHT_M, object_height - TABLE_TOP_THICKNESS_M)
+		var leg_offset_x: float = object_width * TABLE_LEG_OFFSET_X_RATIO
+		var leg_offset_z: float = object_depth * TABLE_LEG_OFFSET_Z_RATIO
 		for leg_pos: Vector3 in [
 			Vector3(-leg_offset_x, leg_height * 0.5, -leg_offset_z),
 			Vector3(leg_offset_x, leg_height * 0.5, -leg_offset_z),
@@ -537,7 +559,7 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 				object_root,
 				"Leg",
 				leg_pos,
-				Vector3(0.07, leg_height, 0.07),
+				Vector3(TABLE_LEG_WIDTH_M, leg_height, TABLE_LEG_WIDTH_M),
 				_material_wood,
 				false,
 			)

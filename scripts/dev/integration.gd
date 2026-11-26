@@ -4,8 +4,6 @@ extends "res://scripts/dev/headless_check.gd"
 
 ## 動かして確かめるメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
-## 状態管理 autoload スクリプト
-const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## JSON 保存ストレージスクリプト
 const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 ## 開発者向け調整値データ型スクリプト
@@ -33,14 +31,9 @@ func _run() -> void:
 
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
-	var created_state: bool = false
-	var game_state: Node = root.get_node_or_null("GameState")
-	if game_state == null:
-		game_state = GameStateScript.new()
-		game_state.name = "GameState"
-		root.add_child(game_state)
-		created_state = true
-	game_state.initialize_from_storage(TEST_SAVE_PATH)
+	var state_handle: Dictionary = acquire_game_state(root, TEST_SAVE_PATH)
+	var game_state: Node = state_handle["node"]
+	var created_state: bool = state_handle["created"]
 
 	var main: Node3D = MAIN_SCENE.instantiate()
 	root.add_child(main)
@@ -364,12 +357,20 @@ func _verify_resume_and_new_game_from_saved_state(game_state: Node) -> void:
 
 	new_game_button.pressed.emit()
 	await process_frame
-	var hud: Control = resumed_main.get_node("UILayer/UI/HUD")
-	_check(hud.visible and game_state.get_money() == 0, "『はじめから』押下で初期化して屋敷へ入る")
+	_check(
+		resumed_main.get_node("UILayer/UI/HUD").visible and game_state.get_money() == 0,
+		"『はじめから』押下で初期化して屋敷へ入る",
+	)
 	var saved_after_reset: SaveData = SaveStorageScript.load_from_path(TEST_SAVE_PATH)
 	_check(
-		saved_after_reset != null and saved_after_reset.building_progress.money == 0,
-		"『はじめから』で初期化した進行が保存ファイルへ書き出される",
+		saved_after_reset != null
+		and saved_after_reset.building_progress.money == 0
+		and saved_after_reset.tuning.room_count == 2
+		and saved_after_reset.tuning.hair_count == 500
+		and saved_after_reset.tuning.object_count == 6
+		and saved_after_reset.tuning.found_item_count == 2
+		and is_equal_approx(saved_after_reset.tuning.room_size_m, 7.5),
+		"『はじめから』で現在の調整値を引き継ぎ初期化した進行を保存ファイルへ書き出す",
 	)
 
 	root.remove_child(resumed_main)

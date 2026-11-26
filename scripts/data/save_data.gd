@@ -38,17 +38,17 @@ func to_dict() -> Dictionary:
 	for record: BuildingRecord in building_records:
 		if record != null:
 			records_out.append(record.to_dict())
-	var safe_progress: BuildingProgress = (
-		building_progress if building_progress != null else BuildingProgressScript.new()
-	)
-	var safe_tuning: MansionTuning = tuning if tuning != null else MansionTuningScript.new()
 	return {
 		"schema_version": schema_version,
 		"hand_upgrade_levels": upgrades_out,
 		"found_rare_hair_ids": rare_out,
 		"building_records": records_out,
-		"building_progress": safe_progress.to_dict(),
-		"tuning": safe_tuning.to_dict(),
+		"building_progress": (
+			building_progress.to_dict()
+			if building_progress != null
+			else BuildingProgressScript.new().to_dict()
+		),
+		"tuning": tuning.to_dict() if tuning != null else MansionTuningScript.new().to_dict(),
 	}
 
 

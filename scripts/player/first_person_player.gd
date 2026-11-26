@@ -24,6 +24,8 @@ const CAPSULE_RADIUS_M: float = 0.35
 const CAPSULE_HEIGHT_M: float = 1.7
 ## 身長 1.7m に対応する一人称カメラの目線高さ (m)
 const EYE_HEIGHT_M: float = 1.55
+## 移動入力ベクトルの微小な浮動小数点誤差をゼロ扱いするための二乗長しきい値
+const MIN_MOVE_INPUT_LENGTH_SQ: float = 0.0001
 
 ## 歩行速度 (m/s)
 @export var move_speed: float = DEFAULT_MOVE_SPEED
@@ -135,7 +137,7 @@ func _physics_process(delta: float) -> void:
 		)
 		var move_direction: Vector3 = transform.basis * Vector3(input_vec.x, 0.0, input_vec.y)
 		move_direction.y = 0.0
-		if move_direction.length_squared() > 0.0001:
+		if move_direction.length_squared() > MIN_MOVE_INPUT_LENGTH_SQ:
 			move_direction = move_direction.normalized()
 			velocity.x = move_direction.x * move_speed
 			velocity.z = move_direction.z * move_speed

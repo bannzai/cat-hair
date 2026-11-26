@@ -196,11 +196,10 @@ func _check_mansion_builder_changes_and_large_scale() -> void:
 			or absf(obj.position.z) + half_extent > half_room
 		):
 			all_edges_inside = false
-	var ring_shifted: bool = dense_layout.objects[8].position.distance_to(
-		dense_layout.objects[0].position
-	) > 0.1
 	_check(
-		dense_layout.objects.size() == 12 and all_edges_inside and ring_shifted,
+		dense_layout.objects.size() == 12
+		and all_edges_inside
+		and dense_layout.objects[8].position.distance_to(dense_layout.objects[0].position) > 0.1,
 		"最小幅の 12 個配置で全家具外縁が壁内に収まり ring > 0 が 1 周目と重ならない",
 	)
 
@@ -285,24 +284,16 @@ func _check_tuning_equals_and_cmdline_args() -> void:
 	_check(base.equals(MansionTuningScript.new()), "同じ値の MansionTuning で equals が true")
 	_check(not base.equals(null), "null との equals が false")
 
-	var diff_hair: MansionTuning = base.clamped()
-	diff_hair.hair_count += 1
-	var diff_found: MansionTuning = base.clamped()
-	diff_found.found_item_count += 1
-	var diff_size: MansionTuning = base.clamped()
-	diff_size.room_size_m += 1.0
-	var diff_object: MansionTuning = base.clamped()
-	diff_object.object_count += 1
-	var diff_room: MansionTuning = base.clamped()
-	diff_room.room_count += 1
-	_check(
-		not base.equals(diff_hair)
-		and not base.equals(diff_found)
-		and not base.equals(diff_size)
-		and not base.equals(diff_object)
-		and not base.equals(diff_room),
-		"5 項目のどれか 1 項目だけ異なると equals が false",
-	)
+	for prop_diff: Array in [
+		["hair_count", base.hair_count + 1],
+		["found_item_count", base.found_item_count + 1],
+		["room_size_m", base.room_size_m + 1.0],
+		["object_count", base.object_count + 1],
+		["room_count", base.room_count + 1],
+	]:
+		var diff_tuning: MansionTuning = base.clamped()
+		diff_tuning.set(prop_diff[0], prop_diff[1])
+		_check(not base.equals(diff_tuning), "項目 %s の差異で equals が false" % prop_diff[0])
 
 	# MansionTuning.from_dict の各キー単独欠損と非数値型違い
 	var base_dict: Dictionary = base.to_dict()
@@ -338,14 +329,15 @@ func _check_tuning_equals_and_cmdline_args() -> void:
 			"単独引数 %s で has_cmdline_override が true" % single_arg,
 		)
 
-	var all_args: PackedStringArray = PackedStringArray([
-		"--hair-count=321",
-		"--found-item-count=2",
-		"--room-size=8.5",
-		"--object-count=7",
-		"--room-count=3",
-	])
-	var parsed: MansionTuning = MansionTuningScript.from_cmdline_args(all_args)
+	var parsed: MansionTuning = MansionTuningScript.from_cmdline_args(
+		PackedStringArray([
+			"--hair-count=321",
+			"--found-item-count=2",
+			"--room-size=8.5",
+			"--object-count=7",
+			"--room-count=3",
+		])
+	)
 	_check(
 		parsed.hair_count == 321
 		and parsed.found_item_count == 2
@@ -581,7 +573,7 @@ func _check_save_missing_corrupted_and_clamping() -> void:
 	)
 	missing_save_state.free()
 
-	for bad_payload: String in ["{broken json", ""]:
+	for bad_payload: String in ["{broken json", "", "[1,2]", "null", "123"]:
 		var file: FileAccess = FileAccess.open(TEST_SAVE_PATH, FileAccess.WRITE)
 		file.store_string(bad_payload)
 		file.close()
@@ -597,14 +589,14 @@ func _check_save_missing_corrupted_and_clamping() -> void:
 
 	var valid_dict: Dictionary = _create_rich_save_fixture().to_dict()
 
-	# 有効辞書で schema_version だけ 0 / 2 に変更 (未対応スキーマ判定を通す)
-	for bad_version: int in [0, 2]:
+	# 有効辞書で schema_version を 0 / 2 / 文字列 / 欠損に変更 (未対応・不正スキーマ判定を通す)
+	for bad_version: Variant in [0, 2, "1"]:
 		var bad_ver_dict: Dictionary = valid_dict.duplicate(true)
 		bad_ver_dict["schema_version"] = bad_version
-		_check(
-			SaveDataScript.from_dict(bad_ver_dict) == null,
-			"有効辞書の schema_version=%d は null を返す" % bad_version,
-		)
+		_check(SaveDataScript.from_dict(bad_ver_dict) == null, "不正 schema_version で null")
+	var missing_ver_dict: Dictionary = valid_dict.duplicate(true)
+	missing_ver_dict.erase("schema_version")
+	_check(SaveDataScript.from_dict(missing_ver_dict) == null, "schema_version 欠損で null")
 
 	# 1 フィールドずつ壊した異常系群
 	var mutated: Dictionary = valid_dict.duplicate(true)
@@ -683,13 +675,11 @@ func _check_save_missing_corrupted_and_clamping() -> void:
 		{"found_item_id": "a", "condition": "x", "is_returned": false},
 	]:
 		_check(FoundItemProgressScript.from_dict(bad_found) == null, "FoundItem 不正辞書を拒否")
-	_check(
-		BuildingRecordScript.from_dict(
-			{"building_id": "a", "clear_seconds": 1.0, "returned_found_item_count": "x"}
-		)
-		== null,
-		"BuildingRecord.returned_found_item_count 非数値を拒否",
-	)
+	for bad_record: Dictionary in [
+		{"building_id": 1, "clear_seconds": 1.0, "returned_found_item_count": 0},
+		{"building_id": "a", "clear_seconds": 1.0, "returned_found_item_count": "x"},
+	]:
+		_check(BuildingRecordScript.from_dict(bad_record) == null, "BuildingRecord 不正辞書を拒否")
 
 	# 負値と機嫌範囲外の丸め境界
 	var clamp_dict: Dictionary = valid_dict.duplicate(true)
@@ -776,6 +766,32 @@ func _check_game_state_override_reconcile_and_notifications() -> void:
 		and after_override_close.building_progress.money == 5555,
 		"引数上書き起動は保存調整値を土台に作り直し終了通知で既存セーブを上書きしない",
 	)
+	# persist=false は上書きフラグを維持し終了通知でも保存せず、persist=true で解除・保存有効化する
+	state_override.apply_tuning_and_rebuild(null, false)
+	state_override.save_data.building_progress.money = 6666
+	state_override.notification(Node.NOTIFICATION_WM_CLOSE_REQUEST)
+	_check(
+		state_override.launched_with_cmdline_override
+		and SaveStorageScript.load_from_path(TEST_SAVE_PATH).building_progress.money == 5555,
+		"引数上書き後の persist=false 再構築は自動保存抑止を維持する",
+	)
+	state_override.apply_tuning_and_rebuild(null, true)
+	state_override.save_data.building_progress.money = 7777
+	state_override.notification(Node.NOTIFICATION_WM_CLOSE_REQUEST)
+	_check(
+		not state_override.launched_with_cmdline_override
+		and SaveStorageScript.load_from_path(TEST_SAVE_PATH).building_progress.money == 7777,
+		"引数上書き後の persist=true 再構築で自動保存が再び有効になる",
+	)
+	state_override.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray(["--room-count=1"]))
+	state_override.start_new_game()
+	state_override.save_data.building_progress.money = 8888
+	state_override.notification(Node.NOTIFICATION_WM_CLOSE_REQUEST)
+	_check(
+		not state_override.launched_with_cmdline_override
+		and SaveStorageScript.load_from_path(TEST_SAVE_PATH).building_progress.money == 8888,
+		"引数上書き後の start_new_game で自動保存が再び有効になる",
+	)
 	state_override.free()
 
 	# 4. _reconcile_progress_with_layout: 一致保持
@@ -796,25 +812,20 @@ func _check_game_state_override_reconcile_and_notifications() -> void:
 	extra_surface.surface_id = &"extra_surface"
 	extra_surface_save.building_progress.surface_hairs.append(extra_surface)
 	_assert_reconcile_resets("面に余分な要素あり", extra_surface_save)
-
 	var wrong_surface_id_save: SaveData = _create_rich_save_fixture()
 	wrong_surface_id_save.building_progress.surface_hairs[0].surface_id = &"unknown_surface"
 	_assert_reconcile_resets("面 ID 不一致", wrong_surface_id_save)
-
 	var extra_item_save: SaveData = _create_rich_save_fixture()
 	var extra_item: FoundItemProgress = FoundItemProgressScript.new()
 	extra_item.found_item_id = &"extra_item"
 	extra_item_save.building_progress.found_items.append(extra_item)
 	_assert_reconcile_resets("探し物件数過多", extra_item_save)
-
 	var wrong_item_id_save: SaveData = _create_rich_save_fixture()
 	wrong_item_id_save.building_progress.found_items[0].found_item_id = &"unknown_item"
 	_assert_reconcile_resets("探し物 ID 不一致", wrong_item_id_save)
-
 	var extra_resident_save: SaveData = _create_rich_save_fixture()
 	extra_resident_save.building_progress.resident_moods[&"resident_extra"] = 0.5
 	_assert_reconcile_resets("住人件数過多", extra_resident_save)
-
 	var wrong_resident_save: SaveData = _create_rich_save_fixture()
 	wrong_resident_save.building_progress.resident_moods.erase(&"resident_hall")
 	wrong_resident_save.building_progress.resident_moods[&"resident_unknown"] = 0.5
@@ -841,9 +852,12 @@ func _check_game_state_and_builder_edge_cases() -> void:
 		SaveStorageScript.save_to_path(null, TEST_SAVE_PATH) == ERR_INVALID_PARAMETER,
 		"SaveStorage.save_to_path(null) が ERR_INVALID_PARAMETER を返す",
 	)
-	var valid_save: SaveData = _create_rich_save_fixture()
 	_check(
-		SaveStorageScript.save_to_path(valid_save, "user://nonexistent_dir_xyz/save.json") != OK,
+		SaveStorageScript.save_to_path(
+			_create_rich_save_fixture(),
+			"user://nonexistent_dir_xyz/save.json",
+		)
+		!= OK,
 		"存在しないディレクトリへの保存がエラーを返す",
 	)
 
@@ -903,6 +917,23 @@ func _check_game_state_and_builder_edge_cases() -> void:
 		"start_new_game(custom_tuning) が指定値で新規開始して保存する",
 	)
 	state.free()
+
+	# autoload GameState 不在時に Main が自前 LocalGameState を生成し _exit_tree で解放する経路
+	var saved_autoload: Node = root.get_node_or_null("GameState")
+	if saved_autoload != null:
+		root.remove_child(saved_autoload)
+	var standalone_main: Node3D = (load(MAIN_SCENE_PATH) as PackedScene).instantiate()
+	root.add_child(standalone_main)
+	var local_state: Node = standalone_main.get_game_state()
+	_check(
+		local_state != null and local_state.name == "LocalGameState",
+		"autoload 不在時に Main が自前 LocalGameState を生成する",
+	)
+	root.remove_child(standalone_main)
+	standalone_main.free()
+	_check(not is_instance_valid(local_state), "Main の _exit_tree で自前 LocalGameState が解放される")
+	if saved_autoload != null:
+		root.add_child(saved_autoload)
 
 
 ## 毛の本数の 3 桁区切り整形を検証する
