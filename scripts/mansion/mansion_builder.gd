@@ -200,7 +200,8 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		surface.surface_id = StringName("%s_surface" % String(obj.object_id))
 		surface.room_id = room.room_id
 		surface.surface_type = obj.surface_type
-		surface.center = Vector3(obj.position.x, obj.size.y + 0.01, obj.position.z)
+		var surface_y: float = obj.size.y * 0.56 if obj.object_kind == &"sofa" else obj.size.y
+		surface.center = Vector3(obj.position.x, surface_y + 0.01, obj.position.z)
 		surface.extents = Vector2(maxf(0.3, obj.size.x * 0.85), maxf(0.3, obj.size.z * 0.85))
 		surface.hair_weight = float(preset["weight"])
 		layout.surfaces.append(surface)

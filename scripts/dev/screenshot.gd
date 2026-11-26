@@ -31,10 +31,13 @@ func _run() -> void:
 ## 撮影する画面の並び。失敗した撮影は _capture() が quit(1) 済みなので、false を受けたらそのまま抜ける
 func _capture_scenes() -> bool:
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
-	var game_state: Node = GameStateScript.new()
-	game_state.name = "GameState"
-	game_state.save_path = TEST_SAVE_PATH
-	root.add_child(game_state)
+	var created_state: bool = false
+	var game_state: Node = root.get_node_or_null("GameState")
+	if game_state == null:
+		game_state = GameStateScript.new()
+		game_state.name = "GameState"
+		root.add_child(game_state)
+		created_state = true
 	game_state.initialize_from_storage(TEST_SAVE_PATH)
 
 	var main: Node3D = MAIN_SCENE.instantiate()
@@ -45,32 +48,32 @@ func _capture_scenes() -> bool:
 	# CI の llvmpipe でこの画面が描画し終わることを PR #1 の artifact で確かめた (下限は測っていない)
 	await create_timer(0.3).timeout
 	if not await _capture("tmp/screenshot-title.png"):
-		_cleanup(main, game_state)
+		_cleanup(main, game_state, created_state)
 		return false
 
 	# 屋敷の中の一人称プレイ画面 (部屋・家具・布・仮の毛・残り本数の HUD)
 	main.enter_mansion()
 	if not await _capture("tmp/screenshot-mansion.png"):
-		_cleanup(main, game_state)
+		_cleanup(main, game_state, created_state)
 		return false
 
 	# 開発者向け調整画面を開いた状態
 	main.open_dev_panel()
 	if not await _capture("tmp/screenshot-dev-panel.png"):
-		_cleanup(main, game_state)
+		_cleanup(main, game_state, created_state)
 		return false
 
-	_cleanup(main, game_state)
+	_cleanup(main, game_state, created_state)
 	return true
 
 
-func _cleanup(main: Node3D, game_state: Node) -> void:
+func _cleanup(main: Node3D, game_state: Node, created_state: bool) -> void:
 	if current_scene == main:
 		current_scene = null
 	if is_instance_valid(main) and main.get_parent() != null:
 		main.get_parent().remove_child(main)
 		main.free()
-	if is_instance_valid(game_state) and game_state.get_parent() != null:
+	if created_state and is_instance_valid(game_state) and game_state.get_parent() != null:
 		game_state.get_parent().remove_child(game_state)
 		game_state.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)

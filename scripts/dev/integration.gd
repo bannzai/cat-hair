@@ -21,10 +21,13 @@ func _initialize() -> void:
 func _run() -> void:
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
-	var game_state: Node = GameStateScript.new()
-	game_state.name = "GameState"
-	game_state.save_path = TEST_SAVE_PATH
-	root.add_child(game_state)
+	var created_state: bool = false
+	var game_state: Node = root.get_node_or_null("GameState")
+	if game_state == null:
+		game_state = GameStateScript.new()
+		game_state.name = "GameState"
+		root.add_child(game_state)
+		created_state = true
 	game_state.initialize_from_storage(TEST_SAVE_PATH)
 
 	var main: Node3D = MAIN_SCENE.instantiate()
@@ -37,8 +40,9 @@ func _run() -> void:
 
 	root.remove_child(main)
 	main.free()
-	root.remove_child(game_state)
-	game_state.free()
+	if created_state:
+		root.remove_child(game_state)
+		game_state.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 	_finish()
 
