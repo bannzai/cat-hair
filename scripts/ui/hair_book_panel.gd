@@ -54,6 +54,11 @@ func get_entry_texts() -> PackedStringArray:
 
 ## 見出し・行・閉じるボタンを組み立てる
 func _build() -> void:
+	var background: StyleBoxFlat = StyleBoxFlat.new()
+	background.bg_color = Color(0.16, 0.12, 0.09, 0.96)
+	background.set_corner_radius_all(8)
+	background.set_content_margin_all(24.0)
+	add_theme_stylebox_override("panel", background)
 	var layout: VBoxContainer = VBoxContainer.new()
 	layout.name = "Layout"
 	layout.add_theme_constant_override("separation", 10)

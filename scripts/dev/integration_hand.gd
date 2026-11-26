@@ -126,8 +126,7 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 	var before_field: int = hair_field.get_remaining_count()
 
 	# 押した瞬間につまみ、離すと元に戻る
-	Input.action_press(ACTION_PLUCK)
-	await _checker.process_frame
+	await _press_pluck()
 	var pulled_ids: PackedInt32Array = hand.get_pulling_ids()
 	_check(
 		hand.is_pulling() and pulled_ids.size() == 1
@@ -136,6 +135,9 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		) == pulled_ids,
 		"狙った床の毛をつまむ入力で、その表面の毛を 1 本つまむ",
 	)
+	if pulled_ids.is_empty():
+		Input.action_release(ACTION_PLUCK)
+		return
 	_check(
 		is_equal_approx(
 			hand.get_pull_duration(),
@@ -164,8 +166,7 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 	var audio_manager: AudioManagerScript = (
 		AudioManagerScript.resolve(_checker) as AudioManagerScript
 	)
-	Input.action_press(ACTION_PLUCK)
-	await _checker.process_frame
+	await _press_pluck()
 	var plucked_id: int = hand.get_pulling_ids()[0] if hand.is_pulling() else -1
 	var plucked_color: StringName = world.get_hair_color_id(plucked_id)
 	var surface_hair: SurfaceHair = game_state.save_data.building_progress.find_surface_hair(
@@ -227,8 +228,7 @@ func _verify_upgrades_change_pull(main: Node3D, game_state: Node) -> void:
 	var reachable: PackedInt32Array = main.mansion_world.get_hair_field().find_hairs_near(
 		int(target["surface_index"]), target["point"], HandController.GRAB_RADIUS_M, 3
 	)
-	Input.action_press(ACTION_PLUCK)
-	await _checker.process_frame
+	await _press_pluck()
 	_check(
 		is_equal_approx(
 			hand.get_pull_duration(),
@@ -246,6 +246,15 @@ func _verify_upgrades_change_pull(main: Node3D, game_state: Node) -> void:
 	await _checker.process_frame
 	game_state.set_hand_upgrade_level(HandRulesScript.UPGRADE_DEXTERITY, 0)
 	game_state.set_hand_upgrade_level(HandRulesScript.UPGRADE_GRAB_COUNT, 0)
+
+
+## つまむ入力を押し、HandController の _process がその押下を処理した直後まで進める。
+## process_frame は各ノードの _process より前に出るため、まず process_frame に合わせてから押し、
+## もう 1 回 process_frame を待つと、その間の _process が押下を見る
+func _press_pluck() -> void:
+	await _checker.process_frame
+	Input.action_press(ACTION_PLUCK)
+	await _checker.process_frame
 
 
 ## つまむ入力を指定フレーム数だけ押し続けてから離す

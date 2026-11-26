@@ -557,7 +557,7 @@ func _check_stretched_hair_transform() -> void:
 		and is_equal_approx(at_one.basis.z.length(), HandControllerScript.MAX_STRETCH_RATIO)
 		and is_equal_approx(at_one.basis.x.length(), HandControllerScript.PULL_WIDTH_RATIO)
 		and at_one.basis.z.normalized().dot(Vector3.UP) > 0.9,
-		"引き終える時は根元を保ったまま、長さ 2.2 倍・幅 2 倍で法線 (上) へ起きる",
+		"引き終える時は根元を保ったまま、長さ 2.2 倍・幅 3 倍で法線 (上) へ起きる",
 	)
 	var over: Transform3D = HandControllerScript.stretched_hair_transform(rest, Vector3.UP, 5.0)
 	_check(over.is_equal_approx(at_one), "進み具合が 1 を超えても 1 と同じ見た目")

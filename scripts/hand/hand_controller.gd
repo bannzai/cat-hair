@@ -28,7 +28,7 @@ const OCCLUSION_TOLERANCE_M: float = 0.06
 ## 引き終える直前の毛の長さの倍率 (伸びてから抜ける見た目)
 const MAX_STRETCH_RATIO: float = 2.2
 ## 引いている間に毛を太く見せる倍率 (1〜2 ピクセルの細さでも引いている毛が見えるように)
-const PULL_WIDTH_RATIO: float = 2.0
+const PULL_WIDTH_RATIO: float = 3.0
 ## 引き終える時に毛の先が面の法線へ向く割合
 const LIFT_TOWARD_NORMAL_RATIO: float = 0.85
 

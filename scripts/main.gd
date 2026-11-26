@@ -189,6 +189,8 @@ func toggle_hair_book() -> void:
 func open_hair_book() -> void:
 	if _game_state != null:
 		hair_book_panel.refresh(_game_state.get_found_rare_hair_ids())
+	pluck_popup_label.visible = false
+	_pluck_popup_remaining = 0.0
 	hair_book_panel.visible = true
 	_sync_controls()
 	_release_mouse()
