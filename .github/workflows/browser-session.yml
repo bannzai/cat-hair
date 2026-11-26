@@ -2,6 +2,8 @@ name: browser-session
 # Web エクスポートを GitHub Actions のランナー上の Chromium で開き、Tailscale 経由で手元から操作する
 # (webtunnel skill。AGENTS.md「検証方法」)。Web 版は配布しない。入力で変わる振る舞いを、開発マシンで
 # Godot を起動せずに触って確かめるためだけに使う。
+# input の宣言・setup_command・start_command・software_webgl の書き方の根拠は、bannzai/webtunnel の PROJECT.md
+# 「各アプリ repo での実行（reusable workflow）」と「Godot プロジェクトの例（Web エクスポートを開く）」(下の uses の commit)。
 # run-name は webtunnel の CLI が run を特定するキーのためこの形式を維持する
 run-name: "session=${{ inputs.session }} duration=${{ inputs.duration_minutes }}m"
 on:

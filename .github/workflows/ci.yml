@@ -40,7 +40,7 @@ jobs:
             templates/linux_release.x86_64 templates/linux_debug.x86_64
             templates/windows_release_x86_64.exe templates/windows_debug_x86_64.exe
             templates/windows_release_x86_64_console.exe templates/windows_debug_x86_64_console.exe
-            templates/macos.zip
+            templates/macos.zip templates/web_nothreads_release.zip
       - name: Import assets and boot check
         run: make check GODOT="${{ steps.godot.outputs.godot }}"
       - name: Selfcheck
@@ -51,6 +51,10 @@ jobs:
         run: make failure-path GODOT="${{ steps.godot.outputs.godot }}"
       - name: Export desktop builds
         run: make build-all GODOT="${{ steps.godot.outputs.godot }}"
+      # Web 版は配布しないが、.github/workflows/browser-session.yml (workflow_dispatch だけで動く) が同じ書き出しを使うため、
+      # Web のプリセットと make build-web が壊れたことを PR の時点で検出する
+      - name: Export web build
+        run: make build-web GODOT="${{ steps.godot.outputs.godot }}"
       # upload-artifact はファイルの実行権限を保持しないため、Linux のバイナリと PCK は権限を保持する tar にまとめる
       # (macOS は export 自体が zip、Windows は実行権限を使わない)
       - name: Package Linux build
