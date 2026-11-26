@@ -164,7 +164,6 @@ func pluck_hair(
 	var surface: SurfaceHair = save_data.building_progress.find_surface_hair(surface_id)
 	if surface == null or surface.count_for_color(hair_color) <= 0:
 		return result
-	surface.hair_counts[hair_color] = surface.count_for_color(hair_color) - 1
 	_add_raw_stock(hair_color, rare_hair_id)
 	result["plucked"] = true
 	result["new_rare"] = HandRulesScript.register_rare_hair(
