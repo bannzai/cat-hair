@@ -27,7 +27,7 @@ const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room
 ## 大型の道具の見た目 (運転席・床一面のシート)
 const BigToolModelsScript := preload("res://scripts/tools/big_tool_models.gd")
 
-## 道具を選ぶキー (ToolCatalog.selectable_tool_ids の順。1 = 手 〜 8 = ブラシ、9 = 業務用の吸引車、0 = 建物を覆う粘着シート)
+## 道具を選ぶキー (ToolCatalog.selectable_tool_ids の順に、キーボードの数字の段の左から割り当てる)
 const SELECT_KEYS: Array[Key] = [
 	KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0
 ]
@@ -347,12 +347,9 @@ func _finish_result(
 
 ## カメラがいる部屋を返す (どの部屋の中にもいなければ null)
 func current_room() -> MansionLayout.RoomDef:
-	if _game_state == null or _game_state.current_layout == null or _camera == null:
+	if _game_state == null or _camera == null:
 		return null
-	for room: MansionLayout.RoomDef in _game_state.current_layout.rooms:
-		if LookPrototypeRoomScript.is_inside_room(room, _camera.global_position):
-			return room
-	return null
+	return LookPrototypeRoomScript.room_at(_game_state.current_layout, _camera.global_position)
 
 
 ## 部屋ごとにかける道具 (吸引車・粘着シート・アンドロイド) を部屋 room_id に 1 回かけた時に取る毛を、HairField から抽選する。

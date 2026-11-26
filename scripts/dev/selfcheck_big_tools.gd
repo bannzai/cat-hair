@@ -302,6 +302,17 @@ func _check_process_once() -> void:
 		and _count(too_few, HairStockScript.FORM_BALL, white) == 0,
 		"加工機 0 台では何も変わらず、毛玉 1 個 (20 本) に足りない毛は加工しない",
 	)
+	var with_doll: Array[HairStock] = ProcessingRulesScript.process_once(
+		[
+			SelfcheckToolsScript.make_stock(white, &"", HairStockScript.FORM_DOLL, 2),
+			SelfcheckToolsScript.make_stock(white, &"", HairStockScript.FORM_RAW, 400),
+		],
+		3,
+	)
+	_check(
+		_count(with_doll, HairStockScript.FORM_DOLL, white) == 3 and with_doll.size() == 2,
+		"同じ色の人形がある在庫で人形をもう 1 体作ると、同じ行の個数が 2 → 3 になり行は増えない",
+	)
 
 
 ## ダンプカーが、毛の本数に直した量で積める量まで在庫の並び順に積み、1 個が大きすぎる物はその回は積まないか
@@ -387,6 +398,12 @@ func _check_game_state_processing() -> void:
 		"加工機 1 台で 10 秒進めると、白 400 本が混ぜた人形 1 体になり、三毛は残り、知らせる",
 	)
 	state.advance_time(30.0)
+	var notified_after_done: int = notified[0]
+	state.advance_time(10.0)
+	_check(
+		notified[0] == notified_after_done,
+		"加工機はあっても加工できる毛 (加工機 1 台の時の白・黒) が無くなった後は、時間が進んでも知らせない",
+	)
 	var processed_value: int = ProcessingRulesScript.stock_value(progress.hair_stocks)
 	_check(
 		_count(progress.hair_stocks, HairStockScript.FORM_FELT, HairStockScript.COLOR_MIXED) == 1
@@ -523,6 +540,11 @@ func _check_game_state_room_tools() -> void:
 	_check_android_room_choice(state, world)
 	_check_select_only_keyed_tools(state)
 	_check_sweep_rejects_partly_unknown_surfaces(state)
+	_check(
+		(ToolController.plan_room_removal(world, room_id, &"no_such_tool", 1, rng)["removed_ids"]
+		as PackedInt32Array).is_empty(),
+		"表に無い道具の id では部屋の毛を取る計画が空になる",
+	)
 	world.free()
 	state.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)

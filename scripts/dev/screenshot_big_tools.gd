@@ -5,12 +5,10 @@ extends RefCounted
 
 ## 状態管理 autoload スクリプト (買う物の種類の定数を使う)
 const GameStateScript := preload("res://scripts/state/game_state.gd")
+## 大型の道具の入力統合テスト (色ごとの在庫の作り方を使う)
+const IntegrationBigToolsScript := preload("res://scripts/dev/integration_big_tools.gd")
 ## 道具の定義
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
-## 面ごとの毛データ型スクリプト (色の定数を使う)
-const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
-## 毛・加工品在庫データ型スクリプト
-const HairStockScript := preload("res://scripts/data/hair_stock.gd")
 ## 加工機が 1 回加工する間隔を使う
 const ProcessingRulesScript := preload("res://scripts/economy/processing_rules.gd")
 ## 撮る絵を毎回同じにする、取りこぼしの抽選の乱数のシード
@@ -84,13 +82,9 @@ static func _capture_processing(shooter: SceneTree, main: Node3D, game_state: No
 	for _index: int in range(3):
 		if not game_state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_HAIR_PROCESSOR):
 			return "毛の加工機を買えない"
-	var stocks: Array[HairStock] = []
-	for color_id: StringName in SurfaceHairScript.STANDARD_COLORS:
-		var stock: HairStock = HairStockScript.new()
-		stock.hair_color = color_id
-		stock.count = STOCK_HAIRS_PER_COLOR
-		stocks.append(stock)
-	game_state.save_data.building_progress.hair_stocks = stocks
+	game_state.save_data.building_progress.hair_stocks = (
+		IntegrationBigToolsScript.standard_stocks(STOCK_HAIRS_PER_COLOR)
+	)
 	game_state.advance_time(ProcessingRulesScript.PROCESS_INTERVAL_SECONDS * 6.0)
 	var trader: Vector3 = main.mansion_world.get_trader_position()
 	main.player.set_spawn(trader + Vector3(1.6, 0.0, -2.2), 0.0)

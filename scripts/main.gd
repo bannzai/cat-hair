@@ -300,12 +300,9 @@ func is_near_trader() -> bool:
 
 ## プレイヤーが今いる部屋を返す (どの部屋の床の上にもいなければ null)
 func get_current_room() -> MansionLayout.RoomDef:
-	if _game_state == null or _game_state.current_layout == null:
+	if _game_state == null:
 		return null
-	for room: MansionLayout.RoomDef in _game_state.current_layout.rooms:
-		if LookPrototypeRoomScript.is_inside_room(room, player.global_position):
-			return room
-	return null
+	return LookPrototypeRoomScript.room_at(_game_state.current_layout, player.global_position)
 
 
 ## 「+N 本」の表示の文言を返す (表示していない時は空。検証用)

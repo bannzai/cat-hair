@@ -18,8 +18,8 @@ const FORMS_IN_ORDER: Array[StringName] = [
 	HairStockScript.FORM_DOLL,
 ]
 ## 加工した物 1 個に使う毛の本数。毛玉 20 本、フェルトは毛玉 5 個分、人形はフェルト 4 枚分。
-## 毛玉は手で数十本取ればできる量にして最初の加工機ですぐ結果が見え、人形は部屋 1 つ分 (既定の毛 12,000 本を 15 部屋で割った
-## 800 本) の半分にして、部屋を片付けるたびに 1〜2 体できる大きさにした
+## 毛玉は手で数十本取ればできる量にして最初の加工機ですぐ結果が見え、人形は既定の屋敷の 1 部屋の毛
+## (MansionTuning の既定の毛の本数を既定の部屋数で割った本数) を片付けると数体できる大きさにした
 const HAIRS_PER_UNIT: Dictionary = {
 	HairStockScript.FORM_RAW: 1,
 	HairStockScript.FORM_BALL: 20,
@@ -27,8 +27,8 @@ const HAIRS_PER_UNIT: Dictionary = {
 	HairStockScript.FORM_DOLL: 400,
 }
 ## 加工した物の売値を、使った毛を毛のまま売った値段の何倍にするか。段階が進むほど高い。
-## 加工機 1 台 (800 円) の元が、白の毛で毛玉なら 1,600 本、人形なら 400 本を加工すると取れる値にし、
-## 加工を進めるほど元が早く取れる差が出るようにした
+## 加工機 1 台の値段の元が、人形 1 体分の毛を加工すると取れ、毛玉だけでは何倍もの毛が要る差にして、
+## 加工を進めるほど元が早く取れるようにした
 const STAGE_PRICE_FACTOR: Dictionary = {
 	HairStockScript.FORM_RAW: 1.0,
 	HairStockScript.FORM_BALL: 1.5,

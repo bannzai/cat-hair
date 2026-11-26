@@ -174,8 +174,10 @@ func _verify_adhesive_sheet(main: Node3D, game_state: Node) -> void:
 
 ## アンドロイドを買うとキーで選ばずに働き、時間が進むと毛のいちばん多い部屋を掃除し、描く毛も同じだけ減り、姿が出るか
 func _verify_android(main: Node3D, game_state: Node) -> void:
-	var android: StringName = ToolCatalogScript.TOOL_ANDROID
-	_check(await _buy_in_shop(main, game_state, android), "道具を買う画面でアンドロイドを買える")
+	_check(
+		await _buy_in_shop(main, game_state, ToolCatalogScript.TOOL_ANDROID),
+		"道具を買う画面でアンドロイドを買える",
+	)
 	var dirtiest: StringName = main.big_tools.dirtiest_room_id()
 	var room_before: int = int(game_state.get_room_status(dirtiest)["hair_count"])
 	var total_before: int = game_state.get_total_remaining_hairs()
@@ -197,13 +199,12 @@ func _verify_android(main: Node3D, game_state: Node) -> void:
 
 ## 加工機を道具を買う画面で並べて買い、時間が進むと在庫が加工され、買取業者に売ると毛のまま売るより多く入るか
 func _verify_processing_and_selling(main: Node3D, game_state: Node) -> void:
-	var processor: StringName = ToolCatalogScript.TOOL_HAIR_PROCESSOR
 	var progress: BuildingProgress = game_state.save_data.building_progress
-	progress.hair_stocks = _standard_stocks()
+	progress.hair_stocks = standard_stocks(STOCK_HAIRS_PER_COLOR)
 	var raw_value: int = ProcessingRulesScript.stock_value(progress.hair_stocks)
 	var bought: int = 0
 	for _index: int in range(3):
-		if await _buy_in_shop(main, game_state, processor):
+		if await _buy_in_shop(main, game_state, ToolCatalogScript.TOOL_HAIR_PROCESSOR):
 			bought += 1
 	var root: Node3D = main.big_tools.get_models_root()
 	_check(
@@ -214,6 +215,10 @@ func _verify_processing_and_selling(main: Node3D, game_state: Node) -> void:
 	main.auto_advance_time = true
 	await _checker.create_timer(0.3).timeout
 	main.auto_advance_time = false
+	_check(
+		ProcessingRulesScript.stock_value(progress.hair_stocks) > raw_value,
+		"プレイ中の時間が加工の区切り (10 秒) をまたぐと、手で時間を進めなくても加工機が加工する",
+	)
 	game_state.advance_time(ProcessingRulesScript.PROCESS_INTERVAL_SECONDS * 3.0)
 	var processed_value: int = ProcessingRulesScript.stock_value(progress.hair_stocks)
 	var has_doll: bool = false
@@ -246,10 +251,22 @@ func _verify_processing_and_selling(main: Node3D, game_state: Node) -> void:
 
 ## ダンプカーを買うと、買取業者から離れていても道具を買う画面から呼んで在庫を運び出して売れるか
 func _verify_dump_truck(main: Node3D, game_state: Node) -> void:
-	var dump: StringName = ToolCatalogScript.TOOL_DUMP_TRUCK
-	_check(await _buy_in_shop(main, game_state, dump), "道具を買う画面で毛を運ぶダンプカーを買える")
+	_check(
+		await _buy_in_shop(main, game_state, ToolCatalogScript.TOOL_DUMP_TRUCK),
+		"道具を買う画面で毛を運ぶダンプカーを買える",
+	)
 	var progress: BuildingProgress = game_state.save_data.building_progress
-	progress.hair_stocks = _standard_stocks()
+	progress.hair_stocks = []
+	main.open_tool_shop()
+	await _checker.process_frame
+	_check(
+		main.tool_shop_panel.get_haul_button().visible
+		and main.tool_shop_panel.get_haul_button().disabled,
+		"在庫が空の時は、ダンプカーのボタンは出るが押せない",
+	)
+	main.close_tool_shop()
+	await _checker.process_frame
+	progress.hair_stocks = standard_stocks(STOCK_HAIRS_PER_COLOR)
 	var stock_value: int = ProcessingRulesScript.stock_value(progress.hair_stocks)
 	var rooms: Array = game_state.current_layout.rooms
 	await _stand_in_room(main, rooms[rooms.size() - 1])
@@ -308,13 +325,13 @@ func _room_hairs_not_on(
 	return total
 
 
-## 白・黒・三毛を STOCK_HAIRS_PER_COLOR 本ずつ持つ在庫を作る
-func _standard_stocks() -> Array[HairStock]:
+## 白・黒・三毛の毛のままを hairs_per_color 本ずつ持つ在庫を作る (大型の道具の撮影も使う)
+static func standard_stocks(hairs_per_color: int) -> Array[HairStock]:
 	var stocks: Array[HairStock] = []
 	for color_id: StringName in SurfaceHairScript.STANDARD_COLORS:
 		var stock: HairStock = HairStockScript.new()
 		stock.hair_color = color_id
-		stock.count = STOCK_HAIRS_PER_COLOR
+		stock.count = hairs_per_color
 		stocks.append(stock)
 	return stocks
 

@@ -462,7 +462,6 @@ func _run_processors(runs: int) -> void:
 	)
 	if runs <= 0 or machines <= 0:
 		return
-	var before_value: int = ProcessingRulesScript.stock_value(progress.hair_stocks)
 	var stocks: Array[HairStock] = progress.hair_stocks
 	# 加工すると売値は必ず上がる (どの段階も毛のままより高い) ため、売値が変わらなくなったら加工する毛が残っていない
 	for _run: int in range(runs):
@@ -470,7 +469,10 @@ func _run_processors(runs: int) -> void:
 		if ProcessingRulesScript.stock_value(next_stocks) == ProcessingRulesScript.stock_value(stocks):
 			break
 		stocks = next_stocks
-	if ProcessingRulesScript.stock_value(stocks) != before_value:
+	if (
+		ProcessingRulesScript.stock_value(stocks)
+		!= ProcessingRulesScript.stock_value(progress.hair_stocks)
+	):
 		var kept: Array[HairStock] = []
 		for stock: HairStock in stocks:
 			if stock.count > 0:

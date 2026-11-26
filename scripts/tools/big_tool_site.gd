@@ -29,9 +29,11 @@ const ANDROID_CLEARANCE_M: float = 0.25
 const PROCESSOR_ROW_START_M: float = 0.8
 ## 加工機の台の間隔 (m。箱の幅 0.5 m に 0.1 m のすき間)
 const PROCESSOR_SPACING_M: float = 0.6
-## 加工機を南の壁から離す距離 (m。買取業者の立つ位置から北へ)
+## 加工機を買取業者の立つ位置から北へずらす距離 (m)。買取業者は南の壁際に立つため、加工機の箱の奥行きの半分 (0.25 m)
+## ほど北へ寄せて壁にめり込まないようにした
 const PROCESSOR_NORTH_OFFSET_M: float = 0.2
-## ダンプカーを停める所の、買取業者からの位置 (m。裏口の外の南側)
+## ダンプカーを停める所の、買取業者からの位置 (m)。南の壁の外に車体の幅 (1.8 m) の半分以上離して置き、
+## 東へずらして裏口の前をふさがないようにした (CI の撮影で壁と重ならないことを確かめた)
 const DUMP_TRUCK_OFFSET_M: Vector3 = Vector3(2.0, 0.0, 3.2)
 
 ## 本数とお金の正を持つ GameState
