@@ -171,7 +171,7 @@ func is_in_driver_seat() -> bool:
 func _sync_cockpit() -> void:
 	if _cockpit == null:
 		return
-	_cockpit.visible = enabled and _selected_tool_id == ToolCatalogScript.TOOL_SUCTION_TRUCK
+	_cockpit.visible = false
 	if _hand != null and _hand.get_hand_view() != null:
 		_hand.get_hand_view().visible = not _cockpit.visible
 
@@ -309,9 +309,6 @@ func _use_room_tool(tool_def: Dictionary, result: Dictionary) -> void:
 	if removed < 0:
 		result["message"] = "%s をかけられない" % tool_def["name"]
 		return
-	var hair_field: Node3D = _world.get_hair_field()
-	for hair_id: int in plan["removed_ids"]:
-		hair_field.remove_hair(hair_id)
 	if tool_def["kind"] == ToolCatalogScript.KIND_SHEET:
 		_show_sheet_trace(room)
 	_finish_result(tool_def, result, int(plan["in_range"]), removed, room.display_name)

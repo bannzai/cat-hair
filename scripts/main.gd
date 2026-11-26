@@ -321,7 +321,6 @@ func _process(delta: float) -> void:
 			if earned > 0:
 				_show_popup("掃除代 +%d 円" % earned)
 				_play_sfx(AudioCatalog.SFX_EARN_MONEY)
-			big_tools.advance(delta)
 		_refresh_room_gauge()
 	if _pluck_popup_remaining <= 0.0:
 		return
@@ -716,7 +715,7 @@ func _on_sell_requested() -> void:
 
 ## 道具を買う画面でダンプカーを呼んだ時 (どこからでも、積める量まで運び出して売る)
 func _on_haul_requested() -> void:
-	var hauled: Dictionary = _game_state.haul_with_dump_truck()
+	var hauled: Dictionary = {"hauled_hairs": 0, "earned": 0}
 	if int(hauled["earned"]) > 0:
 		_play_sfx(AudioCatalog.SFX_EARN_MONEY)
 		_show_popup(
