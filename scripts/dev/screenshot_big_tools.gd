@@ -22,6 +22,8 @@ const ANDROID_VIEW_DISTANCE_M: float = 2.6
 ## アンドロイドから離れる距離の上限を、部屋の短い辺に対する割合で表した値。アンドロイドは中央か中央から 4 分の 1 寄った所に
 ## 立つため、短い辺の 0.45 倍までなら部屋の中に収まる
 const ANDROID_VIEW_ROOM_RATIO: float = 0.45
+## 引いている毛に見せる伸ばした見た目の倍率。毛の向き (y) を 2 倍にして、元の見た目と transform で見分けられる値
+const STRETCHED_SCALE: Vector3 = Vector3(1.0, 2.0, 1.0)
 ## 部屋の中で見下ろす角度 (rad。床に敷いたシートと残った毛が画面の下半分に入る角度)
 const ROOM_PITCH: float = -0.5
 
@@ -65,9 +67,16 @@ static func capture_all(shooter: SceneTree, main: Node3D) -> String:
 	if not await shooter._capture_frozen(main, "tmp/screenshot-adhesive-sheet.png"):
 		return "粘着シートを敷いた部屋を保存できない"
 	main.tools.select_tool(ToolCatalogScript.TOOL_HAND)
+	var pulling: PackedInt32Array = _stretch_room_hairs_as_pulled(main)
 	var android_result: Dictionary = main.big_tools.step_android()
 	if int(android_result.get("removed", 0)) <= 0:
 		return "アンドロイドが掃除しない (%s)" % str(android_result)
+	var not_restored: int = _count_stretched_left(main, pulling)
+	if main.hand.is_pulling() or not_restored > 0:
+		return (
+			"アンドロイドが引いている毛を取った後、手が引いたまま (%s) か、伸びた見た目のまま残った毛がある (%d 本)"
+			% [main.hand.is_pulling(), not_restored]
+		)
 	var android: Node3D = main.big_tools.get_models_root().get_node_or_null("Android")
 	if android == null:
 		return "アンドロイドの姿が無い"
@@ -95,6 +104,41 @@ static func capture_all(shooter: SceneTree, main: Node3D) -> String:
 	if not await shooter._capture_frozen(main, "tmp/screenshot-android.png"):
 		return "アンドロイドを保存できない"
 	return await _capture_processing(shooter, main, game_state)
+
+
+## アンドロイドが次に掃除する部屋の毛をすべて、手で引いている状態にして伸ばした見た目にし、引いている毛の ID を返す。
+## 見た目の transform は描画付きの実行でしか読めないため、headless の integration ではなく撮影でこの確認をする
+## (CI の run 45871183473 で、headless では読めず落ちた)。どの毛が取られるかは抽選のため部屋の毛をすべて引く
+static func _stretch_room_hairs_as_pulled(main: Node3D) -> PackedInt32Array:
+	var hair_field: Node3D = main.mansion_world.get_hair_field()
+	var room_id: StringName = main.big_tools.dirtiest_room_id()
+	var pulling: PackedInt32Array = PackedInt32Array()
+	for surface_index: int in range(hair_field.get_surface_count()):
+		if main.mansion_world.get_surface_def(surface_index).room_id != room_id:
+			continue
+		for slot: int in range(hair_field.get_surface_remaining_count(surface_index)):
+			var hair_id: int = hair_field.get_hair_id_at_slot(surface_index, slot)
+			pulling.append(hair_id)
+			hair_field.set_hair_display_transform(
+				hair_id, hair_field.get_hair_transform(hair_id).scaled_local(STRETCHED_SCALE)
+			)
+	main.hand._pulling_ids = pulling
+	return pulling
+
+
+## pulling の毛のうち、残っているのに見た目が元の transform に戻っていない毛の本数を返す
+static func _count_stretched_left(main: Node3D, pulling: PackedInt32Array) -> int:
+	var hair_field: Node3D = main.mansion_world.get_hair_field()
+	var count: int = 0
+	for hair_id: int in pulling:
+		if not hair_field.has_hair(hair_id):
+			continue
+		var multimesh: MultiMesh = hair_field._buckets[hair_field._id_to_surface[hair_id]]["multimesh"]
+		if not multimesh.get_instance_transform(hair_field._id_to_slot[hair_id]).is_equal_approx(
+			hair_field.get_hair_transform(hair_id)
+		):
+			count += 1
+	return count
 
 
 ## 加工機 3 台を買取業者の横に並べて在庫を加工した所と、裏口の外のダンプカーと、加工品が出た道具を買う画面を撮る
