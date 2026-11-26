@@ -4,8 +4,8 @@ extends SceneTree
 ## 1 本削除の可否・画面 PNG と輝度統計を JSON (既定 tmp/hairbench.json) に書き出す。
 ## すべての本数を終えたら「hairbench OK」を出して quit(0) する。
 
-## 音の解放を待つ時間 (AUDIO_RELEASE_TIME) を借りる headless 検証の土台
-const HeadlessCheck := preload("res://scripts/dev/headless_check.gd")
+## 音の解放を待つ時間 (AUDIO_RELEASE_TIME_SEC) の単一の正
+const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 ## 番兵値 (INVALID_SLOT / INVALID_COLOR) を SSOT として参照する HairField
 const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## 計測対象の試作シーン
@@ -201,7 +201,7 @@ func _run() -> void:
 
 	root.remove_child(prototype)
 	prototype.free()
-	await create_timer(HeadlessCheck.AUDIO_RELEASE_TIME).timeout
+	await create_timer(AudioManagerScript.AUDIO_RELEASE_TIME_SEC).timeout
 
 	if failed:
 		quit(1)
