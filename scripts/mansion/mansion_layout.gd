@@ -35,8 +35,6 @@ const CEILING_HEIGHT_M: float = 3.2
 const DOOR_WIDTH_M: float = 1.8
 ## ドア開口の高さ (m)。身長 1.7m に対して十分な頭上余裕がある標準的な洋館ドア高さ
 const DOOR_HEIGHT_M: float = 2.4
-## 毛を置く表面座標を床・家具天面からわずかに浮かせて Z-fighting を防ぐ高さオフセット (m)
-const SURFACE_Y_OFFSET_M: float = 0.01
 
 ## このレイアウトの入力になった調整値
 var tuning: MansionTuning = null
@@ -123,12 +121,19 @@ class SurfaceDef:
 	var room_id: StringName = &""
 	## 表面の種類 (MansionLayout.SURFACE_* 定数)
 	var surface_type: StringName = &""
-	## 毛が乗る面の中心ワールド座標
+	## 毛が乗る面 (メッシュの面そのもの) の中心ワールド座標
 	var center: Vector3 = Vector3.ZERO
-	## 毛を散らす範囲の X / Z 全幅 (m)
+	## 面の向き。局所 +Y が面の外向きの法線で、局所 X / Z が毛を散らす矩形の辺の向き
+	var basis: Basis = Basis.IDENTITY
+	## 毛を散らす矩形の局所 X / Z 方向の全幅 (m)
 	var extents: Vector2 = Vector2.ONE
 	## 屋敷全体の毛を各表面へ分配する時の相対重み
 	var hair_weight: float = 1.0
+
+
+	## 面の中心と向きをまとめた枠を返す
+	func frame() -> Transform3D:
+		return Transform3D(basis, center)
 
 
 ## 探し物を埋める置き場所 1 つの定義

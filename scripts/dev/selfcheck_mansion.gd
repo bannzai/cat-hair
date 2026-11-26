@@ -50,7 +50,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_mansion_builder_boundaries()
 	suite._check_tuning_equals_and_cmdline_args()
 	suite._check_dev_tuning_panel_preserves_unaligned_values()
-	suite._check_visual_hair_and_light_limits()
+	suite._check_world_hair_and_light_limits()
 	suite._check_player_mouse_predicates()
 	suite._check_save_and_load_roundtrip()
 	suite._check_save_missing_corrupted_and_clamping()
@@ -106,19 +106,24 @@ func _check_mansion_builder_default() -> void:
 			var obj_surface: MansionLayout.SurfaceDef = layout.find_surface(
 				StringName("%s_surface" % String(obj.object_id))
 			)
+			var face_size: Vector2 = MansionBuilderScript.object_surface_local_face(
+				obj.object_kind, obj.size
+			)["size"]
 			var expected_x: float = maxf(
 				MansionBuilderScript.MIN_SURFACE_EXTENT_M,
-				obj.size.z * MansionBuilderScript.SURFACE_HAIR_EXTENT_RATIO,
+				face_size.x * MansionBuilderScript.SURFACE_HAIR_EXTENT_RATIO,
 			)
 			var expected_z: float = maxf(
 				MansionBuilderScript.MIN_SURFACE_EXTENT_M,
-				obj.size.x * MansionBuilderScript.SURFACE_HAIR_EXTENT_RATIO,
+				face_size.y * MansionBuilderScript.SURFACE_HAIR_EXTENT_RATIO,
 			)
+			var object_x_axis: Vector3 = Basis(Vector3.UP, obj.rotation_y).x
 			_check(
 				obj_surface != null
 				and is_equal_approx(obj_surface.extents.x, expected_x)
-				and is_equal_approx(obj_surface.extents.y, expected_z),
-				"90 度回転した家具 %s の表面範囲に回転後の幅・奥行が反映される" % String(obj.object_id),
+				and is_equal_approx(obj_surface.extents.y, expected_z)
+				and obj_surface.basis.x.is_equal_approx(object_x_axis),
+				"90 度回転した家具 %s の表面の枠が物と同じ向きに回る" % String(obj.object_id),
 			)
 			rotated_checked = true
 			break
@@ -129,14 +134,10 @@ func _check_mansion_builder_default() -> void:
 			var sb_surface: MansionLayout.SurfaceDef = layout.find_surface(
 				StringName("%s_surface" % String(obj.object_id))
 			)
-			var expected_y: float = (
-				obj.size.y
-				+ MansionBuilderScript.SIDEBOARD_TOP_TRIM_HEIGHT_M
-				+ MansionLayoutScript.SURFACE_Y_OFFSET_M
-			)
+			var expected_y: float = obj.size.y + MansionBuilderScript.SIDEBOARD_TOP_TRIM_HEIGHT_M
 			_check(
 				sb_surface != null and is_equal_approx(sb_surface.center.y, expected_y),
-				"サイドボード表面高さが TopTrim 上面 + オフセットに一致する",
+				"サイドボード表面高さが TopTrim 上面に一致する",
 			)
 			sideboard_checked = true
 			break
@@ -404,24 +405,13 @@ func _check_dev_tuning_panel_preserves_unaligned_values() -> void:
 	panel.free()
 
 
-## MansionWorld の仮毛描画数上限と室内ライト数上限の境界を検証する
-func _check_visual_hair_and_light_limits() -> void:
+## MansionWorld の毛の本数の境界と室内ライト数上限の境界を検証する
+func _check_world_hair_and_light_limits() -> void:
 	var world: MansionWorld = MansionWorldScript.new()
-	_rebuild_world_case(world, 4, 16, 12000)
-	_check(
-		world.get_rendered_hair_instance_count() > 0
-		and world.get_rendered_hair_instance_count()
-		<= MansionWorldScript.MAX_VISUAL_HAIRS_TOTAL,
-		"既定屋敷の仮毛描画数が全体上限内に収まる",
-	)
 	_rebuild_world_case(world, 1, 0, 100)
-	_check(
-		world.get_rendered_hair_instance_count()
-		== MansionWorldScript.MAX_VISUAL_HAIRS_PER_SURFACE,
-		"1 面 100 本の仮毛描画数が面あたり上限と一致する",
-	)
+	_check(world.get_hair_field().get_remaining_count() == 100, "1 面 100 本の屋敷で毛が 100 本置かれる")
 	_rebuild_world_case(world, 1, 0, 0)
-	_check(world.get_rendered_hair_instance_count() == 0, "毛 0 本の屋敷では仮毛描画数が 0")
+	_check(world.get_hair_field().get_remaining_count() == 0, "毛 0 本の屋敷では毛が 0 本")
 	_rebuild_world_case(world, MansionWorldScript.MAX_ROOM_LIGHTS, 0, 100)
 	_check(
 		world.get_room_light_count() == MansionWorldScript.MAX_ROOM_LIGHTS,
@@ -438,8 +428,9 @@ func _check_visual_hair_and_light_limits() -> void:
 		"上限 + 1 部屋でもライト数が MAX_ROOM_LIGHTS に抑えられる",
 	)
 	world.rebuild(seven_layout, null)
-	_check(world.get_rendered_hair_instance_count() == 0, "progress=null で仮毛描画数が 0")
+	_check(world.get_hair_field().get_remaining_count() == 0, "progress=null で毛が 0 本")
 	world.free()
+
 
 
 ## 指定パラメータで MansionWorld を再構築してレイアウトを返す (上限境界テスト用ヘルパー)
