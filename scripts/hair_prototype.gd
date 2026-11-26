@@ -62,11 +62,11 @@ func _configure_hair_surfaces() -> void:
 func _build_room_geometry() -> void:
 	var room: Node3D = $Room
 
-	var floor_mat: StandardMaterial3D = _make_material(Color(0.43, 0.31, 0.21), 0.65)
-	var wall_mat: StandardMaterial3D = _make_material(Color(0.80, 0.77, 0.70), 0.88)
-	var trim_mat: StandardMaterial3D = _make_material(Color(0.24, 0.17, 0.12), 0.60)
-	var sofa_mat: StandardMaterial3D = _make_material(Color(0.29, 0.35, 0.42), 0.92)
-	var wood_leg_mat: StandardMaterial3D = _make_material(Color(0.20, 0.13, 0.08), 0.55)
+	var floor_mat: StandardMaterial3D = _make_material(Color(0.32, 0.22, 0.14), 0.70)
+	var wall_mat: StandardMaterial3D = _make_material(Color(0.64, 0.60, 0.54), 0.90)
+	var trim_mat: StandardMaterial3D = _make_material(Color(0.20, 0.14, 0.10), 0.60)
+	var sofa_mat: StandardMaterial3D = _make_material(Color(0.19, 0.24, 0.31), 0.92)
+	var wood_leg_mat: StandardMaterial3D = _make_material(Color(0.18, 0.11, 0.07), 0.55)
 
 	# 床 (上面が Y = 0.0)
 	_add_box(

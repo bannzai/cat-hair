@@ -141,17 +141,22 @@ jobs:
       - name: Probe Vulkan renderers (mobile and forward_plus on lavapipe)
         run: |
           mkdir -p tmp/probe-mobile tmp/probe-forward-plus
-          export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
-          vulkaninfo --summary > tmp/vulkaninfo.log 2>&1 || true
-          echo "=== vulkaninfo ==="
+          echo "=== /usr/share/vulkan/icd.d ===" > tmp/vulkaninfo.log
+          ls -la /usr/share/vulkan/icd.d >> tmp/vulkaninfo.log 2>&1 || true
+          lvp_icd=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n 1 || true)
+          echo "selected_lvp_icd=${lvp_icd}" >> tmp/vulkaninfo.log
+          if [ -n "$lvp_icd" ]; then
+            export VK_ICD_FILENAMES="$lvp_icd"
+            export VK_DRIVER_FILES="$lvp_icd"
+          fi
+          vulkaninfo --summary >> tmp/vulkaninfo.log 2>&1 || true
           cat tmp/vulkaninfo.log
 
           for method in mobile forward_plus; do
             dir="tmp/probe-${method//_/-}"
             echo "=== Probing ${method} ==="
             set +e
-            timeout 300 env \
-              VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json \
+            timeout 360 env \
               HAIRBENCH_COUNTS="1000,10000,100000,1000000" \
               HAIRBENCH_JSON="${dir}/hairbench.json" \
               HAIRBENCH_PNG_DIR="${dir}" \
