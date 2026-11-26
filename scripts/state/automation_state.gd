@@ -136,7 +136,7 @@ func set_robot_route(robot_index: int, room_ids: Array[StringName]) -> bool:
 	return true
 
 
-## 面ごとの最初の毛の本数のうち surface_id の本数 (検証用)
+## 面ごとの最初の毛の本数のうち surface_id の本数 (猫が落とす毛の上限の計算と、検証が上限を求める時に使う)
 func get_initial_surface_hairs(surface_id: StringName) -> int:
 	return int(_initial_surface_hairs.get(surface_id, 0))
 

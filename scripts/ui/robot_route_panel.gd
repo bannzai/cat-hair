@@ -128,6 +128,11 @@ func get_remove_last_button() -> Button:
 	return _remove_last_button
 
 
+## 回る順を空にするボタンを返す (検証用)
+func get_clear_button() -> Button:
+	return _clear_button
+
+
 ## 見出し・買うボタン・台の行・部屋のボタン・閉じるボタンを組み立てる
 func _build() -> void:
 	var background: StyleBoxFlat = StyleBoxFlat.new()

@@ -17,6 +17,8 @@ const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 ## 毛・加工品在庫データ型スクリプト (毛のままの形の id)
 const HairStockScript := preload("res://scripts/data/hair_stock.gd")
+## 屋敷の毛の描画 (猫が落とした毛を足す)
+const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## 状態管理 autoload スクリプト
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## selfcheck が使う一時セーブファイルパス (GameState の初期化だけに使い、保存はしない)
@@ -36,6 +38,10 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_game_state_cats()
 	suite._check_game_state_robots()
 	suite._check_game_state_brush()
+	suite._check_layout_geometry()
+	suite._check_robot_position()
+	suite._check_automation_reset()
+	suite._check_hair_field_add()
 
 
 ## 判定を selfcheck 本体に記録する
@@ -124,7 +130,7 @@ func _check_cat_rules() -> void:
 		for stop: Dictionary in route["stops"]:
 			if bool(stop["nap"]):
 				naps += 1
-				var nap_surface: MansionLayout.SurfaceDef = _find_surface(layout, stop["surface_id"])
+				var nap_surface: MansionLayout.SurfaceDef = layout.find_surface(stop["surface_id"])
 				nap_type_ok = (
 					nap_surface != null and nap_surface.surface_type in CatRulesScript.NAP_SURFACE_TYPES
 				)
@@ -373,8 +379,8 @@ func _check_game_state_robots() -> void:
 	var picked_types_ok: bool = true
 	for pick: Dictionary in changes["picks"]:
 		picked += int(pick["count"])
-		var surface_def: MansionLayout.SurfaceDef = _find_surface(
-			cleaner.current_layout, pick["surface_id"]
+		var surface_def: MansionLayout.SurfaceDef = cleaner.current_layout.find_surface(
+			pick["surface_id"]
 		)
 		picked_types_ok = (
 			picked_types_ok and surface_def != null
@@ -448,11 +454,164 @@ func _check_game_state_brush() -> void:
 	state.free()
 
 
-## layout の面のうち surface_id の面 (無ければ null)
-static func _find_surface(
-	layout: MansionLayout, surface_id: StringName
-) -> MansionLayout.SurfaceDef:
-	for surface: MansionLayout.SurfaceDef in layout.surfaces:
-		if surface.surface_id == surface_id:
-			return surface
-	return null
+## 部屋 1 つと物 2 つ (ソファ・カーペット) の作った屋敷で、家具と壁際の判定、家具を避けて立ち止まる所、
+## 部屋を歩く順を、座標の決まった入力で確かめる
+func _check_layout_geometry() -> void:
+	var layout: MansionLayout = MansionLayout.new()
+	for grid: Vector2i in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)]:
+		var room: MansionLayout.RoomDef = MansionLayout.RoomDef.new()
+		room.room_id = StringName("room_%d_%d" % [grid.x, grid.y])
+		room.grid_x = grid.x
+		room.grid_z = grid.y
+		room.center = Vector3(float(grid.x) * 6.0, 0.0, -float(grid.y) * 6.0)
+		room.size = Vector3(6.0, 3.0, 6.0)
+		layout.rooms.append(room)
+	var sofa: MansionLayout.ObjectDef = MansionLayout.ObjectDef.new()
+	sofa.room_id = &"room_0_0"
+	sofa.object_kind = MansionLayoutScript.OBJECT_SOFA
+	sofa.position = Vector3(1.0, 0.0, 1.0)
+	sofa.size = Vector3(1.0, 1.0, 1.0)
+	layout.objects.append(sofa)
+	var carpet: MansionLayout.ObjectDef = MansionLayout.ObjectDef.new()
+	carpet.room_id = &"room_0_0"
+	carpet.object_kind = MansionLayoutScript.OBJECT_CARPET
+	carpet.position = Vector3(-1.0, 0.0, -1.0)
+	carpet.size = Vector3(2.0, 0.02, 2.0)
+	layout.objects.append(carpet)
+	_check(
+		CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(1.0, 0.0, 1.0))
+		and CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(1.75, 0.0, 1.0))
+		and not CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(1.85, 0.0, 1.0))
+		and CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(2.75, 0.0, -2.0))
+		and not CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(2.65, 0.0, -2.0))
+		and not CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(-1.0, 0.0, -1.0)),
+		"家具の判定は 1 m のソファの中心と縁から 25 cm を塞ぎ 35 cm は通し、壁から 25 cm を塞ぎ 35 cm は通し、"
+		+ "上に乗れるカーペットは塞がない",
+	)
+	var spot: Vector3 = CatRulesScript.free_point(layout, layout.rooms[0], Vector2(1.0, 1.0))
+	_check(
+		not CatRulesScript.is_blocked(layout, &"room_0_0", spot)
+		and spot.is_equal_approx(Vector3(-1.0, 0.0, 1.0)),
+		"ソファに重なる立ち止まる所 (1, 1) は 90 度回した (-1, 1) にずらす (実際: %s)" % str(spot),
+	)
+	var crowded: MansionLayout.ObjectDef = MansionLayout.ObjectDef.new()
+	crowded.room_id = &"room_1_0"
+	crowded.object_kind = MansionLayoutScript.OBJECT_TABLE
+	crowded.position = Vector3(6.0, 0.0, 0.0)
+	crowded.size = Vector3(4.0, 1.0, 4.0)
+	layout.objects.append(crowded)
+	_check(
+		CatRulesScript.free_point(layout, layout.rooms[1], Vector2(1.0, 1.0)).is_equal_approx(
+			layout.rooms[1].center
+		),
+		"どの向きもずれを半分にしても家具に重なる部屋では、部屋の中心で立ち止まる",
+	)
+	_check(
+		CatRulesScript.walk_order(layout, 1) == [1, 0, 2]
+		and CatRulesScript.walk_order(layout, 2) == [2, 0, 1]
+		and CatRulesScript.walk_order(MansionLayout.new(), 0).is_empty(),
+		"部屋は隣り合う部屋へ進み、隣が通った部屋だけの時は添字の小さい残りの部屋へ移る (部屋が無ければ空)",
+	)
+
+
+## 掃除ロボットの位置が、部屋へ移る途中は前の部屋との間、着いた後は部屋の中心の周りの 8 の字の輪の上にあり、
+## 回る部屋が無ければ原点か
+func _check_robot_position() -> void:
+	var stops: Array[Dictionary] = [
+		{"point": Vector3(0.0, 0.0, 0.0), "seconds": 20.0, "room_id": &"a"},
+		{"point": Vector3(6.0, 0.0, 0.0), "seconds": 20.0, "room_id": &"b"},
+	]
+	var route: Dictionary = RouteClockScript.make_route(stops)
+	var sizes: Dictionary = {&"a": Vector3(6.0, 3.0, 4.0), &"b": Vector3(6.0, 3.0, 4.0)}
+	var moving: Vector3 = RobotRulesScript.position_at(
+		route, 20.0 + RouteClockScript.MOVE_SECONDS * 0.5, sizes
+	)
+	var quarter: Vector3 = RobotRulesScript.position_at(
+		route, 20.0 + RouteClockScript.MOVE_SECONDS + RobotRulesScript.LOOP_SECONDS * 0.25, sizes
+	)
+	var three_quarter: Vector3 = RobotRulesScript.position_at(
+		route, 20.0 + RouteClockScript.MOVE_SECONDS + RobotRulesScript.LOOP_SECONDS * 0.75, sizes
+	)
+	var eighth: Vector3 = RobotRulesScript.position_at(
+		route, 20.0 + RouteClockScript.MOVE_SECONDS + RobotRulesScript.LOOP_SECONDS * 0.125, sizes
+	)
+	var reach_x: float = 3.0 * RobotRulesScript.LOOP_RATIO
+	_check(
+		moving.is_equal_approx(Vector3(3.0, 0.0, 0.0))
+		and quarter.is_equal_approx(Vector3(6.0 + reach_x, 0.0, 0.0))
+		and three_quarter.is_equal_approx(Vector3(6.0 - reach_x, 0.0, 0.0))
+		and absf(eighth.z) > 0.1
+		and RobotRulesScript.position_at(RouteClockScript.make_route([]), 5.0, sizes) == Vector3.ZERO,
+		(
+			"掃除ロボットは移る途中に部屋の間、着いた後は中心から左右に部屋の半幅の 55%% まで 8 の字に走り、"
+			+ "回る部屋が無ければ原点 (途中: %s / 4 分の 1 周: %s / 4 分の 3 周: %s)"
+		) % [str(moving), str(quarter), str(three_quarter)],
+	)
+
+
+## 屋敷を組み直すと猫と掃除ロボットの時計と休みが 0 に戻り、読み込み前と負の台の入口は何も変えないか
+func _check_automation_reset() -> void:
+	var fresh: Node = GameStateScript.new()
+	_check(
+		fresh.automation.advance(10.0)["drops"].is_empty()
+		and is_equal_approx(fresh.automation.get_seconds(), 0.0),
+		"保存データを読む前は時計が進まず、毛も落ちない",
+	)
+	fresh.free()
+	var state: Node = GameStateScript.new()
+	state.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray(["--hair-count=300"]))
+	var automation: RefCounted = state.automation
+	state.save_data.building_progress.money = 9999
+	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_BRUSH)
+	var cat_id: StringName = automation.get_cat_routes()[0]["cat_id"]
+	automation.advance(7.0)
+	automation.brush_cat(cat_id)
+	automation.buy_robot(state.current_layout.rooms[0].room_id)
+	var room_ids: Array[StringName] = [state.current_layout.rooms[0].room_id]
+	_check(
+		not automation.set_robot_route(-1, room_ids),
+		"負の台の添字では回る順を変えない",
+	)
+	state.apply_tuning_and_rebuild(state.get_tuning().duplicate(), false)
+	_check(
+		is_equal_approx(automation.get_seconds(), 0.0) and not automation.is_cat_resting(cat_id),
+		"屋敷を組み直すと時計が 0 に戻り、ブラッシングの後の休みも消える",
+	)
+	state.free()
+
+
+## 毛を足す入口が、0 本の面にも足せて、枠を超えると広げても前の毛の位置と色を保ち、面の矩形の中に置くか
+func _check_hair_field_add() -> void:
+	var field: Node3D = HairFieldScript.new()
+	field.add_surface("floor", Vector3(-1.0, 0.0, -1.0), Vector3(1.0, 0.0, 1.0), 1.0)
+	var counts: Array[PackedInt32Array] = [PackedInt32Array([0, 0, 0])]
+	field.populate_with_group_counts(counts, 3)
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = 5
+	var center: Vector3 = Vector3(0.2, 0.0, -0.3)
+	var first_id: int = HairFieldScript.add_hair(field, 0, center, 0.1, 1, rng)
+	var first_near: PackedInt32Array = field.find_hairs_near(0, center, 0.11, 10)
+	var added: int = 1
+	for _i: int in range(39):
+		if HairFieldScript.add_hair(field, 0, center, 0.1, 1, rng) != HairFieldScript.INVALID_SLOT:
+			added += 1
+	_check(
+		first_id != HairFieldScript.INVALID_SLOT
+		and first_near.size() == 1
+		and added == 40
+		and field.get_remaining_count() == 40
+		and HairFieldScript.count_surface_groups(field, 0) == PackedInt32Array([0, 40, 0])
+		and field.find_hairs_near(0, center, 0.11, 100).size() == 40
+		and field.find_hairs_near(0, center, 0.11, 100).has(first_id),
+		"0 本の面に黒の毛を 40 本足すと、枠を広げても 40 本すべてが足した所から 10 cm の中に黒で残り、"
+		+ "最初の毛も同じ所にある (足せた本数: %d / 残り: %d)" % [added, field.get_remaining_count()],
+	)
+	HairFieldScript.add_hair(field, 0, Vector3(5.0, 0.0, 5.0), 0.0, 0, rng)
+	_check(
+		field.find_hairs_near(0, Vector3(1.0, 0.0, 1.0), 0.01, 10).size() == 1
+		and HairFieldScript.add_hair(field, 3, center, 0.1, 0, rng) == HairFieldScript.INVALID_SLOT
+		and HairFieldScript.add_hair(field, -1, center, 0.1, 0, rng) == HairFieldScript.INVALID_SLOT
+		and field.get_remaining_count() == 41,
+		"面の外の所に足す毛は面の角に収め、無い面には足さない",
+	)
+	field.free()

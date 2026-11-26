@@ -439,19 +439,10 @@ func _add_hair(
 	var rect_min: Vector2 = spec["rect_min"]
 	var rect_max: Vector2 = spec["rect_max"]
 	var local_point: Vector3 = surface_transform.affine_inverse() * point
-	var basis: Basis = Basis.from_euler(Vector3(
-		rng.randf_range(-0.14, 0.14), rng.randf_range(0.0, TAU), rng.randf_range(-0.18, 0.18)
-	))
-	var scale_len: float = rng.randf_range(0.75, 1.35)
-	basis = basis.scaled_local(Vector3(rng.randf_range(0.85, 1.25), scale_len, scale_len))
-	# 置き方 (傾き・長さ・幅・表面から持ち上げる高さ・除外範囲を避ける回数) は _create_surface_bucket と同じ範囲にする
-	var local_xform: Transform3D = Transform3D(basis, Vector3(
-		0.0,
-		SURFACE_LIFT_M
-		- minf(compute_aabb_min_transformed_y(basis, compute_mesh_aabb(_hair_mesh)), 0.0)
-		+ rng.randf_range(0.0, 0.0018),
-		0.0
-	))
+	var basis: Basis = random_hair_basis(rng)
+	var local_xform: Transform3D = Transform3D(
+		basis, Vector3(0.0, hair_lift(basis, compute_mesh_aabb(_hair_mesh), rng), 0.0)
+	)
 	var xform: Transform3D = Transform3D()
 	for _retry: int in range(EXCLUSION_RETRY_LIMIT + 1):
 		var angle: float = rng.randf_range(0.0, TAU)
@@ -478,6 +469,28 @@ func _add_hair(
 	multimesh.set_instance_color(slot, color)
 	_remaining_count += 1
 	return hair_id
+
+
+## 毛 1 本の向きと大きさ (面の局所座標の Basis) を乱数で決める。
+## 向きは水平 360 度、傾きは表面から不自然に立たない ±0.14〜0.18 rad、
+## 長さ 0.75〜1.35 倍・幅 0.85〜1.25 倍で抜け毛の個体差を出す
+static func random_hair_basis(rng: RandomNumberGenerator) -> Basis:
+	var scale_len: float = rng.randf_range(0.75, 1.35)
+	return Basis.from_euler(Vector3(
+		rng.randf_range(-0.14, 0.14),
+		rng.randf_range(0.0, TAU),
+		rng.randf_range(-0.18, 0.18)
+	)).scaled_local(Vector3(rng.randf_range(0.85, 1.25), scale_len, scale_len))
+
+
+## basis で置いた毛の根元を、面 (局所 Y = 0) から持ち上げる高さ。回転・スケール後に先端や根元が表面の下へ
+## 潜らないよう最小 Y 分だけ持ち上げ、重なり合う毛同士の Z ファイトを避けるため最大 1.8 mm の微差を乱数で付ける
+static func hair_lift(basis: Basis, local_aabb: AABB, rng: RandomNumberGenerator) -> float:
+	return (
+		SURFACE_LIFT_M
+		- minf(compute_aabb_min_transformed_y(basis, local_aabb), 0.0)
+		+ rng.randf_range(0.0, 0.0018)
+	)
 
 
 ## 表面の MultiMesh の枠を capacity 本に広げ、CPU 側の配列 (transforms / colors) から今の毛を置き直す。
@@ -718,22 +731,10 @@ func _create_surface_bucket(
 		_id_to_surface[hair_id] = surface_idx
 		_id_to_slot[hair_id] = slot
 
-		# 向きは水平 360 度、傾きは表面から不自然に立たない ±0.14〜0.18 rad、
-		# 長さ 0.75〜1.35 倍・幅 0.85〜1.25 倍で抜け毛の個体差を出す
-		var scale_len: float = rng.randf_range(0.75, 1.35)
-		var basis: Basis = Basis.from_euler(Vector3(
-			rng.randf_range(-0.14, 0.14),
-			rng.randf_range(0.0, TAU),
-			rng.randf_range(-0.18, 0.18)
-		))
-		basis = basis.scaled_local(Vector3(rng.randf_range(0.85, 1.25), scale_len, scale_len))
-		# 回転・スケール後に先端や根元が表面 (面の局所 Y = 0) の下へ潜らないよう最小 Y 分だけ持ち上げる。
-		# 重なり合う毛同士の Z ファイトを避けるため高さに最大 1.8 mm の微差を付ける
+		var basis: Basis = random_hair_basis(rng)
 		var local_xform: Transform3D = Transform3D(basis, Vector3(
 			rng.randf_range(rect_min.x, rect_max.x),
-			SURFACE_LIFT_M
-			- minf(compute_aabb_min_transformed_y(basis, local_aabb), 0.0)
-			+ rng.randf_range(0.0, 0.0018),
+			hair_lift(basis, local_aabb, rng),
 			rng.randf_range(rect_min.y, rect_max.y)
 		))
 		var xform: Transform3D = surface_transform * local_xform

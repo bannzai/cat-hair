@@ -11,6 +11,10 @@ const CatRulesScript := preload("res://scripts/automation/cat_rules.gd")
 const RobotRulesScript := preload("res://scripts/automation/robot_rules.gd")
 ## 手に持って使う道具の定義 (ブラシの id)
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
+## 屋敷の毛の描画 (面ごと・色ごとの本数を数える)
+const HairFieldScript := preload("res://scripts/hair_field.gd")
+## 面ごとの毛の型 (毛の色の並び)
+const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 ## 状態管理 autoload スクリプト (買う物の種類の定数を使う)
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## 猫を狙う時に、猫から立つ位置までの水平距離 (m。手の届く距離より十分短い)
@@ -59,11 +63,21 @@ func _verify_cats_walk(main: Node3D, game_state: Node) -> void:
 	main.auto_advance_automation = true
 	for _frame: int in range(10):
 		await _checker.process_frame
-	main.auto_advance_automation = false
 	_check(
 		game_state.automation.get_seconds() > seconds_before,
 		"屋敷で遊んでいる間は時計がフレームごとに進む (%.3f → %.3f 秒)"
 		% [seconds_before, game_state.automation.get_seconds()],
+	)
+	# タイトルにいる間 (屋敷で遊んでいない) と同じ状態にして、時計を進める設定のままでも進まないことを確かめる
+	main.automation.playing = false
+	var title_seconds: float = game_state.automation.get_seconds()
+	for _frame: int in range(10):
+		await _checker.process_frame
+	main.automation.playing = true
+	main.auto_advance_automation = false
+	_check(
+		is_equal_approx(game_state.automation.get_seconds(), title_seconds),
+		"屋敷で遊んでいない間 (タイトル) は、時計を進める設定でも時計が進まない",
 	)
 	var route: Dictionary = routes[0]
 	var cat_node: Node3D = automation.get_cat_node(route["cat_id"])
@@ -75,6 +89,35 @@ func _verify_cats_walk(main: Node3D, game_state: Node) -> void:
 		cat_node.position.is_equal_approx(expected) and cat_node.position.distance_to(first_point) > 0.5,
 		"時計を進めると %s は通り道の次の所へ歩いて移る (前: %s / 今: %s / 期待: %s)"
 		% [route["name"], str(first_point), str(cat_node.position), str(expected)],
+	)
+	await _verify_nap_posture(main, game_state)
+
+
+## 猫は昼寝の所に着いて歩き終えると胴を下げて脚を隠し、昼寝の所へ歩いている間と通り道で立ち止まっている間は脚で立つか
+func _verify_nap_posture(main: Node3D, game_state: Node) -> void:
+	var route: Dictionary = game_state.automation.get_cat_routes()[0]
+	var cat: Node3D = main.automation.get_cat_node(route["cat_id"])
+	var cycle: float = float(route["cycle_seconds"])
+	var nap_start: float = cycle - CatRulesScript.NAP_SECONDS
+	var postures: Array[String] = []
+	# 次の巡の、通り道で立ち止まった後・昼寝の所へ歩いている途中・昼寝の所に着いた後の 3 つの時刻を順に見る
+	var base: float = (floori(game_state.automation.get_seconds() / cycle) + 1) * cycle
+	for target: float in [
+		base + RouteClockScript.MOVE_SECONDS + 1.0,
+		base + nap_start + RouteClockScript.MOVE_SECONDS * 0.5,
+		base + nap_start + RouteClockScript.MOVE_SECONDS + 1.0,
+	]:
+		game_state.automation.advance(target - game_state.automation.get_seconds())
+		await _checker.process_frame
+		var body: Node3D = cat.get_node("Body")
+		var legs: Node3D = cat.get_node("Legs")
+		postures.append(
+			"%s/%s" % ["伏せ" if body.position.y < 0.0 else "立ち", "脚あり" if legs.visible else "脚なし"]
+		)
+	_check(
+		postures == ["立ち/脚あり", "立ち/脚あり", "伏せ/脚なし"],
+		"猫は昼寝の所に着いてから伏せて脚を隠し、立ち止まっている間と昼寝の所へ歩く途中は立つ (実際: %s)"
+		% str(postures),
 	)
 
 
@@ -152,6 +195,21 @@ func _verify_hair_sync(main: Node3D, game_state: Node) -> void:
 ## R キーで掃除ロボットの画面が開閉し、開いている間は操作が止まって他の画面が開かず、買う・部屋を足すと回る順が変わるか
 func _verify_robot_panel(main: Node3D, game_state: Node) -> void:
 	var panel: RobotRoutePanel = main.robot_route_panel
+	var stand: Vector3 = main.player.global_position
+	main._set_title_mode()
+	await _checker._press_physical_key(KEY_R)
+	var opened_in_title: bool = panel.visible
+	main.enter_mansion()
+	main.player.set_spawn(stand, 0.0)
+	await _checker.physics_frame
+	await _checker._press_physical_key(KEY_T)
+	await _checker._press_physical_key(KEY_R)
+	var opened_over_shop: bool = panel.visible
+	await _checker._press_physical_key(KEY_T)
+	_check(
+		not opened_in_title and not opened_over_shop and not main.tool_shop_panel.visible,
+		"タイトルにいる間と道具を買う画面を開いている間は、R キーで掃除ロボットの画面が開かない",
+	)
 	await _checker._press_physical_key(KEY_R)
 	_check(
 		panel.visible and not main.player.controls_enabled and not main.hand.enabled,
@@ -198,11 +256,70 @@ func _verify_robot_panel(main: Node3D, game_state: Node) -> void:
 		game_state.automation.get_robots()[0].robot_room_ids == [first],
 		"「最後の部屋を外す」で足した部屋が回る順から外れる",
 	)
+	panel.get_clear_button().pressed.emit()
+	await _checker.process_frame
+	_check(
+		game_state.automation.get_robots()[0].robot_room_ids.is_empty()
+		and not main.automation.get_robot_node(0).visible
+		and panel.get_robot_button(0).text.contains("止まっている"),
+		"「順を空にして止める」で回る順が空になり、止めた掃除ロボットは屋敷から見えなくなる",
+	)
+	panel.get_add_room_button(first).pressed.emit()
+	await _checker.process_frame
+	await _verify_second_robot(main, game_state, first)
 	await _checker._press_physical_key(KEY_R)
 	_check(
 		not panel.visible and main.player.controls_enabled,
 		"もう一度 R キーで画面が閉じ、操作が戻る",
 	)
+
+
+## 部屋の外で 2 台目を買うと屋敷の最初の部屋を回る順で置かれ、2 台目を選んで足した部屋は 2 台目の順にだけ入り、
+## お金が足りていても 4 台持つと買うボタンを押せないか (掃除ロボットの画面を開いたまま呼ぶ)
+func _verify_second_robot(main: Node3D, game_state: Node, first: StringName) -> void:
+	var panel: RobotRoutePanel = main.robot_route_panel
+	var rooms: Array[MansionLayout.RoomDef] = game_state.current_layout.rooms
+	var stand: Vector3 = main.player.global_position
+	# 屋敷のどの部屋の床の上でもない所 (屋敷の外) に立つ
+	main.player.set_spawn(Vector3(-1000.0, 0.0, 1000.0), 0.0)
+	await _checker.physics_frame
+	var outside: bool = main.get_current_room() == null
+	game_state.save_data.building_progress.money = RobotRulesScript.ROBOT_PRICE
+	panel.get_buy_button().pressed.emit()
+	await _checker.process_frame
+	main.player.set_spawn(stand, 0.0)
+	await _checker.physics_frame
+	var robots: Array[OwnedTool] = game_state.automation.get_robots()
+	_check(
+		outside and robots.size() == 2 and robots[1].robot_room_ids == [rooms[0].room_id],
+		"部屋の外で買った掃除ロボットは、屋敷の最初の部屋 (%s) を回る順で置かれる" % rooms[0].display_name,
+	)
+	panel.get_robot_button(1).pressed.emit()
+	await _checker.process_frame
+	var added: StringName = rooms[1].room_id
+	panel.get_add_room_button(added).pressed.emit()
+	await _checker.process_frame
+	robots = game_state.automation.get_robots()
+	_check(
+		panel.get_selected_index() == 1
+		and robots[1].robot_room_ids == [rooms[0].room_id, added]
+		and robots[0].robot_room_ids == [first],
+		"2 台目を選んで足した部屋は 2 台目の回る順にだけ入り、1 台目の順は変わらない",
+	)
+	game_state.save_data.building_progress.money = RobotRulesScript.ROBOT_PRICE * 10
+	panel.refresh(game_state)
+	while not panel.get_buy_button().disabled and game_state.automation.get_robots().size() < 10:
+		panel.get_buy_button().pressed.emit()
+		await _checker.process_frame
+	_check(
+		game_state.automation.get_robots().size() == RobotRulesScript.MAX_ROBOTS
+		and panel.get_buy_button().disabled
+		and game_state.get_money() >= RobotRulesScript.ROBOT_PRICE,
+		"お金が足りていても 4 台持つと買うボタンを押せない (台数: %d / 所持金: %d 円)"
+		% [game_state.automation.get_robots().size(), game_state.get_money()],
+	)
+	panel.get_robot_button(0).pressed.emit()
+	await _checker.process_frame
 
 
 ## 掃除ロボットが回る部屋に留まる間に毛を取り、在庫が増えて、屋敷の毛の見た目と保存データの本数が一致し、ロボットがその部屋にいるか
@@ -235,6 +352,22 @@ func _verify_robot_cleaning(main: Node3D, game_state: Node) -> void:
 		and game_state.get_total_remaining_hairs() == hairs_before + dropped - picked,
 		"操作せずに時間を進めると、掃除ロボットが取った %d 本だけ屋敷の毛が減る (猫が落とした %d 本を除く)"
 		% [picked, dropped],
+	)
+	var mismatched: Array[String] = []
+	var surfaces: Array[MansionLayout.SurfaceDef] = game_state.current_layout.surfaces
+	for index: int in range(surfaces.size()):
+		var state_surface: SurfaceHair = game_state.save_data.building_progress.find_surface_hair(
+			surfaces[index].surface_id
+		)
+		var state_counts: PackedInt32Array = PackedInt32Array()
+		for color_id: StringName in SurfaceHairScript.STANDARD_COLORS:
+			state_counts.append(state_surface.count_for_color(color_id) if state_surface != null else 0)
+		if HairFieldScript.count_surface_groups(hair_field, index) != state_counts:
+			mismatched.append(String(surfaces[index].surface_id))
+	_check(
+		mismatched.is_empty(),
+		"猫が落とした毛と掃除ロボットが取った毛の後も、面ごと・色ごとの本数が見た目と保存データで一致する (合わない面: %s)"
+		% str(mismatched),
 	)
 	var robot_node: Node3D = main.automation.get_robot_node(0)
 	var in_room: bool = (

@@ -1,5 +1,5 @@
 extends RefCounted
-## 掃除ロボットの値段・回る順・毛を取る量の計算 (純粋な計算。3D の形は AutomationView が描く)。
+## 掃除ロボットの値段・回る順・毛を取る量の計算 (純粋な計算。3D の形は AutomationController が描く)。
 ## 掃除ロボットは買った 1 台ずつ (OwnedTool) が回る部屋の順 (OwnedTool.robot_room_ids) を持ち、その順に 1 部屋ずつ
 ## 決まった秒数留まって、部屋の床とカーペットの毛を一定の間隔で 1 本ずつ取る。取った毛は在庫 (毛のまま) に入る。
 
@@ -18,9 +18,10 @@ const ROBOT_NAME: String = "掃除ロボット"
 const ROBOT_PRICE: int = 300
 ## 持てる台数の上限。回る順を決める画面に 1 台ずつ並べて選べる数
 const MAX_ROBOTS: int = 4
-## 回る順の 1 部屋に留まる秒数
+## 回る順の 1 部屋に留まる秒数。部屋の中の輪 (10 秒で 1 周) を 2 周する長さ。値は仮で、自動テストプレイ (issue #13) で調整する。
 const ROOM_SECONDS: float = 20.0
-## 部屋に留まっている間に毛を 1 本取る間隔 (秒)
+## 部屋に留まっている間に毛を 1 本取る間隔 (秒)。猫 3 匹が落とす量 (1 秒に 1.5 本ほど) より少なく、1 台では追いつかず買い足す理由になる量にした。値は仮で、自動テストプレイ
+## (issue #13) で調整する。
 const PICK_INTERVAL_SECONDS: float = 1.0
 ## 2 台目以降の掃除ロボットの時刻のずれ (秒)。同じ順で回る 2 台が重ならないようにずらす
 const PHASE_STEP_SECONDS: float = 5.0
@@ -30,7 +31,7 @@ const CLEAN_SURFACE_TYPES: Array[StringName] = [
 ]
 ## 部屋の中で走る輪の大きさ (部屋の半幅に対する比率)。壁と家具の手前を回る大きさ
 const LOOP_RATIO: float = 0.55
-## 部屋の中で走る輪を 1 周する秒数
+## 部屋の中で走る輪を 1 周する秒数。輪の長さ (部屋の幅 6 m ほどで約 8 m) を家庭用の掃除ロボットの速さ (毎秒 0.3 m ほど) より少し速く走る長さ
 const LOOP_SECONDS: float = 10.0
 
 
@@ -59,10 +60,13 @@ static func robot_time(robot_index: int, automation_seconds: float) -> float:
 	return automation_seconds + PHASE_STEP_SECONDS * float(robot_index)
 
 
-## 時刻 t0 より後から t1 まで (t0 < 時刻 ≦ t1) に掃除ロボットが毛を取る回数を、部屋の id ごとに返す (room_id -> int)
-static func picks_between(route: Dictionary, t0: float, t1: float) -> Dictionary:
+## 時刻 from_seconds より後から to_seconds まで (from_seconds < 時刻 ≦ to_seconds) に掃除ロボットが毛を取る回数を、部屋の id
+## ごとに返す (room_id -> int)
+static func picks_between(route: Dictionary, from_seconds: float, to_seconds: float) -> Dictionary:
 	var result: Dictionary = {}
-	var ticks: Dictionary = RouteClockScript.ticks_between(route, t0, t1, PICK_INTERVAL_SECONDS)
+	var ticks: Dictionary = RouteClockScript.ticks_between(
+		route, from_seconds, to_seconds, PICK_INTERVAL_SECONDS
+	)
 	for stop_index: Variant in ticks.keys():
 		var room_id: StringName = route["stops"][int(stop_index)]["room_id"]
 		result[room_id] = int(result.get(room_id, 0)) + int(ticks[stop_index])

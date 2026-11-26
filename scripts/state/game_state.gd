@@ -6,7 +6,7 @@ extends Node
 
 ## 進行状態や残り毛本数が変わった時に発火し、HUD 等の表示を更新する
 signal state_changed
-## 猫と掃除ロボットの時間を進めて毛が増減した時に発火する (changes は advance_automation の戻り値)。
+## 猫と掃除ロボットの時間を進めて毛が増減した時に発火する (changes は automation.advance の戻り値)。
 ## 屋敷の毛の見た目 (HairField) を同じ本数だけ増減するため
 signal automation_advanced(changes: Dictionary)
 ## 調整値から屋敷レイアウトが組み立て直された時に発火し、3D 空間を再構築する

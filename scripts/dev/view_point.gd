@@ -4,9 +4,9 @@ extends RefCounted
 
 ## 猫の通り道の計算 (部屋の家具と壁際に入るかの判定を使う)
 const CatRulesScript := preload("res://scripts/automation/cat_rules.gd")
-## 立つ所と見たい所の間で、家具に入るかを確かめる点の数
+## 立つ所と見たい所の間で、家具に入るかを確かめる点の数。撮る距離 (1.3〜2 m ほど) を 15 cm ほどの間隔で見て、いちばん薄い家具 (スーツ掛けの奥行き) を飛ばさない数
 const LINE_SAMPLES: int = 12
-## 試す向きの数 (真後ろから 45 度ずつ回す)
+## 試す向きの数 (真後ろから 45 度ずつ回す)。8 方向で、家具の間の通り道のどれかに当たる細かさ
 const DIRECTIONS: int = 8
 
 
@@ -22,6 +22,7 @@ static func clear_spot(
 ) -> Vector3:
 	var target_floor: Vector3 = Vector3(target.x, 0.0, target.z)
 	var first: Vector3 = Vector3(preferred.x, 0.0, preferred.z)
+	# 見たい所の真上・真下を向く向きは水平の向きが決まらないため、後ろの向きに置き換える (長さ 1 cm 未満)
 	if first.length() < 0.01:
 		first = Vector3.BACK
 	first = first.normalized()

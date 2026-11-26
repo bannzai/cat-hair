@@ -28,9 +28,9 @@ const CALICO_PATCH_COLORS: Array[Color] = [Color(0.82, 0.47, 0.18), Color(0.12, 
 const DROP_SPREAD_M: float = 0.35
 ## 猫の体の長さ (m。家猫の頭を除いた胴の標準 45 cm 前後)
 const CAT_BODY_LENGTH_M: float = 0.42
-## 猫の胴の半径 (m)
+## 猫の胴の半径 (m。家猫の胴回りの標準 60 cm 前後を円にした半径より少し細い、遠目で猫の形に見える太さ)
 const CAT_BODY_RADIUS_M: float = 0.1
-## 猫の脚の長さ (m)
+## 猫の脚の長さ (m。家猫の肩までの高さの標準 25 cm 前後から胴の太さを引いた長さ)
 const CAT_LEG_LENGTH_M: float = 0.12
 ## 昼寝している猫の胴を下げる高さ (m。脚をたたんで伏せた形)
 const NAP_LOWER_M: float = CAT_LEG_LENGTH_M * 0.85
@@ -87,6 +87,7 @@ func rebuild() -> void:
 		child.free()
 	_cat_nodes.clear()
 	_surface_index_by_id.clear()
+	# 猫が落とした毛の置き方を、撮影と録画で毎回同じにする固定の種 (値に意味は無く、作った日付)
 	_rng.seed = 20261127
 	_cats_root = Node3D.new()
 	_cats_root.name = "Cats"
@@ -207,10 +208,12 @@ func _on_automation_advanced(changes: Dictionary) -> void:
 		var robot_node: Node3D = get_robot_node(int(pick["robot_index"]))
 		if surface_index < 0:
 			continue
-		var near_point: Vector3 = robot_node.position if robot_node != null else Vector3.ZERO
 		var left: int = int(pick["count"])
 		for hair_id: int in hair_field.find_hairs_near(
-			surface_index, near_point, INF, hair_field.get_surface_remaining_count(surface_index)
+			surface_index,
+			robot_node.position if robot_node != null else Vector3.ZERO,
+			INF,
+			hair_field.get_surface_remaining_count(surface_index),
 		):
 			if left <= 0:
 				break
@@ -232,6 +235,7 @@ func _build_cat(route: Dictionary) -> Node3D:
 	torso.radius = CAT_BODY_RADIUS_M
 	torso.height = CAT_BODY_LENGTH_M
 	_add_part(body, torso, Vector3(0.0, torso_height, 0.0), Vector3(-90.0, 0.0, 0.0), body_color)
+	# 頭・耳・尾・ぶち・脚の寸法は、胴 (CAT_BODY_*) に対する家猫の見た目の比率で決め、撮影の目視で猫に見えることを確かめた
 	var head: SphereMesh = SphereMesh.new()
 	head.radius = 0.085
 	head.height = 0.16
@@ -279,6 +283,7 @@ func _build_cat(route: Dictionary) -> Node3D:
 	name_label.name = "NameTag"
 	name_label.text = str(route["name"])
 	name_label.font = FONT
+	# 名札の字の大きさと縁取りは、撮影 (1280x720) で 1.5 m ほど離れて読め、猫の体より大きく見えない値
 	name_label.font_size = 40
 	name_label.outline_size = 10
 	name_label.pixel_size = 0.0022
@@ -288,7 +293,7 @@ func _build_cat(route: Dictionary) -> Node3D:
 	return cat
 
 
-## robot_index 台目の掃除ロボットの形 (円盤の本体・上蓋・前の緩衝材・番号の札) を作る。床に置く底が原点
+## robot_index 台目の掃除ロボットの形 (円盤の本体・上蓋・前の緑の灯・番号の札) を作る。床に置く底が原点
 func _build_robot(robot_index: int) -> Node3D:
 	var robot: Node3D = Node3D.new()
 	robot.name = "Robot%d" % robot_index
@@ -307,6 +312,7 @@ func _build_robot(robot_index: int) -> Node3D:
 	_add_part(
 		robot, lid, Vector3(0.0, ROBOT_HEIGHT_M * 0.9, 0.0), Vector3.ZERO, Color(0.36, 0.37, 0.38)
 	)
+	# 灯は本体の 1 割ほどの大きさで、上から見て前の向きが分かる位置に置く
 	var lamp: SphereMesh = SphereMesh.new()
 	lamp.radius = 0.02
 	lamp.height = 0.03
@@ -318,6 +324,7 @@ func _build_robot(robot_index: int) -> Node3D:
 	tag.name = "NumberTag"
 	tag.text = "%d" % (robot_index + 1)
 	tag.font = FONT
+	# 番号の札は猫の名札と同じ大きさの字で、掃除ロボットの小ささに合わせて少し小さく描く
 	tag.font_size = 40
 	tag.outline_size = 10
 	tag.pixel_size = 0.002

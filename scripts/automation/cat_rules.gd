@@ -1,5 +1,5 @@
 extends RefCounted
-## 猫の通り道・昼寝の場所・毛を落とす量・ブラッシングの計算 (純粋な計算。3D の猫の形は AutomationView が描く)。
+## 猫の通り道・昼寝の場所・毛を落とす量・ブラッシングの計算 (純粋な計算。3D の猫の形は AutomationController が描く)。
 ## 猫は屋敷の作りから決まる通り道を、屋敷で遊んでいる時間に合わせて繰り返し歩き、立ち止まった面に一定の間隔で毛を落とす。
 ## 通り道は保存せず、屋敷の作り (MansionLayout) から毎回同じものを組み立てる。
 
@@ -32,29 +32,32 @@ const CATS: Array[Dictionary] = [
 		"offset": Vector2(0.4, 1.1),
 	},
 ]
-## 通り道の 1 部屋に立ち止まる秒数
+## 通り道の 1 部屋に立ち止まる秒数。プレイヤーが部屋に入ってから猫に気付き、近づいてブラシをかけられる長さ。値は仮で、自動テストプレイ (issue #13) で調整する。
 const WALK_STOP_SECONDS: float = 8.0
 ## 昼寝の場所で寝ている秒数。通り道の 1 部屋より長く、寝ている面に毛が溜まって見える長さ
 const NAP_SECONDS: float = 24.0
-## 立ち止まっている間に毛を 1 本落とす間隔 (秒)
+## 立ち止まっている間に毛を 1 本落とす間隔 (秒)。猫 3 匹で 1 秒に 1.5 本ほど落ち、掃除ロボット 1 台 (1 秒に 1 本) では追いつかず、2 台で上回る量にした。値は仮で、
+## 自動テストプレイ (issue #13) で調整する。
 const DROP_INTERVAL_SECONDS: float = 2.0
 ## 昼寝に使う面の種類 (猫が寝そべる、上を向いた柔らかい面)。見つかった種類の順に選ぶ
 const NAP_SURFACE_TYPES: Array[StringName] = [
 	MansionLayoutScript.SURFACE_SOFA, MansionLayoutScript.SURFACE_CARPET
 ]
-## 面が上を向いているとみなす、面の法線と真上の向きの内積の下限
+## 面が上を向いているとみなす、面の法線と真上の向きの内積の下限 (約 25 度までの傾き。ソファの座面は通し、背もたれ・側面を外す)
 const UPWARD_DOT_MIN: float = 0.9
 ## 立ち止まる所を家具から離す余白 (m)。猫の体が家具にめり込まない幅
 const FURNITURE_MARGIN_M: float = 0.3
-## 1 つの面に溜まる毛の上限の下限 (本)。面の最初の本数がこれより少なくても、ここまでは落ちる
+## 1 つの面に溜まる毛の上限の下限 (本)。面の最初の本数がこれより少なくても、ここまでは落ちる。最初の毛が少ない屋敷 (開発者画面で本数を下げた時) でも、猫が 1 か所に立ち止まる 8
+## 秒の落とす量 (4 本) の 10 回分は溜まって見える数にした
 const MIN_SURFACE_CAP: int = 40
-## ブラッシング 1 回で取れる毛の本数
+## ブラッシング 1 回で取れる毛の本数。手で 1 本ずつ抜くより多く、粘着ローラーの 1 回 (範囲の毛を何本も取る) より少ない量にした。値は仮で、自動テストプレイ (issue #13)
+## で調整する。
 const BRUSH_HAIRS: int = 5
-## ブラッシングした猫が毛を落とさず、もう一度ブラッシングもできない秒数
+## ブラッシングした猫が毛を落とさず、もう一度ブラッシングもできない秒数。続けてブラシをかけ続けるだけの遊び方にならない長さ。値は仮で、自動テストプレイ (issue #13) で調整する。
 const BRUSH_REST_SECONDS: float = 10.0
-## 狙いの光線から猫の体の中心までの距離がこれ以内なら、その猫を狙っているとみなす (m)
+## 狙いの光線から猫の体の中心までの距離がこれ以内なら、その猫を狙っているとみなす (m)。胴の長さ (0.42 m) の約 8 割で、頭から尾のどこを狙っても当たる幅
 const AIM_RADIUS_M: float = 0.35
-## 猫の体の中心の、足元からの高さ (m)
+## 猫の体の中心の、足元からの高さ (m)。AutomationController の胴の高さ (脚 0.12 m + 胴の半径 0.1 m) より少し下の、胴の中ほど
 const BODY_CENTER_HEIGHT_M: float = 0.18
 
 
@@ -153,15 +156,15 @@ static func is_blocked(layout: MansionLayout, room_id: StringName, point: Vector
 			or absf(point.z - room.center.z) > room.size.z * 0.5 - FURNITURE_MARGIN_M
 		):
 			return true
-	for obj: MansionLayout.ObjectDef in layout.objects:
-		if obj.room_id != room_id or obj.object_kind == MansionLayoutScript.OBJECT_CARPET:
+	for furniture: MansionLayout.ObjectDef in layout.objects:
+		if furniture.room_id != room_id or furniture.object_kind == MansionLayoutScript.OBJECT_CARPET:
 			continue
 		var local: Vector3 = (
-			Transform3D(Basis(Vector3.UP, obj.rotation_y), obj.position).affine_inverse() * point
+			Transform3D(Basis(Vector3.UP, furniture.rotation_y), furniture.position).affine_inverse() * point
 		)
 		if (
-			absf(local.x) <= obj.size.x * 0.5 + FURNITURE_MARGIN_M
-			and absf(local.z) <= obj.size.z * 0.5 + FURNITURE_MARGIN_M
+			absf(local.x) <= furniture.size.x * 0.5 + FURNITURE_MARGIN_M
+			and absf(local.z) <= furniture.size.z * 0.5 + FURNITURE_MARGIN_M
 		):
 			return true
 	return false
@@ -199,11 +202,16 @@ static func nap_surface_for(layout: MansionLayout, start_room: int) -> MansionLa
 	return null
 
 
-## 時刻 t0 より後から t1 まで (t0 < 時刻 ≦ t1) に猫が落とす毛の本数を、面の id ごとに返す (surface_id -> int)。
+## 時刻 from_seconds より後から to_seconds まで (from_seconds < 時刻 ≦ to_seconds) に猫が落とす毛の本数を、面の id ごとに返す
+## (surface_id -> int)。
 ## 毛は立ち止まった所ごとに、着いてから DROP_INTERVAL_SECONDS 秒ごとに 1 本落ちる
-static func drops_between(route: Dictionary, t0: float, t1: float) -> Dictionary:
+static func drops_between(
+	route: Dictionary, from_seconds: float, to_seconds: float
+) -> Dictionary:
 	var result: Dictionary = {}
-	var ticks: Dictionary = RouteClockScript.ticks_between(route, t0, t1, DROP_INTERVAL_SECONDS)
+	var ticks: Dictionary = RouteClockScript.ticks_between(
+		route, from_seconds, to_seconds, DROP_INTERVAL_SECONDS
+	)
 	for stop_index: Variant in ticks.keys():
 		var surface_id: StringName = route["stops"][int(stop_index)]["surface_id"]
 		result[surface_id] = int(result.get(surface_id, 0)) + int(ticks[stop_index])
