@@ -1,0 +1,65 @@
+name: browser-session
+# Web エクスポートを GitHub Actions のランナー上の Chromium で開き、Tailscale 経由で手元から操作する
+# (webtunnel skill。AGENTS.md「検証方法」)。Web 版は配布しない。入力で変わる振る舞いを、開発マシンで
+# Godot を起動せずに触って確かめるためだけに使う。
+# run-name は webtunnel の CLI が run を特定するキーのためこの形式を維持する
+run-name: "session=${{ inputs.session }} duration=${{ inputs.duration_minutes }}m"
+on:
+  workflow_dispatch: # fork の PR に Secrets を渡さないため workflow_dispatch のみ
+    # webtunnel の CLI が送る input は、宣言が無いと dispatch が拒否されるためすべて宣言する
+    inputs:
+      session:
+        required: true
+        default: dev
+      duration_minutes:
+        required: true
+        default: "60"
+      start_url:
+        required: false
+        default: "" # 空なら配信している Web エクスポートの URL を開く
+      record:
+        required: false
+        default: "true"
+      preview:
+        required: false
+        default: "true"
+      setup_script:
+        required: false
+        default: ".webtunnel/setup.sh"
+      software_webgl:
+        required: false
+        # Godot の Web エクスポートは WebGL2 が要り、ランナーの Chromium は既定で WebGL2 が無効なため
+        default: "true"
+jobs:
+  session:
+    # reusable workflow の job が持てる権限はここで付けた分が上限になる
+    permissions:
+      id-token: write
+      contents: read
+    uses: bannzai/webtunnel/.github/workflows/session.yml@a2bc1533da0bcf9d417e21f92d7c247914244120 # main
+    with:
+      session: ${{ inputs.session }}
+      duration_minutes: ${{ inputs.duration_minutes }}
+      start_url: ${{ inputs.start_url }}
+      record: ${{ inputs.record }}
+      preview: ${{ inputs.preview }}
+      setup_script: ${{ inputs.setup_script }}
+      software_webgl: ${{ inputs.software_webgl }}
+      # Godot のリリース名は .github/actions/setup-godot の既定値と合わせる (reusable workflow の job からは
+      # このリポジトリの composite action を呼べないため、ここに同じ値を書く)
+      setup_command: |
+        set -e # setup_command は bash -c で実行され、途中の失敗で止まらないため
+        GODOT_RELEASE=4.7.2-stable
+        GODOT_VERSION_DIR=4.7.2.stable
+        mkdir -p ~/godot-bin ~/.local/share/godot/export_templates/${GODOT_VERSION_DIR}
+        curl -fsSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+        unzip -q /tmp/godot.zip -d ~/godot-bin
+        curl -fsSL -o /tmp/templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz"
+        unzip -q -o -j /tmp/templates.tpz templates/version.txt templates/web_nothreads_release.zip -d ~/.local/share/godot/export_templates/${GODOT_VERSION_DIR}
+        make build-web GODOT="$HOME/godot-bin/Godot_v${GODOT_RELEASE}_linux.x86_64"
+      # 127.0.0.1 に束縛しないと、webtunnel の配信サーバの検証 (loopback だけで listen していること) で失敗する
+      start_command: python3 -m http.server "$PORT" --bind 127.0.0.1 --directory build/web
+      port: "8080"
+    secrets:
+      TS_OIDC_CLIENT_ID: ${{ secrets.TS_OIDC_CLIENT_ID }}
+      TS_OIDC_AUDIENCE: ${{ secrets.TS_OIDC_AUDIENCE }}
