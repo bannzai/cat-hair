@@ -154,7 +154,6 @@ static func refilled_count(tool_id: StringName, consumable_count: int) -> int:
 static func refill_changes_count(tool_id: StringName, consumable_count: int) -> bool:
 	return (
 		uses_consumable(tool_id)
-		and refilled_count(tool_id, consumable_count) != consumable_count
 	)
 
 
