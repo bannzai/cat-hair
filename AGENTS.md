@@ -1,4 +1,4 @@
-# cat-hair (題名は未定)
+# Oh My Fur! (リポジトリ名は cat-hair)
 
 屋敷の猫の毛を手で 1 本ずつ取るところから、道具と自動化で片付け続けるまでを遊ぶ、一人称 3D のインクリメンタルゲーム (Godot 4.7 / Steam)。仕様・スコープは [documents/PROJECT.md](documents/PROJECT.md)、判断の根拠 (仮説・判定基準・決めたこと・用語) は [documents/DIRECTION.md](documents/DIRECTION.md) を参照 (どちらも SSOT)。
 

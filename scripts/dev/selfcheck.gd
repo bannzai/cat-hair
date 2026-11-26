@@ -4,8 +4,8 @@ extends "res://scripts/dev/headless_check.gd"
 
 ## プロジェクト設定のメインシーンに入っているべきパス
 const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
-## プロジェクト設定の名前に入っているべき値 (題名が決まるまではリポジトリ名)
-const PROJECT_NAME: String = "cat-hair"
+## プロジェクト設定の名前に入っているべき値 (ゲームの題名)
+const PROJECT_NAME: String = "Oh My Fur!"
 
 
 ## 検証をすべて実行して終える

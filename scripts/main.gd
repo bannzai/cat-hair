@@ -1,5 +1,5 @@
 extends Control
-## ゲームのメインシーン。現在は仮の題名とボタンだけを置いた最小構成 (題名は未定。documents/DIRECTION.md)。
+## ゲームのメインシーン。現在は題名とボタンだけを置いた最小構成。
 
 ## make check がメインシーンのロードと _ready の実行を確かめる印
 const BOOT_MESSAGE: String = "cat-hair boot"
