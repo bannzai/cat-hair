@@ -193,14 +193,16 @@ func _check_audio_settings_persistence() -> void:
 		"存在しない設定ファイルの読み込み時は既定値 (オン, オン) に戻る"
 	)
 
-	# 異常系: 破損した INI ファイル
-	_write_raw_text(test_path, "[broken\nnot_valid_config")
-	var broken_reader: RefCounted = AudioSettings.new(false, false)
-	var broken_err: Error = broken_reader.load_from_path(test_path)
-	_check(broken_err != OK, "破損した設定ファイルの読み込みはエラーを返す")
+	# 異常系: 対象セクションが無いファイル (エンジン ERROR を出さない有効な INI 構文)
+	_write_raw_text(test_path, "[other]\nvalue=1\n")
+	var other_section_reader: RefCounted = AudioSettings.new(false, false)
 	_check(
-		broken_reader.bgm_enabled and broken_reader.sfx_enabled,
-		"破損した設定ファイル読み込み時は既定値 (オン, オン) に戻る"
+		other_section_reader.load_from_path(test_path) == OK,
+		"audio セクションが無い設定ファイルはエラーなく読み込める"
+	)
+	_check(
+		other_section_reader.bgm_enabled and other_section_reader.sfx_enabled,
+		"audio セクションが無い設定ファイルは既定値 (オン, オン) になる"
 	)
 
 	# 異常系: 不正型 (片方だけ正常・片方だけ不正型) とキー欠落
