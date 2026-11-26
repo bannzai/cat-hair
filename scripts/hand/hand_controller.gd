@@ -171,7 +171,7 @@ func is_pull_in_reach() -> bool:
 		if (
 			hair_field.has_hair(hair_id)
 			and hair_field.get_hair_transform(hair_id).origin.distance_to(_camera.global_position)
-			<= REACH_M + GRAB_RADIUS_M
+			<= REACH_M
 		):
 			return true
 	return false
