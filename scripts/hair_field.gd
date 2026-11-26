@@ -201,6 +201,21 @@ static func build_hair_material() -> StandardMaterial3D:
 	return material
 
 
+## ArrayMesh の頂点配列から直接ローカル AABB を計算する (headless の Dummy レンダラでも確実に動作)
+static func compute_mesh_aabb(mesh: ArrayMesh) -> AABB:
+	if mesh == null or mesh.get_surface_count() == 0:
+		return AABB()
+	var vertices: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	if vertices.is_empty():
+		return AABB()
+	var min_vec: Vector3 = vertices[0]
+	var max_vec: Vector3 = vertices[0]
+	for vertex: Vector3 in vertices:
+		min_vec = min_vec.min(vertex)
+		max_vec = max_vec.max(vertex)
+	return AABB(min_vec, max_vec - min_vec)
+
+
 ## ローカル AABB を basis で変換した時の全頂点 Y 座標の厳密な下界を O(1) で計算する
 static func compute_aabb_min_transformed_y(basis: Basis, local_aabb: AABB) -> float:
 	var min_pt: Vector3 = local_aabb.position
@@ -392,7 +407,7 @@ func _create_surface_bucket(
 	var bounds_min: Vector3 = spec["bounds_min"]
 	var bounds_max: Vector3 = spec["bounds_max"]
 	var base_y: float = bounds_min.y + SURFACE_LIFT_M
-	var local_aabb: AABB = _hair_mesh.get_aabb()
+	var local_aabb: AABB = compute_mesh_aabb(_hair_mesh)
 
 	for slot: int in range(count):
 		var hair_id: int = start_id + slot

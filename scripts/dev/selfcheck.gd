@@ -153,6 +153,18 @@ func _check_hair_mesh_shape() -> void:
 		and mid_width_vec.dot(vertices[5] - vertices[4]) > 0.0,
 		"毛メッシュの隣接断面の幅方向が一貫しねじれが無い"
 	)
+	var mesh_aabb: AABB = HairFieldScript.compute_mesh_aabb(mesh)
+	_check(
+		mesh_aabb.size.z > 0.03 and HairFieldScript.compute_mesh_aabb(null) == AABB(),
+		"compute_mesh_aabb が頂点配列から非空の AABB を計算し null で空 AABB を返す"
+	)
+	_check(
+		HairFieldScript.compute_aabb_min_transformed_y(
+			Basis.from_euler(Vector3(0.14, 0.0, 0.0)), mesh_aabb
+		)
+		< 0.0,
+		"下向きピッチ 0.14 rad で compute_aabb_min_transformed_y が負の下界を返す"
+	)
 
 
 ## 毛の色に白・黒・三毛の 3 系統が含まれるか
