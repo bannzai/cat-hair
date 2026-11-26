@@ -6,9 +6,13 @@ extends SceneTree
 
 ## 音の解放を待つ時間 (AUDIO_RELEASE_TIME) を借りる、headless の検証の土台
 const HeadlessCheck := preload("res://scripts/dev/headless_check.gd")
-
 ## 撮影するメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
+const GameStateScript := preload("res://scripts/state/game_state.gd")
+const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
+
+## screenshot 専用のセーブパス
+const TEST_SAVE_PATH: String = "user://screenshot_save_data.json"
 
 
 ## tree の準備が終わってから _run() を始める (シーンの追加は _initialize() の後でないとできない)
@@ -26,13 +30,50 @@ func _run() -> void:
 
 ## 撮影する画面の並び。失敗した撮影は _capture() が quit(1) 済みなので、false を受けたらそのまま抜ける
 func _capture_scenes() -> bool:
-	var main: Control = MAIN_SCENE.instantiate()
+	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+	var game_state: Node = GameStateScript.new()
+	game_state.name = "GameState"
+	game_state.save_path = TEST_SAVE_PATH
+	root.add_child(game_state)
+	game_state.initialize_from_storage(TEST_SAVE_PATH)
+
+	var main: Node3D = MAIN_SCENE.instantiate()
 	root.add_child(main)
 	current_scene = main
+
 	# 最初の撮影だけ、フォントの読み込みと最初の描画を時間で待つ。0.3 秒は bannzai/goki-hunter の撮影から引き継いだ値で、
 	# CI の llvmpipe でこの画面が描画し終わることを PR #1 の artifact で確かめた (下限は測っていない)
 	await create_timer(0.3).timeout
-	return await _capture("tmp/screenshot-title.png")
+	if not await _capture("tmp/screenshot-title.png"):
+		_cleanup(main, game_state)
+		return false
+
+	# 屋敷の中の一人称プレイ画面 (部屋・家具・布・仮の毛・残り本数の HUD)
+	main.enter_mansion()
+	if not await _capture("tmp/screenshot-mansion.png"):
+		_cleanup(main, game_state)
+		return false
+
+	# 開発者向け調整画面を開いた状態
+	main.open_dev_panel()
+	if not await _capture("tmp/screenshot-dev-panel.png"):
+		_cleanup(main, game_state)
+		return false
+
+	_cleanup(main, game_state)
+	return true
+
+
+func _cleanup(main: Node3D, game_state: Node) -> void:
+	if current_scene == main:
+		current_scene = null
+	if is_instance_valid(main) and main.get_parent() != null:
+		main.get_parent().remove_child(main)
+		main.free()
+	if is_instance_valid(game_state) and game_state.get_parent() != null:
+		game_state.get_parent().remove_child(game_state)
+		game_state.free()
+	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
 
 ## フレームを数フレーム進めて描画を安定させてから、現在の画面を path に保存する。保存できたら true
