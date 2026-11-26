@@ -83,22 +83,17 @@ func _check_mansion_builder_default() -> void:
 	var found_types: Dictionary = {}
 	for surface: MansionLayout.SurfaceDef in layout.surfaces:
 		found_types[surface.surface_type] = true
-	for required_type: StringName in [
-		MansionLayoutScript.SURFACE_FLOOR,
-		MansionLayoutScript.SURFACE_CARPET,
-		MansionLayoutScript.SURFACE_SOFA,
-		MansionLayoutScript.SURFACE_KNIT,
-		MansionLayoutScript.SURFACE_SUIT,
-		MansionLayoutScript.SURFACE_FURNITURE,
-	]:
+	var req_types: Array[StringName] = [
+		MansionLayoutScript.SURFACE_FLOOR, MansionLayoutScript.SURFACE_CARPET,
+		MansionLayoutScript.SURFACE_SOFA, MansionLayoutScript.SURFACE_KNIT,
+		MansionLayoutScript.SURFACE_SUIT, MansionLayoutScript.SURFACE_FURNITURE,
+	]
+	for required_type: StringName in req_types:
 		_check(found_types.has(required_type), "表面の種類 %s が含まれる" % String(required_type))
 	_check(
-		layout.rooms[0].open_east and layout.rooms[1].open_west,
-		"隣接する部屋 0 と部屋 1 の間に東西ドア開口がある",
-	)
-	_check(
-		layout.rooms[0].open_north and layout.rooms[2].open_south,
-		"隣接する部屋 0 と部屋 2 の間に南北ドア開口がある",
+		layout.rooms[0].open_east and layout.rooms[1].open_west
+		and layout.rooms[0].open_north and layout.rooms[2].open_south,
+		"隣接部屋 0-1 (東西) と 0-2 (南北) の間にドア開口がある",
 	)
 	_check(
 		layout.find_surface(layout.surfaces[0].surface_id) == layout.surfaces[0]
@@ -206,25 +201,39 @@ func _check_mansion_builder_changes_and_large_scale() -> void:
 		and dense_layout.objects[8].position.distance_to(dense_layout.objects[0].position) > 0.1,
 		"最小幅の 12 個配置で全家具外縁が壁内に収まり ring > 0 が 1 周目と重ならない",
 	)
-	var door_tuning: MansionTuning = MansionTuningScript.new()
-	door_tuning.room_count = 3
-	door_tuning.room_size_m = MansionTuningScript.MIN_ROOM_SIZE_M
-	door_tuning.object_count = 24
-	var door_layout: MansionLayout = MansionBuilderScript.build_layout(door_tuning)
-	var north_door_clear: bool = true
-	for obj: MansionLayout.ObjectDef in door_layout.objects:
-		if obj.room_id != &"hall" or obj.object_kind == MansionLayoutScript.OBJECT_CARPET:
-			continue
-		var c_rot: float = absf(cos(obj.rotation_y))
-		var s_rot: float = absf(sin(obj.rotation_y))
-		var hx: float = (c_rot * obj.size.x + s_rot * obj.size.z) * 0.5
-		var hz: float = (s_rot * obj.size.x + c_rot * obj.size.z) * 0.5
-		if (
-			obj.position.z - hz < -half_room + MansionBuilderScript.DOOR_CORRIDOR_DEPTH_M - 0.01
-			and absf(obj.position.x) < MansionBuilderScript.DOOR_CORRIDOR_HALF_WIDTH_M + hx - 0.01
-		):
-			north_door_clear = false
-	_check(north_door_clear, "room_count=3/room_size=4m/object=24 で北ドア正面通路が衝突家具に塞がれない")
+	var door_cases: Array[Array] = [[3, 24], [4, 20], [5, 92], [3, 79], [9, 120]]
+	var all_doors_clear: bool = true
+	var depth: float = MansionBuilderScript.DOOR_CORRIDOR_DEPTH_M - 0.005
+	var hw: float = MansionBuilderScript.DOOR_CORRIDOR_HALF_WIDTH_M - 0.005
+	for door_case: Array in door_cases:
+		var dt: MansionTuning = MansionTuningScript.new()
+		dt.room_count = int(door_case[0])
+		dt.room_size_m = MansionTuningScript.MIN_ROOM_SIZE_M
+		dt.object_count = int(door_case[1])
+		var dl: MansionLayout = MansionBuilderScript.build_layout(dt)
+		var room_map: Dictionary = {}
+		for r: MansionLayout.RoomDef in dl.rooms:
+			room_map[r.room_id] = r
+		for obj: MansionLayout.ObjectDef in dl.objects:
+			if obj.object_kind == MansionLayoutScript.OBJECT_CARPET:
+				continue
+			var rm: MansionLayout.RoomDef = room_map[obj.room_id]
+			var c_rot: float = absf(cos(obj.rotation_y))
+			var s_rot: float = absf(sin(obj.rotation_y))
+			var hx: float = (c_rot * obj.size.x + s_rot * obj.size.z) * 0.5
+			var hz: float = (s_rot * obj.size.x + c_rot * obj.size.z) * 0.5
+			var lx: float = obj.position.x - rm.center.x
+			var lz: float = obj.position.z - rm.center.z
+			var blocked: bool = (
+				absf(lx) + hx > half_room or absf(lz) + hz > half_room
+				or (rm.open_north and lz - hz < -half_room + depth and absf(lx) < hw + hx)
+				or (rm.open_south and lz + hz > half_room - depth and absf(lx) < hw + hx)
+				or (rm.open_east and lx + hx > half_room - depth and absf(lz) < hw + hz)
+				or (rm.open_west and lx - hx < -half_room + depth and absf(lz) < hw + hz)
+			)
+			if blocked:
+				all_doors_clear = false
+	_check(all_doors_clear, "最小幅 4m の全検証構成・全部屋・4 方向ドアで衝突家具が壁内に収まり通路を塞がない")
 
 
 ## 境界値 (最小・最大・下限未満・上限超過) で組み立てとクランプが正しく動くか検証する
@@ -352,34 +361,20 @@ func _check_tuning_equals_and_cmdline_args() -> void:
 			"単独引数 %s で has_cmdline_override が true" % single_arg,
 		)
 
-	var parsed: MansionTuning = MansionTuningScript.from_cmdline_args(
-		PackedStringArray([
-			"--hair-count=321",
-			"--found-item-count=2",
-			"--room-size=8.5",
-			"--object-count=7",
-			"--room-count=3",
-		])
-	)
+	var parsed: MansionTuning = MansionTuningScript.from_cmdline_args(PackedStringArray([
+		"--hair-count=321", "--found-item-count=2", "--room-size=8.5",
+		"--object-count=7", "--room-count=3",
+	]))
 	_check(
-		parsed.hair_count == 321
-		and parsed.found_item_count == 2
+		parsed.hair_count == 321 and parsed.found_item_count == 2
 		and is_equal_approx(parsed.room_size_m, 8.5)
-		and parsed.object_count == 7
-		and parsed.room_count == 3,
+		and parsed.object_count == 7 and parsed.room_count == 3,
 		"コマンドライン引数 5 項目すべてが反映される",
 	)
-	var fallback: MansionTuning = MansionTuningScript.from_cmdline_args(
-		PackedStringArray([
-			"--hair-count=bad",
-			"--found-item-count=bad",
-			"--room-size=bad",
-			"--object-count=bad",
-			"--room-count=bad",
-			"--room-count=",
-			"--unrelated=1",
-		])
-	)
+	var fallback: MansionTuning = MansionTuningScript.from_cmdline_args(PackedStringArray([
+		"--hair-count=bad", "--found-item-count=bad", "--room-size=bad",
+		"--object-count=bad", "--room-count=bad", "--room-count=", "--unrelated=1",
+	]))
 	_check(
 		fallback.equals(MansionTuningScript.new())
 		and not MansionTuningScript.has_cmdline_override(PackedStringArray(["--other=1"])),
@@ -398,10 +393,13 @@ func _check_dev_tuning_panel_preserves_unaligned_values() -> void:
 	custom_tuning.room_count = 3
 	panel.load_from_tuning(custom_tuning)
 	var roundtripped: MansionTuning = panel.build_tuning_from_inputs()
+	panel.room_size_spin.value = 5.38
+	var edited: MansionTuning = panel.build_tuning_from_inputs()
 	_check(
-		roundtripped.hair_count == 321 and is_equal_approx(roundtripped.room_size_m, 5.375),
-		"DevTuningPanel が刻み外の値 (321 本・5.375m) を丸めず保持する (実際: %d, %.3f)"
-		% [roundtripped.hair_count, roundtripped.room_size_m],
+		roundtripped.hair_count == 321
+		and is_equal_approx(roundtripped.room_size_m, 5.375)
+		and is_equal_approx(edited.room_size_m, 5.38),
+		"DevTuningPanel が 5.375m の非丸め保持と 5.38m への明示編集の両方を正しく反映する",
 	)
 	panel.free()
 
@@ -509,16 +507,19 @@ func _check_save_and_load_roundtrip() -> void:
 	if loaded == null:
 		return
 
-	_check(loaded.building_progress.money == 4321, "所持金が一致する (4321)")
-	_check(is_equal_approx(loaded.building_progress.elapsed_seconds, 123.5), "経過時間が一致する")
-	_check(loaded.tuning.equals(save_fixture.tuning), "保存した調整値が一致する")
+	var loaded_progress: BuildingProgress = loaded.building_progress
 	_check(
-		loaded.building_progress.surface_hairs.size()
-		== save_fixture.building_progress.surface_hairs.size(),
+		loaded_progress.money == 4321
+		and is_equal_approx(loaded_progress.elapsed_seconds, 123.5)
+		and loaded.tuning.equals(save_fixture.tuning),
+		"所持金 (4321)・経過時間・調整値が一致する",
+	)
+	_check(
+		loaded_progress.surface_hairs.size() == save_fixture.building_progress.surface_hairs.size(),
 		"復元後の表面配列件数が一致する",
 	)
-	if not loaded.building_progress.surface_hairs.is_empty():
-		var first_surface: SurfaceHair = loaded.building_progress.surface_hairs[0]
+	if not loaded_progress.surface_hairs.is_empty():
+		var first_surface: SurfaceHair = loaded_progress.surface_hairs[0]
 		_check(
 			first_surface.surface_id == save_fixture.building_progress.surface_hairs[0].surface_id
 			and first_surface.count_for_color(SurfaceHairScript.COLOR_WHITE) == 42
@@ -527,21 +528,18 @@ func _check_save_and_load_roundtrip() -> void:
 			"先頭の面 id と 3 色の毛本数がすべて一致する",
 		)
 	_check(
-		loaded.building_progress.hair_stocks.size() == 1
-		and loaded.building_progress.hair_stocks[0].hair_color == SurfaceHairScript.COLOR_WHITE
-		and loaded.building_progress.hair_stocks[0].rare_hair_id == &"golden_hair"
-		and loaded.building_progress.hair_stocks[0].form == HairStockScript.FORM_FELT
-		and loaded.building_progress.hair_stocks[0].count == 3,
+		loaded_progress.hair_stocks.size() == 1
+		and loaded_progress.hair_stocks[0].hair_color == SurfaceHairScript.COLOR_WHITE
+		and loaded_progress.hair_stocks[0].rare_hair_id == &"golden_hair"
+		and loaded_progress.hair_stocks[0].form == HairStockScript.FORM_FELT
+		and loaded_progress.hair_stocks[0].count == 3,
 		"毛・加工品在庫の全項目が一致する",
 	)
 	_check(
 		loaded.hand_upgrade_levels.get(&"dexterity", 0) == 3
-		and loaded.hand_upgrade_levels.get(&"pinch_count", 0) == 2,
-		"持ち越す手の強化レベル 2 種が一致する",
-	)
-	_check(
-		loaded.found_rare_hair_ids == [&"whisker", &"golden_hair"],
-		"図鑑の珍しい毛 id 要素が一致する",
+		and loaded.hand_upgrade_levels.get(&"pinch_count", 0) == 2
+		and loaded.found_rare_hair_ids == [&"whisker", &"golden_hair"],
+		"持ち越す手の強化レベル 2 種と図鑑の珍しい毛 id 要素が一致する",
 	)
 	_check(
 		loaded.building_records.size() == 1
@@ -551,24 +549,19 @@ func _check_save_and_load_roundtrip() -> void:
 		"終えた建物の成績の全フィールドが一致する",
 	)
 	_check(
-		loaded.building_progress.owned_tools.size() == 1
-		and loaded.building_progress.owned_tools[0].tool_id == &"cleaning_robot"
-		and loaded.building_progress.owned_tools[0].level == 2
-		and loaded.building_progress.owned_tools[0].consumable_count == 4
-		and loaded.building_progress.owned_tools[0].robot_room_ids == [&"hall", &"living"],
+		loaded_progress.owned_tools.size() == 1
+		and loaded_progress.owned_tools[0].tool_id == &"cleaning_robot"
+		and loaded_progress.owned_tools[0].level == 2
+		and loaded_progress.owned_tools[0].consumable_count == 4
+		and loaded_progress.owned_tools[0].robot_room_ids == [&"hall", &"living"],
 		"買った道具とロボット巡回順の全要素が一致する",
 	)
 	_check(
-		is_equal_approx(loaded.building_progress.resident_moods.get(&"resident_hall", -1.0), 0.75),
-		"住人の機嫌の値が一致する",
-	)
-	_check(
-		loaded.building_progress.found_items.size()
-		== save_fixture.building_progress.found_items.size()
-		and loaded.building_progress.found_items[0].condition
-		== FoundItemProgressScript.Condition.CLEAN
-		and loaded.building_progress.found_items[0].is_returned,
-		"探し物の件数・状態・返却フラグが一致する",
+		is_equal_approx(loaded_progress.resident_moods.get(&"resident_hall", -1.0), 0.75)
+		and loaded_progress.found_items.size() == save_fixture.building_progress.found_items.size()
+		and loaded_progress.found_items[0].condition == FoundItemProgressScript.Condition.CLEAN
+		and loaded_progress.found_items[0].is_returned,
+		"住人の機嫌と探し物の件数・状態・返却フラグが一致する",
 	)
 
 

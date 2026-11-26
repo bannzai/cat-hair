@@ -21,9 +21,10 @@ static func save_to_path(save_data: SaveData, path: String = DEFAULT_SAVE_PATH) 
 	if file == null:
 		return FileAccess.get_open_error()
 	var wrote: bool = file.store_string(JSON.stringify(save_data.to_dict(), "\t"))
+	file.flush()
 	var write_err: Error = file.get_error()
 	file.close()
-	if not wrote or write_err != OK:
+	if not wrote or write_err != OK or load_from_path(tmp_path) == null:
 		delete_save_file(tmp_path)
 		return write_err if write_err != OK else ERR_FILE_CANT_WRITE
 	var rename_err: Error = DirAccess.rename_absolute(
@@ -31,7 +32,8 @@ static func save_to_path(save_data: SaveData, path: String = DEFAULT_SAVE_PATH) 
 		ProjectSettings.globalize_path(path),
 	)
 	if rename_err != OK:
-		delete_save_file(tmp_path)
+		if FileAccess.file_exists(path):
+			delete_save_file(tmp_path)
 		return rename_err
 	return OK
 
