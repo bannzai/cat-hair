@@ -89,7 +89,8 @@ func step_android() -> Dictionary:
 	if _hand != null and _hand.is_pulling():
 		for hair_id: int in _hand.get_pulling_ids():
 			if removed_ids.has(hair_id):
-				_hand.cancel_pull()
+				# 毛はまだ消していないため、見た目を戻して離す (cancel_pull は作り直しの時だけ使う)
+				_hand.release_pull()
 				break
 	var removed: int = _game_state.apply_tool_sweep(
 		ToolCatalogScript.TOOL_ANDROID, plan["counts_by_surface"]

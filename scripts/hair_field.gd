@@ -569,6 +569,14 @@ func set_hair_display_transform(hair_id: int, display_transform: Transform3D) ->
 	multimesh.set_instance_transform(_id_to_slot[hair_id], display_transform)
 
 
+## 指定した毛の今の見た目の transform を返す (伸びる演出の途中ならその見た目。無い毛は Transform3D.IDENTITY。検証用)
+func _get_hair_display_transform(hair_id: int) -> Transform3D:
+	if not has_hair(hair_id):
+		return Transform3D.IDENTITY
+	var multimesh: MultiMesh = _buckets[_id_to_surface[hair_id]]["multimesh"]
+	return multimesh.get_instance_transform(_id_to_slot[hair_id])
+
+
 ## 共有メッシュ・マテリアルを用意し、毛 ID の逆引き配列を total 本分確保する
 func _prepare_shared_resources(total: int) -> void:
 	if _hair_mesh == null:

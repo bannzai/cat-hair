@@ -18,6 +18,8 @@ const HairStockScript := preload("res://scripts/data/hair_stock.gd")
 const DENSE_HAIR_COUNT: int = 60000
 ## 道具の取りこぼしの抽選の乱数のシード (結果を毎回同じにする)
 const RNG_SEED: int = 20261127
+## 引いている毛に見せる伸ばした見た目の倍率 (手で引く時の見た目と同じく、毛の向きに長く伸ばして元と見分けられる値)
+const STRETCHED_SCALE: Vector3 = Vector3(1.0, 2.0, 1.0)
 ## 加工を確かめる在庫の、色ごとの毛のままの本数
 const STOCK_HAIRS_PER_COLOR: int = 500
 
@@ -194,6 +196,42 @@ func _verify_android(main: Node3D, game_state: Node) -> void:
 		and root != null and root.get_node_or_null("Android") != null,
 		"アンドロイドは %.0f 秒たつと毛のいちばん多い部屋を掃除し (%d 本)、描く毛も同じ本数になり、屋敷に姿が出る"
 		% [BigToolSite.ANDROID_INTERVAL_SECONDS, removed],
+	)
+	await _verify_android_releases_pull(main)
+
+
+## 手で引いている毛の一部をアンドロイドが取ると、手は引くのをやめ、取られずに残った毛の見た目が元に戻るか。
+## どの毛が取られるかは抽選のため、掃除する部屋の毛をすべて引いている (伸ばした見た目にした) 状態にして確かめる
+func _verify_android_releases_pull(main: Node3D) -> void:
+	var hair_field: Node3D = main.mansion_world.get_hair_field()
+	var room_id: StringName = main.big_tools.dirtiest_room_id()
+	var pulling: PackedInt32Array = PackedInt32Array()
+	for surface_index: int in range(hair_field.get_surface_count()):
+		if main.mansion_world.get_surface_def(surface_index).room_id != room_id:
+			continue
+		for slot: int in range(hair_field.get_surface_remaining_count(surface_index)):
+			var hair_id: int = hair_field.get_hair_id_at_slot(surface_index, slot)
+			pulling.append(hair_id)
+			hair_field.set_hair_display_transform(
+				hair_id, hair_field.get_hair_transform(hair_id).scaled_local(STRETCHED_SCALE)
+			)
+	main.hand._pulling_ids = pulling
+	var cleaned: Dictionary = main.big_tools.step_android()
+	var restored: bool = true
+	var kept: int = 0
+	for hair_id: int in pulling:
+		if not hair_field.has_hair(hair_id):
+			continue
+		kept += 1
+		if not hair_field._get_hair_display_transform(hair_id).is_equal_approx(
+			hair_field.get_hair_transform(hair_id)
+		):
+			restored = false
+	_check(
+		int(cleaned.get("removed", 0)) > 0 and kept > 0 and restored
+		and not main.hand.is_pulling(),
+		"引いている毛の一部 (%d 本) をアンドロイドが取ると、手は引くのをやめ、残った %d 本の見た目が元に戻る"
+		% [int(cleaned.get("removed", 0)), kept],
 	)
 
 
