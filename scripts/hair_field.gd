@@ -147,7 +147,7 @@ static func build_hair_mesh() -> ArrayMesh:
 	var w1: float = HAIR_BASE_WIDTH_M * 0.44
 	var w2: float = HAIR_BASE_WIDTH_M * 0.30
 
-	var right0: Vector3 = Vector3(1.0, 0.0, 0.0)
+	var right0: Vector3 = (p1 - p0).cross(Vector3.UP).normalized()
 	var right1: Vector3 = (p2 - p0).cross(Vector3.UP).normalized()
 	var right2: Vector3 = (p3 - p1).cross(Vector3.UP).normalized()
 
@@ -199,6 +199,17 @@ static func build_hair_material() -> StandardMaterial3D:
 	material.roughness = 0.72
 	material.metallic = 0.0
 	return material
+
+
+## ローカル AABB を basis で変換した時の全頂点 Y 座標の厳密な下界を O(1) で計算する
+static func compute_aabb_min_transformed_y(basis: Basis, local_aabb: AABB) -> float:
+	var min_pt: Vector3 = local_aabb.position
+	var max_pt: Vector3 = local_aabb.end
+	return (
+		minf(basis.x.y * min_pt.x, basis.x.y * max_pt.x)
+		+ minf(basis.y.y * min_pt.y, basis.y.y * max_pt.y)
+		+ minf(basis.z.y * min_pt.z, basis.z.y * max_pt.z)
+	)
 
 
 ## 毛を配置する表面 (矩形の上面) を登録する
@@ -381,6 +392,7 @@ func _create_surface_bucket(
 	var bounds_min: Vector3 = spec["bounds_min"]
 	var bounds_max: Vector3 = spec["bounds_max"]
 	var base_y: float = bounds_min.y + SURFACE_LIFT_M
+	var local_aabb: AABB = _hair_mesh.get_aabb()
 
 	for slot: int in range(count):
 		var hair_id: int = start_id + slot
@@ -388,12 +400,6 @@ func _create_surface_bucket(
 		_id_to_surface[hair_id] = surface_idx
 		_id_to_slot[hair_id] = slot
 
-		# 重なり合う毛同士の Z ファイトを避けるため高さに最大 1.8 mm の微差を付ける
-		var pos: Vector3 = Vector3(
-			rng.randf_range(bounds_min.x, bounds_max.x),
-			base_y + rng.randf_range(0.0, 0.0018),
-			rng.randf_range(bounds_min.z, bounds_max.z)
-		)
 		# 向きは水平 360 度、傾きは表面から不自然に立たない ±0.14〜0.18 rad、
 		# 長さ 0.75〜1.35 倍・幅 0.85〜1.25 倍で抜け毛の個体差を出す
 		var scale_len: float = rng.randf_range(0.75, 1.35)
@@ -403,6 +409,15 @@ func _create_surface_bucket(
 			rng.randf_range(-0.18, 0.18)
 		))
 		basis = basis.scaled(Vector3(rng.randf_range(0.85, 1.25), scale_len, scale_len))
+		# 回転・スケール後に先端や根元が表面の下へ潜らないよう最小 Y 分だけ持ち上げる。
+		# 重なり合う毛同士の Z ファイトを避けるため高さに最大 1.8 mm の微差を付ける
+		var pos: Vector3 = Vector3(
+			rng.randf_range(bounds_min.x, bounds_max.x),
+			base_y
+			- minf(compute_aabb_min_transformed_y(basis, local_aabb), 0.0)
+			+ rng.randf_range(0.0, 0.0018),
+			rng.randf_range(bounds_min.z, bounds_max.z)
+		)
 		multimesh.set_instance_transform(slot, Transform3D(basis, pos))
 		multimesh.set_instance_color(slot, pick_hair_color(rng))
 

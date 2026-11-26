@@ -146,6 +146,13 @@ func _check_hair_mesh_shape() -> void:
 		max_x > 0.005 and max_y > 0.003 and max_z > 0.03,
 		"毛メッシュが長さ・曲がり・浮きを持つ (x=%.4f y=%.4f z=%.4f)" % [max_x, max_y, max_z]
 	)
+	# 第 1〜第 3 断面の幅ベクトルが同じ向きを向き、根元でリボンがねじれないこと
+	var mid_width_vec: Vector3 = vertices[3] - vertices[2]
+	_check(
+		(vertices[1] - vertices[0]).dot(mid_width_vec) > 0.0
+		and mid_width_vec.dot(vertices[5] - vertices[4]) > 0.0,
+		"毛メッシュの隣接断面の幅方向が一貫しねじれが無い"
+	)
 
 
 ## 毛の色に白・黒・三毛の 3 系統が含まれるか
@@ -192,6 +199,18 @@ func _check_hair_field_populate_and_remove() -> void:
 	# 10 本配置 (floor 7 本: ID 0..6, sofa 3 本: ID 7..9)
 	var placed: int = field.populate(10, 12345)
 	_check(placed == 10 and field.get_remaining_count() == 10, "10 本配置できる")
+	# 配置したすべての毛の全 7 頂点が表面高さ (floor=0.0 / sofa=0.4) より下に潜らないこと
+	var hair_vertices: PackedVector3Array = HairFieldScript.build_hair_mesh().surface_get_arrays(0)[
+		Mesh.ARRAY_VERTEX
+	]
+	var all_above_surface: bool = true
+	for hair_id: int in range(10):
+		var surface_y: float = 0.0 if hair_id < 7 else 0.4
+		var xform: Transform3D = field.get_hair_transform(hair_id)
+		for vertex: Vector3 in hair_vertices:
+			if (xform * vertex).y < surface_y:
+				all_above_surface = false
+	_check(all_above_surface, "配置したすべての毛の全頂点が表面 Y 以上に収まる")
 	_check(
 		field.get_surface_remaining_count(0) == 7
 		and field.get_surface_remaining_count(1) == 3,
