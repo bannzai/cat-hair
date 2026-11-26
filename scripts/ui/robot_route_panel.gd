@@ -46,10 +46,12 @@ func refresh(game_state: Node) -> void:
 		_build()
 	var robots: Array[OwnedTool] = game_state.automation.get_robots()
 	var money: int = game_state.get_money()
-	_money_label.text = "所持金: %d 円 / 掃除ロボット: %d 台 (上限 %d 台)" % [
-		money, robots.size(), RobotRulesScript.MAX_ROBOTS
+	_money_label.text = "所持金: %d 円 / %s: %d 台 (上限 %d 台)" % [
+		money, RobotRulesScript.ROBOT_NAME, robots.size(), RobotRulesScript.MAX_ROBOTS
 	]
-	_buy_button.text = "掃除ロボットを買う (%d 円。今いる部屋から回る)" % RobotRulesScript.ROBOT_PRICE
+	_buy_button.text = "%sを買う (%d 円。今いる部屋から回る)" % [
+		RobotRulesScript.ROBOT_NAME, RobotRulesScript.ROBOT_PRICE
+	]
 	_buy_button.disabled = (
 		robots.size() >= RobotRulesScript.MAX_ROBOTS or money < RobotRulesScript.ROBOT_PRICE
 	)
@@ -156,18 +158,20 @@ func get_clear_button() -> Button:
 ## 見出し・買うボタン・台の行・部屋のボタン・閉じるボタンを組み立てる
 func _build() -> void:
 	var background: StyleBoxFlat = StyleBoxFlat.new()
+	# 角の丸み・余白・行間・字の大きさは道具を買う画面 (ToolShopPanel) と同じ値にそろえる。背景色だけ、道具を買う画面
+	# (茶) と区別できる青みの濃い色にし、不透明度は同じ 0.96 にする
 	background.bg_color = Color(0.1, 0.13, 0.16, 0.96)
 	background.set_corner_radius_all(8)
 	background.set_content_margin_all(20.0)
 	add_theme_stylebox_override("panel", background)
 	var layout: VBoxContainer = VBoxContainer.new()
 	layout.name = "Layout"
-	layout.add_theme_constant_override("separation", 8)
+	layout.add_theme_constant_override("separation", 6)
 	add_child(layout)
 
 	var title: Label = Label.new()
 	title.name = "Title"
-	title.text = "掃除ロボットの回る順"
+	title.text = "%sの回る順" % RobotRulesScript.ROBOT_NAME
 	title.add_theme_font_size_override("font_size", 26)
 	layout.add_child(title)
 
@@ -179,8 +183,11 @@ func _build() -> void:
 	var hint: Label = Label.new()
 	hint.name = "Hint"
 	hint.text = (
-		"掃除ロボットは回る順の部屋に %d 秒ずつ留まり、床とカーペットの毛を %d 秒に 1 本取って在庫に入れる"
-		% [roundi(RobotRulesScript.ROOM_SECONDS), roundi(RobotRulesScript.PICK_INTERVAL_SECONDS)]
+		"%sは回る順の部屋に %d 秒ずつ留まり、床とカーペットの毛を %d 秒に 1 本取って在庫に入れる"
+		% [
+			RobotRulesScript.ROBOT_NAME, roundi(RobotRulesScript.ROOM_SECONDS),
+			roundi(RobotRulesScript.PICK_INTERVAL_SECONDS)
+		]
 	)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 14)
@@ -197,7 +204,7 @@ func _build() -> void:
 
 	var rooms_caption: Label = Label.new()
 	rooms_caption.text = "選んだ台の回る順に部屋を足す (押した順に回る)"
-	rooms_caption.add_theme_font_size_override("font_size", 15)
+	rooms_caption.add_theme_font_size_override("font_size", 14)
 	layout.add_child(rooms_caption)
 
 	_room_buttons = HFlowContainer.new()

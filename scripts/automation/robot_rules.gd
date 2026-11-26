@@ -99,15 +99,15 @@ static func choose_pick(candidates: Array[Dictionary]) -> Dictionary:
 	return best
 
 
-## 時刻 t の掃除ロボットの位置。部屋に着いてから RouteClock.MOVE_SECONDS 秒は前の部屋の中心から移り、
+## 時刻 clock_seconds の掃除ロボットの位置。部屋に着いてから RouteClock.MOVE_SECONDS 秒は前の部屋の中心から移り、
 ## その後は部屋の中心の周りを 8 の字の輪で走る。room_sizes は room_id -> 部屋の大きさ (Vector3)。回る部屋が無ければ原点
-static func position_at(route: Dictionary, t: float, room_sizes: Dictionary) -> Vector3:
-	var index: int = RouteClockScript.stop_index_at(route, t)
+static func position_at(route: Dictionary, clock_seconds: float, room_sizes: Dictionary) -> Vector3:
+	var index: int = RouteClockScript.stop_index_at(route, clock_seconds)
 	if index < 0:
 		return Vector3.ZERO
-	var in_stop: float = RouteClockScript.seconds_in_stop(route, t)
+	var in_stop: float = RouteClockScript.seconds_in_stop(route, clock_seconds)
 	if in_stop < RouteClockScript.MOVE_SECONDS:
-		return RouteClockScript.position_at(route, t)
+		return RouteClockScript.position_at(route, clock_seconds)
 	var stop: Dictionary = route["stops"][index]
 	var size: Vector3 = room_sizes.get(stop["room_id"], Vector3.ZERO)
 	var angle: float = TAU * (in_stop - RouteClockScript.MOVE_SECONDS) / LOOP_SECONDS

@@ -433,6 +433,8 @@ func _add_hair(
 	var multimesh: MultiMesh = bucket["multimesh"]
 	var slot: int = multimesh.visible_instance_count
 	if slot >= multimesh.instance_count:
+		# 倍に広げて置き直す回数を本数の log に抑える。0 本の面の最初の枠は、猫が 1 か所に立ち止まる間に落とす 4 本の
+		# 数回分 (16 本) にし、立ち止まるたびに広げ直さない
 		_grow_bucket(bucket, maxi(16, multimesh.instance_count * 2))
 	var spec: Dictionary = _surfaces[surface_index]
 	var surface_transform: Transform3D = spec["transform"]

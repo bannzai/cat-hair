@@ -36,7 +36,8 @@ const CATS: Array[Dictionary] = [
 const WALK_STOP_SECONDS: float = 8.0
 ## 昼寝の場所で寝ている秒数。通り道の 1 部屋より長く、寝ている面に毛が溜まって見える長さ
 const NAP_SECONDS: float = 24.0
-## 立ち止まっている間に毛を 1 本落とす間隔 (秒)。猫 3 匹で 1 秒に 1.5 本ほど落ち、掃除ロボット 1 台 (1 秒に 1 本) では追いつかず、2 台で上回る量にした。値は仮で、
+## 立ち止まっている間に毛を 1 本落とす間隔 (秒)。猫 3 匹で 1 秒に 1.5 本ほど落ち、掃除ロボット 1 台 (RobotRules.PICK_INTERVAL_SECONDS ごとに
+## 1 本) では追いつかず、2 台で上回る量にした。値は仮で、
 ## 自動テストプレイ (issue #13) で調整する。
 const DROP_INTERVAL_SECONDS: float = 2.0
 ## 昼寝に使う面の種類 (猫が寝そべる、上を向いた柔らかい面)。見つかった種類の順に選ぶ
@@ -57,7 +58,8 @@ const BRUSH_HAIRS: int = 5
 const BRUSH_REST_SECONDS: float = 10.0
 ## 狙いの光線から猫の体の中心までの距離がこれ以内なら、その猫を狙っているとみなす (m)。胴の長さ (0.42 m) の約 8 割で、頭から尾のどこを狙っても当たる幅
 const AIM_RADIUS_M: float = 0.35
-## 猫の体の中心の、足元からの高さ (m)。AutomationController の胴の高さ (脚 0.12 m + 胴の半径 0.1 m) より少し下の、胴の中ほど
+## 猫の体の中心の、足元からの高さ (m)。AutomationController の胴の中心の高さ (CAT_LEG_LENGTH_M + CAT_BODY_RADIUS_M) より少し下の、
+## 胴の中ほど
 const BODY_CENTER_HEIGHT_M: float = 0.18
 
 

@@ -13,6 +13,8 @@ const RobotRulesScript := preload("res://scripts/automation/robot_rules.gd")
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 屋敷の毛の描画 (面ごと・色ごとの本数を数える)
 const HairFieldScript := preload("res://scripts/hair_field.gd")
+## 屋敷の作りの型 (表面の種類の定数)
+const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
 ## 面ごとの毛の型 (毛の色の並び)
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 ## 状態管理 autoload スクリプト (買う物の種類の定数を使う)
@@ -68,12 +70,15 @@ func _verify_cats_walk(main: Node3D, game_state: Node) -> void:
 		"屋敷で遊んでいる間は時計がフレームごとに進む (%.3f → %.3f 秒)"
 		% [seconds_before, game_state.automation.get_seconds()],
 	)
-	# タイトルにいる間 (屋敷で遊んでいない) と同じ状態にして、時計を進める設定のままでも進まないことを確かめる
-	main.automation.playing = false
+	# タイトルに戻し、時計を進める設定のままでも進まないことを確かめる
+	var stand: Vector3 = main.player.global_position
+	main._set_title_mode()
 	var title_seconds: float = game_state.automation.get_seconds()
 	for _frame: int in range(10):
 		await _checker.process_frame
-	main.automation.playing = true
+	main.enter_mansion()
+	main.player.set_spawn(stand, 0.0)
+	await _checker.physics_frame
 	main.auto_advance_automation = false
 	_check(
 		is_equal_approx(game_state.automation.get_seconds(), title_seconds),
@@ -124,7 +129,6 @@ func _verify_nap_posture(main: Node3D, game_state: Node) -> void:
 ## 猫が毛を落とすと、屋敷の毛の見た目 (HairField) の本数と保存データの本数が同じだけ増え、落ちた毛は立ち止まった所の近くにあるか
 func _verify_hair_sync(main: Node3D, game_state: Node) -> void:
 	var hair_field: Node3D = main.get_node("MansionWorld").get_hair_field()
-	var field_before: int = hair_field.get_remaining_count()
 	# 猫の毛は面の最初の本数までしか溜まらないため、猫が立ち止まる面を先にきれいにする (手で取り切った後と同じ)。
 	# 今いる部屋 (後で掃除ロボットを置く部屋) は、掃除ロボットが取る毛を残すためにきれいにしない
 	var current_room: MansionLayout.RoomDef = main.get_current_room()
@@ -135,7 +139,7 @@ func _verify_hair_sync(main: Node3D, game_state: Node) -> void:
 		for stop: Dictionary in route["stops"]:
 			if stop["room_id"] != keep_room:
 				_clear_surface(hair_field, game_state, stop["surface_id"])
-	field_before = hair_field.get_remaining_count()
+	var field_before: int = hair_field.get_remaining_count()
 	var state_before: int = game_state.get_total_remaining_hairs()
 	var progress: BuildingProgress = game_state.save_data.building_progress
 	var surface_before: Dictionary = {}
@@ -219,6 +223,24 @@ func _verify_robot_panel(main: Node3D, game_state: Node) -> void:
 	_check(not main.tool_shop_panel.visible, "掃除ロボットの画面が開いている間は T で道具を買う画面が開かない")
 	game_state.save_data.building_progress.money = 0
 	panel.refresh(game_state)
+	var all_rooms_disabled: bool = true
+	for room: MansionLayout.RoomDef in game_state.current_layout.rooms:
+		all_rooms_disabled = all_rooms_disabled and panel.get_add_room_button(room.room_id).disabled
+	_check(
+		game_state.automation.get_robots().is_empty() and all_rooms_disabled
+		and panel.get_remove_last_button().disabled and panel.get_clear_button().disabled,
+		"掃除ロボットが 0 台の時は、部屋を足す・最後を外す・空にするボタンを押せない",
+	)
+	var echo_event: InputEventKey = InputEventKey.new()
+	echo_event.physical_keycode = KEY_R
+	echo_event.pressed = true
+	echo_event.echo = true
+	var press_event: InputEventKey = echo_event.duplicate()
+	press_event.echo = false
+	_check(
+		main._is_key_press(press_event, KEY_R) and not main._is_key_press(echo_event, KEY_R),
+		"R キーを押した瞬間だけ画面を開閉し、押しっぱなしの繰り返しでは開閉しない",
+	)
 	_check(
 		panel.get_buy_button().disabled,
 		"お金が 300 円に足りない時は掃除ロボットを買うボタンを押せない",
@@ -336,7 +358,6 @@ func _verify_second_robot(main: Node3D, game_state: Node, first: StringName) -> 
 ## 掃除ロボットが回る部屋に留まる間に毛を取り、在庫が増えて、屋敷の毛の見た目と保存データの本数が一致し、ロボットがその部屋にいるか
 func _verify_robot_cleaning(main: Node3D, game_state: Node) -> void:
 	var hair_field: Node3D = main.get_node("MansionWorld").get_hair_field()
-	var stock_before: int = game_state.get_raw_hair_stock_count()
 	var robot: OwnedTool = game_state.automation.get_robots()[0]
 	var room: MansionLayout.RoomDef = RobotRulesScript.find_room(
 		game_state.current_layout, robot.robot_room_ids[0]
@@ -346,9 +367,8 @@ func _verify_robot_cleaning(main: Node3D, game_state: Node) -> void:
 		game_state.current_layout, robot.robot_room_ids
 	)
 	var cycle: float = float(route["cycle_seconds"])
-	var to_cycle_start: float = cycle - fposmod(game_state.automation.get_seconds(), cycle)
-	game_state.automation.advance(to_cycle_start)
-	stock_before = game_state.get_raw_hair_stock_count()
+	game_state.automation.advance(cycle - fposmod(game_state.automation.get_seconds(), cycle))
+	var stock_before: int = game_state.get_raw_hair_stock_count()
 	var hairs_before: int = game_state.get_total_remaining_hairs()
 	var changes: Dictionary = game_state.automation.advance(RobotRulesScript.ROOM_SECONDS - 1.0)
 	await _checker.process_frame
@@ -381,21 +401,68 @@ func _verify_robot_cleaning(main: Node3D, game_state: Node) -> void:
 		% str(mismatched),
 	)
 	var robot_node: Node3D = main.automation.get_robot_node(0)
-	var in_room: bool = (
-		robot_node != null
-		and absf(robot_node.position.x - room.center.x) < room.size.x * 0.5
-		and absf(robot_node.position.z - room.center.z) < room.size.z * 0.5
-	)
 	_check(
 		picked > 0
 		and game_state.get_raw_hair_stock_count() == stock_before + picked
 		and hair_field.get_remaining_count() == game_state.get_total_remaining_hairs()
-		and in_room,
+		and robot_node != null
+		and absf(robot_node.position.x - room.center.x) < room.size.x * 0.5
+		and absf(robot_node.position.z - room.center.z) < room.size.z * 0.5,
 		"掃除ロボットは回る部屋 (%s) の中を走って毛を %d 本取り、在庫が同じだけ増え、屋敷の毛の見た目と保存データの本数が一致する (見た目: %d / 保存データ: %d)"
 		% [
 			room.display_name, picked, hair_field.get_remaining_count(),
 			game_state.get_total_remaining_hairs()
 		],
+	)
+	await _verify_pick_nearest(main, game_state, room)
+
+
+## 掃除ロボットが取った毛は、取った面のうち同じ色で掃除ロボットにいちばん近い毛から消えるか。
+## 面ごとの本数の一致だけでは、消す毛を選ぶ起点を取り違えても落ちないため、1 本取った時に消える毛を直接確かめる
+func _verify_pick_nearest(main: Node3D, game_state: Node, room: MansionLayout.RoomDef) -> void:
+	var hair_field: Node3D = main.get_node("MansionWorld").get_hair_field()
+	var world: MansionWorld = main.get_node("MansionWorld")
+	main.automation.update_positions()
+	var robot_position: Vector3 = main.automation.get_robot_node(0).position
+	var surfaces: Array[MansionLayout.SurfaceDef] = game_state.current_layout.surfaces
+	var floor_index: int = -1
+	for index: int in range(surfaces.size()):
+		if (
+			surfaces[index].room_id == room.room_id
+			and surfaces[index].surface_type == MansionLayoutScript.SURFACE_FLOOR
+		):
+			floor_index = index
+	var nearest_id: int = -1
+	var nearest_color: StringName = &""
+	for hair_id: int in hair_field.find_hairs_near(
+		floor_index, robot_position, INF, hair_field.get_surface_remaining_count(floor_index)
+	):
+		nearest_id = hair_id
+		nearest_color = world.get_hair_color_id(hair_id)
+		break
+	var farther_same_color: int = 0
+	for hair_id: int in hair_field.find_hairs_near(
+		floor_index, robot_position, INF, hair_field.get_surface_remaining_count(floor_index)
+	):
+		if hair_id != nearest_id and world.get_hair_color_id(hair_id) == nearest_color:
+			farther_same_color += 1
+	var surface_id: StringName = surfaces[floor_index].surface_id
+	var state_surface: SurfaceHair = (
+		game_state.save_data.building_progress.find_surface_hair(surface_id)
+	)
+	state_surface.hair_counts[nearest_color] = state_surface.count_for_color(nearest_color) - 1
+	game_state.automation_advanced.emit({
+		"drops": [],
+		"picks": [{"robot_index": 0, "surface_id": surface_id, "color": nearest_color, "count": 1}],
+	})
+	var still_there: bool = hair_field.find_hairs_near(
+		floor_index, robot_position, INF, hair_field.get_surface_remaining_count(floor_index)
+	).has(nearest_id)
+	_check(
+		nearest_id >= 0 and farther_same_color > 0 and not still_there
+		and hair_field.get_remaining_count() == game_state.get_total_remaining_hairs(),
+		"掃除ロボットが 1 本取ると、同じ色で掃除ロボットにいちばん近い毛が消え、遠い同じ色の毛は残る (残った同じ色: %d 本)"
+		% farther_same_color,
 	)
 
 

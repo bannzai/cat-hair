@@ -686,6 +686,7 @@ func _build_tool_ui() -> void:
 	robot_route_panel.name = "RobotRoutePanel"
 	robot_route_panel.visible = false
 	robot_route_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	# 幅は道具を買う画面と同じ 940 px (台の行の回る順の表示を 1 行に収める)。高さは台 4 台と部屋のボタン 1 段が収まる 560 px
 	robot_route_panel.offset_left = -470.0
 	robot_route_panel.offset_right = 470.0
 	robot_route_panel.offset_top = -280.0

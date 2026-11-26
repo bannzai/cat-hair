@@ -158,11 +158,11 @@ func _progress() -> BuildingProgress:
 	return save_data.building_progress if save_data != null else null
 
 
-## 猫 1 匹の通り道で、時計の before から今までに落ちた毛を面に足し、足した分を drops に書く。
+## 猫 1 匹の通り道で、時計の from_seconds から今までに落ちた毛を面に足し、足した分を drops に書く。
 ## 休んでいる間 (ブラッシングの後) の分は落とさない
-func _drop_cat_hairs(route: Dictionary, before: float, drops: Array) -> void:
+func _drop_cat_hairs(route: Dictionary, from_seconds: float, drops: Array) -> void:
 	var cat_id: StringName = route["cat_id"]
-	var start: float = maxf(before, float(_rest_until.get(cat_id, -INF)))
+	var start: float = maxf(from_seconds, float(_rest_until.get(cat_id, -INF)))
 	if start >= _seconds:
 		return
 	var color_id: StringName = route["color"]
@@ -184,13 +184,15 @@ func _drop_cat_hairs(route: Dictionary, before: float, drops: Array) -> void:
 		)
 
 
-## robot_index 台目の掃除ロボット (回る順の道のり route) が時計の before から今までに取った毛を、回る順の部屋の床と
+## robot_index 台目の掃除ロボット (回る順の道のり route) が時計の from_seconds から今までに取った毛を、回る順の部屋の床と
 ## カーペットから減らして在庫に入れ、取った分を picks に書く (面と色が同じ分はまとめる)
-func _pick_robot_hairs(robot_index: int, route: Dictionary, before: float, picks: Array) -> void:
+func _pick_robot_hairs(
+	robot_index: int, route: Dictionary, from_seconds: float, picks: Array
+) -> void:
 	var layout: MansionLayout = _game_state.current_layout
 	var by_room: Dictionary = RobotRulesScript.picks_between(
 		route,
-		RobotRulesScript.robot_time(robot_index, before),
+		RobotRulesScript.robot_time(robot_index, from_seconds),
 		RobotRulesScript.robot_time(robot_index, _seconds),
 	)
 	for room_key: Variant in by_room.keys():

@@ -43,6 +43,9 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_automation_reset()
 	suite._check_hair_field_add()
 	suite._check_capped_order()
+	suite._check_surface_choice()
+	suite._check_empty_inputs()
+	suite._check_picks_only_notify()
 
 
 ## 判定を selfcheck 本体に記録する
@@ -485,9 +488,12 @@ func _check_layout_geometry() -> void:
 		and not CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(1.85, 0.0, 1.0))
 		and CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(2.75, 0.0, -2.0))
 		and not CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(2.65, 0.0, -2.0))
-		and not CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(-1.0, 0.0, -1.0)),
-		"家具の判定は 1 m のソファの中心と縁から 25 cm を塞ぎ 35 cm は通し、壁から 25 cm を塞ぎ 35 cm は通し、"
-		+ "上に乗れるカーペットは塞がない",
+		and not CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(-1.0, 0.0, -1.0))
+		and CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(-2.0, 0.0, 2.75))
+		and not CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(-2.0, 0.0, 2.65))
+		and not CatRulesScript.is_blocked(layout, &"room_0_0", Vector3(1.0, 0.0, -0.5)),
+		"家具の判定は 1 m のソファの中心と縁から 25 cm を塞ぎ 35 cm は通し、X・Z どちらの壁からも 25 cm を塞ぎ"
+		+ " 35 cm は通し、X だけソファの幅に入る所と上に乗れるカーペットは塞がない",
 	)
 	var spot: Vector3 = CatRulesScript.free_point(layout, layout.rooms[0], Vector2(1.0, 1.0))
 	_check(
@@ -622,6 +628,30 @@ func _check_hair_field_add() -> void:
 		"面の外の所に足す毛は面の角に収め、無い面には足さない",
 	)
 	field.free()
+	var excluded_field: Node3D = HairFieldScript.new()
+	# 面の右半分 (x > 0) を毛を置かない範囲にする
+	var exclusions: Array[Dictionary] = [{
+		"inverse": Transform3D(Basis.IDENTITY, Vector3(0.5, 0.0, 0.0)).affine_inverse(),
+		"half": Vector2(0.5, 0.5),
+	}]
+	excluded_field.add_oriented_surface(
+		"floor", Transform3D(HairFieldScript.UPWARD_BASIS, Vector3.ZERO), Vector2(2.0, 1.0), 1.0,
+		exclusions
+	)
+	excluded_field.populate_with_group_counts(counts, 3)
+	for _i: int in range(30):
+		HairFieldScript.add_hair(excluded_field, 0, Vector3(0.05, 0.0, 0.0), 0.4, 0, rng)
+	# 置いた毛の位置は CPU 側の配列 (MultiMesh と同じ値) から読む
+	var bucket: Dictionary = excluded_field._buckets[0]
+	var inside: int = 0
+	for slot: int in range((bucket["multimesh"] as MultiMesh).visible_instance_count):
+		if (bucket["transforms"][slot] as Transform3D).origin.x >= 0.0:
+			inside += 1
+	_check(
+		excluded_field.get_remaining_count() == 30 and inside == 0,
+		"毛を置かない範囲 (家具の下) に掛かる所に足す毛は、範囲の外へ置き直す (範囲の中の本数: %d)" % inside,
+	)
+	excluded_field.free()
 
 
 ## 猫が毛を落とす面が上限に達していて掃除ロボットが同じ部屋で取る時も、時間の刻み方で本数と在庫が変わらないか
@@ -658,3 +688,108 @@ func _check_capped_order() -> void:
 		"上限の面で猫と掃除ロボットが同じ部屋にいても、60 秒を 1 回・1 秒ずつ・0.25 秒ずつ進めた本数と在庫が同じ"
 		+ " (残り/在庫: %s)" % str(results),
 	)
+
+
+## 猫の足元の面 (カーペットの上ならカーペット、外と片方の軸だけ入る所は床) と、昼寝の面 (上を向いたソファを
+## カーペットより先に選び、上を向いていないソファの面は選ばず、どちらも無ければ null) を、座標の決まった屋敷で確かめる。
+## 回転した家具が向きどおりの範囲を塞ぐことも確かめる
+func _check_surface_choice() -> void:
+	var layout: MansionLayout = MansionLayout.new()
+	var room: MansionLayout.RoomDef = MansionLayout.RoomDef.new()
+	room.room_id = &"r"
+	room.size = Vector3(6.0, 3.0, 6.0)
+	layout.rooms.append(room)
+	var floor_surface: MansionLayout.SurfaceDef = _surface(&"floor", MansionLayoutScript.SURFACE_FLOOR)
+	floor_surface.extents = Vector2(6.0, 6.0)
+	var carpet: MansionLayout.SurfaceDef = _surface(&"carpet", MansionLayoutScript.SURFACE_CARPET)
+	carpet.center = Vector3(1.0, 0.02, 1.0)
+	carpet.extents = Vector2(2.0, 1.0)
+	layout.surfaces.append(floor_surface)
+	layout.surfaces.append(carpet)
+	var under: Array[StringName] = []
+	for point: Vector3 in [
+		Vector3(1.5, 0.0, 1.2), Vector3(-1.0, 0.0, -1.0), Vector3(1.5, 0.0, 2.0), Vector3(2.5, 0.0, 1.2)
+	]:
+		under.append(CatRulesScript.surface_under(layout, &"r", point).surface_id)
+	_check(
+		under == [&"carpet", &"floor", &"floor", &"floor"],
+		"猫の足元はカーペットの中ならカーペット、外・X だけ入る所・Z だけ入る所は床 (実際: %s)" % str(under),
+	)
+	_check(
+		CatRulesScript.nap_surface_for(layout, 0) == carpet,
+		"ソファが無い屋敷では、上を向いたカーペットで昼寝する",
+	)
+	var sofa_back: MansionLayout.SurfaceDef = _surface(&"sofa_back", MansionLayoutScript.SURFACE_SOFA)
+	sofa_back.basis = Basis(Vector3.RIGHT, PI * 0.5)
+	layout.surfaces.append(sofa_back)
+	_check(
+		CatRulesScript.nap_surface_for(layout, 0) == carpet,
+		"上を向いていないソファの面 (背もたれ) では昼寝せず、カーペットを選ぶ",
+	)
+	var sofa_seat: MansionLayout.SurfaceDef = _surface(&"sofa_seat", MansionLayoutScript.SURFACE_SOFA)
+	layout.surfaces.append(sofa_seat)
+	_check(
+		CatRulesScript.nap_surface_for(layout, 0) == sofa_seat,
+		"上を向いたソファの座面があれば、カーペットより先にソファで昼寝する",
+	)
+	var bare: MansionLayout = MansionLayout.new()
+	bare.rooms.append(room)
+	bare.surfaces.append(floor_surface)
+	_check(
+		CatRulesScript.nap_surface_for(bare, 0) == null,
+		"ソファもカーペットも無い屋敷では昼寝の面が無い (null)",
+	)
+	var turned: MansionLayout.ObjectDef = MansionLayout.ObjectDef.new()
+	turned.room_id = &"r"
+	turned.object_kind = MansionLayoutScript.OBJECT_TABLE
+	turned.size = Vector3(2.0, 1.0, 0.2)
+	turned.rotation_y = PI * 0.5
+	layout.objects.append(turned)
+	_check(
+		CatRulesScript.is_blocked(layout, &"r", Vector3(0.0, 0.0, 0.9))
+		and not CatRulesScript.is_blocked(layout, &"r", Vector3(0.9, 0.0, 0.0)),
+		"90 度回した細長い家具は、回した向き (Z) の範囲を塞ぎ、回す前の向き (X) の範囲は塞がない",
+	)
+
+
+## 部屋が 0 の屋敷・留まる秒数の合計が 0 の道のりでは、通り道も留まる所も出来事も無いか
+func _check_empty_inputs() -> void:
+	var zero_route: Dictionary = RouteClockScript.make_route([
+		{"point": Vector3.ZERO, "seconds": 0.0}, {"point": Vector3.ONE, "seconds": 0.0}
+	])
+	_check(
+		CatRulesScript.build_routes(MansionLayout.new()).is_empty()
+		and RouteClockScript.stop_index_at(zero_route, 3.0) == -1
+		and RouteClockScript.ticks_between(zero_route, 0.0, 10.0, 1.0).is_empty(),
+		"部屋が 0 の屋敷では猫の通り道を作らず、留まる秒数の合計が 0 の道のりでは留まる所も出来事も無い",
+	)
+
+
+## 猫が毛を落とさず掃除ロボットが毛を取るだけの間も、state_changed と automation_advanced が 1 回ずつ通知されるか
+func _check_picks_only_notify() -> void:
+	var state: Node = GameStateScript.new()
+	state.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray(["--hair-count=3000"]))
+	var automation: RefCounted = state.automation
+	state.save_data.building_progress.money = 9999
+	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_BRUSH)
+	for route: Dictionary in automation.get_cat_routes():
+		automation.brush_cat(route["cat_id"])
+	automation.buy_robot(state.current_layout.rooms[0].room_id)
+	var notified: Array[int] = [0, 0]
+	state.state_changed.connect(func() -> void: notified[0] += 1)
+	state.automation_advanced.connect(func(_changes: Dictionary) -> void: notified[1] += 1)
+	var changes: Dictionary = automation.advance(CatRulesScript.BRUSH_REST_SECONDS - 1.0)
+	_check(
+		changes["drops"].is_empty() and not changes["picks"].is_empty() and notified == [1, 1],
+		"猫が全員休んでいて掃除ロボットだけが毛を取った時も、通知が 1 回ずつ出る (通知: %s)" % str(notified),
+	)
+	state.free()
+
+
+## 部屋 r の、中心が原点で上を向いた幅 1 m の面 (検証用)
+static func _surface(surface_id: StringName, surface_type: StringName) -> MansionLayout.SurfaceDef:
+	var surface: MansionLayout.SurfaceDef = MansionLayout.SurfaceDef.new()
+	surface.surface_id = surface_id
+	surface.room_id = &"r"
+	surface.surface_type = surface_type
+	return surface

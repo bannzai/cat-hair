@@ -15,13 +15,13 @@ static func make_route(stops: Array[Dictionary]) -> Dictionary:
 	return {"cycle_seconds": cycle, "stops": stops}
 
 
-## 時刻 t (秒) に留まっている所の添字を返す (道のりが空なら -1)
-static func stop_index_at(route: Dictionary, t: float) -> int:
+## 時刻 clock_seconds に留まっている所の添字を返す (道のりが空なら -1)
+static func stop_index_at(route: Dictionary, clock_seconds: float) -> int:
 	var stops: Array = route["stops"]
 	var cycle: float = float(route["cycle_seconds"])
 	if stops.is_empty() or cycle <= 0.0:
 		return -1
-	var local: float = fposmod(t, cycle)
+	var local: float = fposmod(clock_seconds, cycle)
 	var end: float = 0.0
 	for index: int in range(stops.size()):
 		end += float(stops[index]["seconds"])
@@ -30,26 +30,26 @@ static func stop_index_at(route: Dictionary, t: float) -> int:
 	return stops.size() - 1
 
 
-## 時刻 t (秒) に今の所に着いてから経った秒数 (道のりが空なら 0)
-static func seconds_in_stop(route: Dictionary, t: float) -> float:
-	var index: int = stop_index_at(route, t)
+## 時刻 clock_seconds に今の所に着いてから経った秒数 (道のりが空なら 0)
+static func seconds_in_stop(route: Dictionary, clock_seconds: float) -> float:
+	var index: int = stop_index_at(route, clock_seconds)
 	if index < 0:
 		return 0.0
 	var stops: Array = route["stops"]
 	var start: float = 0.0
 	for before: int in range(index):
 		start += float(stops[before]["seconds"])
-	return fposmod(t, float(route["cycle_seconds"])) - start
+	return fposmod(clock_seconds, float(route["cycle_seconds"])) - start
 
 
-## 時刻 t (秒) の位置。着いてから MOVE_SECONDS 秒は前の所から歩いて移り、その後は留まる所にいる (道のりが空なら原点)
-static func position_at(route: Dictionary, t: float) -> Vector3:
-	var index: int = stop_index_at(route, t)
+## 時刻 clock_seconds の位置。着いてから MOVE_SECONDS 秒は前の所から歩いて移り、その後は留まる所にいる (道のりが空なら原点)
+static func position_at(route: Dictionary, clock_seconds: float) -> Vector3:
+	var index: int = stop_index_at(route, clock_seconds)
 	if index < 0:
 		return Vector3.ZERO
 	var stops: Array = route["stops"]
 	var previous: Vector3 = stops[(index - 1 + stops.size()) % stops.size()]["point"]
-	var progress: float = clampf(seconds_in_stop(route, t) / MOVE_SECONDS, 0.0, 1.0)
+	var progress: float = clampf(seconds_in_stop(route, clock_seconds) / MOVE_SECONDS, 0.0, 1.0)
 	return previous.lerp(stops[index]["point"], progress)
 
 

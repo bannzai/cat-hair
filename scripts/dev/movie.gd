@@ -146,11 +146,13 @@ func _stage_automation(main: Node3D) -> bool:
 		if not game_state.automation.buy_robot(room.room_id):
 			push_error("movie.gd: 掃除ロボットを置けない")
 			return false
-	var corner: Vector3 = ViewPointScript.clear_spot(
-		game_state.current_layout, room, room.center,
-		minf(room.size.x, room.size.z) * 0.5 * AUTOMATION_VIEW_RATIO, Vector3(1.0, 0.0, 1.0)
+	main.player.set_spawn(
+		ViewPointScript.clear_spot(
+			game_state.current_layout, room, room.center,
+			minf(room.size.x, room.size.z) * 0.5 * AUTOMATION_VIEW_RATIO, Vector3(1.0, 0.0, 1.0)
+		),
+		0.0,
 	)
-	main.player.set_spawn(corner, 0.0)
 	await physics_frame
 	main.player.look_at_point(room.center)
 	return true
