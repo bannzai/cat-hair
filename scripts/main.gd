@@ -693,8 +693,6 @@ func _on_purchase_requested(kind: StringName, item_id: StringName) -> void:
 
 ## 道具を買う画面で毛を売った時 (買取業者の近くにいる時だけ売る)
 func _on_sell_requested() -> void:
-	if not is_near_trader():
-		return
 	var earned: int = _game_state.sell_raw_hairs()
 	if earned > 0:
 		_play_sfx(AudioCatalog.SFX_EARN_MONEY)
