@@ -20,6 +20,8 @@ const HairStockScript := preload("res://scripts/data/hair_stock.gd")
 const DENSE_HAIR_COUNT: int = 60000
 ## 道具の取りこぼしの抽選の乱数のシード (結果を毎回同じにする)
 const RNG_SEED: int = 20261127
+## 掃除機を毛の無い所に向けるため、狙いの周りの毛を消す半径 (m)。掃除機が届く半径 (0.5 m) より広くし、範囲に毛を残さない
+const VACUUM_CLEAR_RADIUS_M: float = 0.8
 ## 加工を確かめる在庫の、色ごとの毛のままの本数
 const STOCK_HAIRS_PER_COLOR: int = 500
 
@@ -218,6 +220,32 @@ func _verify_android_exchanges_vacuum_pack(main: Node3D, game_state: Node) -> vo
 		owned.consumable_count == 0 and game_state.get_money() == money_at_ceiling
 		and main.tool_message_label.text.contains("毛の付く表面が無い"),
 		"パックが一杯の掃除機で天井を狙って使っても、アンドロイドは交換せずお金が減らない (%s)"
+		% main.tool_message_label.text,
+	)
+	await HandAimScript.aim_at_floor_hair(_checker, main)
+	var target: Dictionary = main.hand.aim_target()
+	var hair_field: Node3D = main.mansion_world.get_hair_field()
+	var near_ids: PackedInt32Array = hair_field.find_hairs_near(
+		target["surface_index"], target["point"], VACUUM_CLEAR_RADIUS_M,
+		hair_field.get_remaining_count()
+	)
+	# 消した毛を GameState からも同じ本数だけ減らすため、毛を取るのに消耗品の要らないピンセットを使う
+	if game_state.find_owned_tool(ToolCatalogScript.TOOL_TWEEZERS) == null:
+		game_state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_TWEEZERS)
+	var cleared: Dictionary = {}
+	for hair_id: int in near_ids:
+		var color_id: StringName = main.mansion_world.get_hair_color_id(hair_id)
+		cleared[color_id] = int(cleared.get(color_id, 0)) + 1
+		hair_field.remove_hair(hair_id)
+	game_state.apply_tool_sweep(
+		ToolCatalogScript.TOOL_TWEEZERS,
+		{main.mansion_world.get_surface_def(target["surface_index"]).surface_id: cleared},
+	)
+	var money_bare: int = game_state.get_money()
+	await _checker.press_and_release_use()
+	_check(
+		owned.consumable_count == 0 and game_state.get_money() == money_bare,
+		"パックが一杯の掃除機で毛の無い所を狙って使っても、アンドロイドは交換せずお金が減らない (%s)"
 		% main.tool_message_label.text,
 	)
 	await HandAimScript.aim_at_floor_hair(_checker, main)

@@ -294,9 +294,9 @@ func _cat_name(cat_id: StringName) -> String:
 	return String(cat_id)
 
 
-## 手に持つ毛を取る道具を使う。狙いの先に毛の付く表面が無い時は、何もせずに文言だけを入れる
-## (アンドロイドにパックを交換させない。交換の値段だけ減って何も吸えないため)。
+## 手に持つ毛を取る道具を使う。狙いの先に毛の付く表面が無い時は、何もせずに文言だけを入れる。
 ## パックの道具 (掃除機) のパックが一杯で、アンドロイドを持っている時は先に交換させ、文言の先頭に交換したことを出す。
+## ただし範囲に取れる毛 (ToolRules.touchable_count が 1 本以上) が無い時は交換させない (交換の値段だけ減って何も吸えないため)。
 ## 消耗品が尽きている時は使わずに、尽きた理由 (アンドロイドがいてもお金が足りない時はそのこと) を文言に入れる
 func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 	var tool_id: StringName = tool_def["id"]
@@ -305,8 +305,15 @@ func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 	if target.is_empty():
 		result["message"] = "狙いの先に毛の付く表面が無い"
 		return
-	var exchanged: bool = _game_state.purchase(
-		GameStateScript.PURCHASE_ANDROID_PACK_EXCHANGE, tool_id
+	var hair_field: Node3D = _world.get_hair_field()
+	# 範囲の毛を近い順に全部取る (触れる本数は ToolRules.touchable_count で後から絞る)
+	var hair_ids: PackedInt32Array = hair_field.find_hairs_near(
+		target["surface_index"], target["point"], float(tool_def["radius_m"]),
+		hair_field.get_remaining_count()
+	)
+	var exchanged: bool = (
+		ToolRulesScript.touchable_count(hair_ids.size(), int(tool_def["max_hairs"])) > 0
+		and _game_state.purchase(GameStateScript.PURCHASE_ANDROID_PACK_EXCHANGE, tool_id)
 	)
 	if not ToolRulesScript.can_use(tool_id, owned.consumable_count):
 		result["message"] = (
@@ -320,7 +327,7 @@ func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 			else ToolRulesScript.consumable_empty_message(tool_id)
 		)
 		return
-	_use_sweep_tool_on_target(tool_def, owned, target, result)
+	_use_sweep_tool_on_target(tool_def, owned, target, hair_ids, result)
 	if exchanged:
 		result["exchanged"] = true
 		result["message"] = "アンドロイドが%sを交換した。%s" % [
@@ -328,20 +335,20 @@ func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 		]
 
 
-## 毛を取る道具を狙った点 target (HandController.aim_target の戻り値。空でないこと) の周りにかけ、範囲内の毛を
-## 1 本ずつ抽選して取りこぼし以外を取る (狙いと消耗品の確認の後に呼ぶ)
+## 毛を取る道具を狙った点 target (HandController.aim_target の戻り値。空でないこと) の周りの毛 hair_ids
+## (近い順) から、ToolRules.touchable_count の本数 (触れる上限まで、最後の 1 本は残す) を 1 本ずつ抽選して
+## 取りこぼし以外を取る (狙いと消耗品の確認の後に呼ぶ)。触れなかった毛も範囲に残った毛なので、
+## 取りこぼしの表示の分母は範囲の全部の本数にする
 func _use_sweep_tool_on_target(
-	tool_def: Dictionary, owned: OwnedTool, target: Dictionary, result: Dictionary
+	tool_def: Dictionary,
+	owned: OwnedTool,
+	target: Dictionary,
+	hair_ids: PackedInt32Array,
+	result: Dictionary,
 ) -> void:
 	var tool_id: StringName = tool_def["id"]
-	var surface_index: int = target["surface_index"]
-	var surface_def: MansionLayout.SurfaceDef = _world.get_surface_def(surface_index)
+	var surface_def: MansionLayout.SurfaceDef = _world.get_surface_def(target["surface_index"])
 	var hair_field: Node3D = _world.get_hair_field()
-	# 範囲の毛を近い順に全部取り、ToolRules.touchable_count の本数 (触れる上限まで、最後の 1 本は残す) を抽選する。
-	# 触れなかった毛も範囲に残った毛なので、取りこぼしの表示の分母は範囲の全部の本数にする
-	var hair_ids: PackedInt32Array = hair_field.find_hairs_near(
-		surface_index, target["point"], float(tool_def["radius_m"]), hair_field.get_remaining_count()
-	)
 	var ratio: float = ToolRulesScript.miss_ratio(tool_id, owned.level, surface_def.surface_type)
 	var counts_by_color: Dictionary = {}
 	var removed_ids: PackedInt32Array = PackedInt32Array()
