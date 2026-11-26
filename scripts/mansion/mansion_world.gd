@@ -1,6 +1,6 @@
 class_name MansionWorld
 extends Node3D
-## MansionLayout と BuildingProgress を受け取り、屋敷 1 階の 3D 空間と仮の毛を構築する。
+## MansionLayout と BuildingProgress を受け取り、屋敷 1 階の 3D 空間と、表面ごとの毛 (HairField) を構築する。
 
 ## 屋敷レイアウト型スクリプト
 const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
@@ -8,13 +8,13 @@ const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
 const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd")
 ## 面ごとの毛データ型スクリプト
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
+## 毛を 1 本ずつ持って描くノードのスクリプト
+const HairFieldScript := preload("res://scripts/hair_field.gd")
 
-## 1 つの表面に仮描画する毛片の上限本数 (面ごとの分布を視認しつつソフトウェア描画負荷を抑える値)
-const MAX_VISUAL_HAIRS_PER_SURFACE: int = 45
-## 面数が多い屋敷でも各面に毛の存在が見える仮描画の下限本数
-const MIN_VISUAL_HAIRS_PER_SURFACE: int = 4
-## 屋敷全体で仮描画する毛片の上限本数 (CI の Mesa llvmpipe で数秒以内に完了させる上限)
-const MAX_VISUAL_HAIRS_TOTAL: int = 900
+## 上に物が重なり得る、床の高さの表面の種類 (物の真下に毛を置かない)
+const FLOOR_LIKE_SURFACE_TYPES: Array[StringName] = [
+	MansionLayoutScript.SURFACE_FLOOR, MansionLayoutScript.SURFACE_CARPET
+]
 ## 室内補助ライト (OmniLight3D) を置く部屋数の上限。
 ## 出典 (Godot 4 公式ドキュメント「OpenGL 3 / GL Compatibility レンダラーの制限」):
 ## GL Compatibility では 1 メッシュあたり同時適用できる Omni/Spot ライト数の既定上限が 8
@@ -57,25 +57,17 @@ const TABLE_LEG_OFFSET_X_RATIO: float = 0.42
 const TABLE_LEG_OFFSET_Z_RATIO: float = 0.40
 ## テーブル脚の断面一辺の幅 (m。天板を支える見た目として細すぎずかさばらない一般的な木製脚幅)
 const TABLE_LEG_WIDTH_M: float = 0.07
-## 仮の毛片を表面の端 6% を避けて内側へ散らす半幅比率
-const VISUAL_HAIR_EXTENT_HALF_RATIO: float = 0.44
-## 仮の毛片を表面からわずかに浮かせて Z-fighting を防ぐ高さオフセット (m)
-const VISUAL_HAIR_HEIGHT_OFFSET_M: float = 0.008
-## 一人称視点 2〜4m 先から細い線として視認できる仮毛片の寸法 (m)
-const VISUAL_HAIR_MESH_SIZE: Vector3 = Vector3(0.014, 0.006, 0.11)
-## 仮の毛片を再現性高く散らすための固定シード
-const VISUAL_HAIR_RNG_SEED: int = 20261126
 
 ## 部屋ノード群の親コンテナ
 var _rooms_root: Node3D = null
 ## 家具・布ノード群の親コンテナ
 var _objects_root: Node3D = null
-## 仮描画の毛 (MultiMeshInstance3D) の親コンテナ
-var _hairs_root: Node3D = null
+## 表面ごとの毛を 1 本ずつ持って描くノード (表面の並びは layout.surfaces と同じ)
+var _hair_field: Node3D = null
 ## 室内照明ノード群の親コンテナ
 var _lights_root: Node3D = null
-## 現在描画している仮の毛片インスタンスの総数
-var _rendered_hair_count: int = 0
+## 構築に使ったレイアウト (毛の表面の添字から表面の定義を引く)
+var _layout: MansionLayout = null
 
 ## 床メッシュ用マテリアル (フローリング調)
 var _material_floor: StandardMaterial3D = null
@@ -103,15 +95,9 @@ var _material_suit: StandardMaterial3D = null
 var _material_metal: StandardMaterial3D = null
 ## ニット布地用マテリアル (マスタード系)
 var _material_knit: StandardMaterial3D = null
-## 仮描画の白い毛用マテリアル
-var _material_hair_white: StandardMaterial3D = null
-## 仮描画の黒い毛用マテリアル
-var _material_hair_black: StandardMaterial3D = null
-## 仮描画の三毛用マテリアル
-var _material_hair_calico: StandardMaterial3D = null
 
 
-## インスタンス生成時に仮見た目マテリアルを初期化する
+## インスタンス生成時に部屋と物のマテリアルを初期化する
 func _init() -> void:
 	_init_materials()
 
@@ -129,9 +115,9 @@ func rebuild(layout: MansionLayout, progress: BuildingProgress) -> void:
 	_objects_root.name = "ObjectsRoot"
 	add_child(_objects_root)
 
-	_hairs_root = Node3D.new()
-	_hairs_root.name = "HairsRoot"
-	add_child(_hairs_root)
+	_hair_field = HairFieldScript.new()
+	_hair_field.name = "HairField"
+	add_child(_hair_field)
 
 	_lights_root = Node3D.new()
 	_lights_root.name = "LightsRoot"
@@ -143,7 +129,8 @@ func rebuild(layout: MansionLayout, progress: BuildingProgress) -> void:
 	for obj: MansionLayout.ObjectDef in layout.objects:
 		_build_object_node(obj)
 
-	_build_visual_hairs(layout, progress)
+	_layout = layout
+	_build_hairs(layout, progress)
 
 
 ## 構築済みの部屋ノード数を返す
@@ -161,24 +148,40 @@ func get_room_light_count() -> int:
 	return _lights_root.get_child_count() if _lights_root != null else 0
 
 
-## 仮描画している毛片のインスタンス総数を返す
-func get_rendered_hair_instance_count() -> int:
-	return _rendered_hair_count
+## 表面ごとの毛を持つ HairField を返す (未構築なら null)
+func get_hair_field() -> Node3D:
+	return _hair_field
+
+
+## HairField の表面の添字に対応する表面の定義を返す (範囲外は null)
+func get_surface_def(surface_index: int) -> MansionLayout.SurfaceDef:
+	if _layout == null or surface_index < 0 or surface_index >= _layout.surfaces.size():
+		return null
+	return _layout.surfaces[surface_index]
+
+
+## 指定した毛の色 (SurfaceHair の色) を返す (存在しない毛は空)
+func get_hair_color_id(hair_id: int) -> StringName:
+	if _hair_field == null or not _hair_field.has_hair(hair_id):
+		return &""
+	return SurfaceHairScript.STANDARD_COLORS[
+		HairFieldScript.classify_hair_color(_hair_field.get_hair_color(hair_id))
+	]
 
 
 ## 既存の子ノードを即時解放し、再構築時に古いノードが残らないようにする
 func _clear_children() -> void:
-	_rendered_hair_count = 0
 	for child: Node in get_children():
 		remove_child(child)
 		child.free()
 	_rooms_root = null
 	_objects_root = null
-	_hairs_root = null
+	_hair_field = null
 	_lights_root = null
+	_layout = null
 
 
-## 床・壁・家具・布・3 色の毛の共有マテリアルを初期化する
+## 床・壁・家具・布の共有マテリアルを初期化する
 func _init_materials() -> void:
 	_material_floor = _make_material(Color(0.54, 0.39, 0.25), 0.72)
 	_material_wall = _make_material(Color(0.85, 0.81, 0.74), 0.9)
@@ -197,10 +200,6 @@ func _init_materials() -> void:
 	_material_suit = _make_material(Color(0.11, 0.12, 0.15), 0.88)
 	_material_metal = _make_material(Color(0.62, 0.64, 0.68), 0.35)
 	_material_knit = _make_material(Color(0.76, 0.56, 0.28), 0.96)
-
-	_material_hair_white = _make_material(Color(0.97, 0.95, 0.91), 0.6)
-	_material_hair_black = _make_material(Color(0.10, 0.09, 0.11), 0.65)
-	_material_hair_calico = _make_material(Color(0.84, 0.47, 0.19), 0.65)
 
 
 ## 指定色と粗さの StandardMaterial3D を生成する
@@ -441,24 +440,48 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 		_add_static_box(
 			object_root,
 			"Backrest",
-			Vector3(0.0, object_height * 0.68, -object_depth * 0.36),
-			Vector3(object_width, object_height * 0.64, object_depth * 0.26),
+			Vector3(
+				0.0,
+				object_height * 0.68,
+				object_depth * MansionBuilderScript.SOFA_BACKREST_OFFSET_RATIO,
+			),
+			Vector3(
+				object_width,
+				object_height * 0.64,
+				object_depth * MansionBuilderScript.SOFA_BACKREST_DEPTH_RATIO,
+			),
 			_material_sofa,
 			true,
 		)
 		_add_static_box(
 			object_root,
 			"ArmLeft",
-			Vector3(-object_width * 0.44, object_height * 0.48, 0.0),
-			Vector3(object_width * 0.12, object_height * 0.48, object_depth),
+			Vector3(
+				-object_width * MansionBuilderScript.SOFA_ARM_OFFSET_RATIO,
+				object_height * 0.48,
+				0.0,
+			),
+			Vector3(
+				object_width * MansionBuilderScript.SOFA_ARM_WIDTH_RATIO,
+				object_height * 0.48,
+				object_depth,
+			),
 			_material_sofa,
 			false,
 		)
 		_add_static_box(
 			object_root,
 			"ArmRight",
-			Vector3(object_width * 0.44, object_height * 0.48, 0.0),
-			Vector3(object_width * 0.12, object_height * 0.48, object_depth),
+			Vector3(
+				object_width * MansionBuilderScript.SOFA_ARM_OFFSET_RATIO,
+				object_height * 0.48,
+				0.0,
+			),
+			Vector3(
+				object_width * MansionBuilderScript.SOFA_ARM_WIDTH_RATIO,
+				object_height * 0.48,
+				object_depth,
+			),
 			_material_sofa,
 			false,
 		)
@@ -482,8 +505,8 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 		_add_static_box(
 			object_root,
 			"SuitJacket",
-			Vector3(0.0, object_height * 0.66, 0.0),
-			Vector3(object_width * 0.72, object_height * 0.46, object_depth * 0.55),
+			MansionBuilderScript.SUIT_JACKET_CENTER_RATIO * obj.size,
+			MansionBuilderScript.SUIT_JACKET_SIZE_RATIO * obj.size,
 			_material_suit,
 			true,
 		)
@@ -507,16 +530,16 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 		_add_static_box(
 			object_root,
 			"ChairBack",
-			Vector3(0.0, object_height * 0.75, -object_depth * 0.40),
-			Vector3(object_width, object_height * 0.50, object_depth * 0.16),
+			MansionBuilderScript.CHAIR_BACK_CENTER_RATIO * obj.size,
+			MansionBuilderScript.CHAIR_BACK_SIZE_RATIO * obj.size,
 			_material_wood,
 			false,
 		)
 		_add_static_box(
 			object_root,
 			"KnitThrow",
-			Vector3(0.0, object_height * 0.72, -object_depth * 0.15),
-			Vector3(object_width * 0.88, object_height * 0.34, object_depth * 0.72),
+			MansionBuilderScript.KNIT_THROW_CENTER_RATIO * obj.size,
+			MansionBuilderScript.KNIT_THROW_SIZE_RATIO * obj.size,
 			_material_knit,
 			false,
 		)
@@ -598,111 +621,46 @@ func _add_static_box(
 		parent_node.add_child(mesh_instance)
 
 
-## 表面ごとの毛の本数をもとに、白・黒・三毛の 3 色分の仮の毛片を MultiMeshInstance3D で描画する
-func _build_visual_hairs(layout: MansionLayout, progress: BuildingProgress) -> void:
-	if progress == null or layout.surfaces.is_empty():
-		return
-	var transforms_by_color: Dictionary = {
-		SurfaceHairScript.COLOR_WHITE: [],
-		SurfaceHairScript.COLOR_BLACK: [],
-		SurfaceHairScript.COLOR_CALICO: [],
-	}
-	var per_surface_cap: int = clampi(
-		MAX_VISUAL_HAIRS_TOTAL / maxi(1, layout.surfaces.size()),
-		MIN_VISUAL_HAIRS_PER_SURFACE,
-		MAX_VISUAL_HAIRS_PER_SURFACE,
-	)
-
-	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
-	rng.seed = VISUAL_HAIR_RNG_SEED
-
+## 表面ごと・色ごとの残り本数 (SurfaceHair) と同じ本数の毛を HairField に 1 本ずつ置く。
+## 床とカーペットの表面では、同じ部屋のほかの物の真下 (手が届かず見えない所) に毛を置かない
+func _build_hairs(layout: MansionLayout, progress: BuildingProgress) -> void:
+	var counts_by_surface: Array[PackedInt32Array] = []
 	for surface: MansionLayout.SurfaceDef in layout.surfaces:
-		var surface_hair: SurfaceHair = progress.find_surface_hair(surface.surface_id)
-		if surface_hair == null:
-			continue
-		var total_on_surface: int = surface_hair.total_count()
-		if total_on_surface <= 0:
-			continue
-		var visual_count: int = mini(total_on_surface, per_surface_cap)
-		if _rendered_hair_count + visual_count > MAX_VISUAL_HAIRS_TOTAL:
-			visual_count = maxi(0, MAX_VISUAL_HAIRS_TOTAL - _rendered_hair_count)
-		if visual_count <= 0:
-			break
-
-		var white_count: int = surface_hair.count_for_color(SurfaceHairScript.COLOR_WHITE)
-		var black_count: int = surface_hair.count_for_color(SurfaceHairScript.COLOR_BLACK)
-		var color_sum: float = maxf(
-			1.0,
-			float(
-				white_count
-				+ black_count
-				+ surface_hair.count_for_color(SurfaceHairScript.COLOR_CALICO)
-			),
+		var exclusions: Array[Dictionary] = []
+		if surface.surface_type in FLOOR_LIKE_SURFACE_TYPES:
+			exclusions = _object_footprints_in_room(layout, surface)
+		_hair_field.add_oriented_surface(
+			String(surface.surface_id),
+			surface.frame(),
+			surface.extents,
+			surface.hair_weight,
+			exclusions,
 		)
-
-		for _hair_idx: int in range(visual_count):
-			var pick_ratio: float = rng.randf() * color_sum
-			var color_id: StringName = SurfaceHairScript.COLOR_CALICO
-			if pick_ratio < float(white_count):
-				color_id = SurfaceHairScript.COLOR_WHITE
-			elif pick_ratio < float(white_count + black_count):
-				color_id = SurfaceHairScript.COLOR_BLACK
-
-			transforms_by_color[color_id].append(
-				Transform3D(
-					Basis(Vector3.UP, rng.randf_range(0.0, TAU)),
-					Vector3(
-						surface.center.x
-						+ rng.randf_range(
-							-surface.extents.x * VISUAL_HAIR_EXTENT_HALF_RATIO,
-							surface.extents.x * VISUAL_HAIR_EXTENT_HALF_RATIO,
-						),
-						surface.center.y + VISUAL_HAIR_HEIGHT_OFFSET_M,
-						surface.center.z
-						+ rng.randf_range(
-							-surface.extents.y * VISUAL_HAIR_EXTENT_HALF_RATIO,
-							surface.extents.y * VISUAL_HAIR_EXTENT_HALF_RATIO,
-						),
-					),
-				)
+		var group_counts: PackedInt32Array = PackedInt32Array()
+		var surface_hair: SurfaceHair = (
+			progress.find_surface_hair(surface.surface_id) if progress != null else null
+		)
+		for color_id: StringName in SurfaceHairScript.STANDARD_COLORS:
+			group_counts.append(
+				surface_hair.count_for_color(color_id) if surface_hair != null else 0
 			)
-			_rendered_hair_count += 1
-
-	_spawn_hair_multimesh(
-		"HairsWhite",
-		transforms_by_color[SurfaceHairScript.COLOR_WHITE],
-		_material_hair_white,
-	)
-	_spawn_hair_multimesh(
-		"HairsBlack",
-		transforms_by_color[SurfaceHairScript.COLOR_BLACK],
-		_material_hair_black,
-	)
-	_spawn_hair_multimesh(
-		"HairsCalico",
-		transforms_by_color[SurfaceHairScript.COLOR_CALICO],
-		_material_hair_calico,
-	)
+		counts_by_surface.append(group_counts)
+	_hair_field.populate_with_group_counts(counts_by_surface)
 
 
-## 1 色分の毛片変換配列から MultiMeshInstance3D を構築して HairsRoot へ追加する
-func _spawn_hair_multimesh(
-	node_name: String,
-	hair_transforms: Array,
-	hair_material: StandardMaterial3D,
-) -> void:
-	if hair_transforms.is_empty():
-		return
-	var hair_mesh: BoxMesh = BoxMesh.new()
-	hair_mesh.size = VISUAL_HAIR_MESH_SIZE
-	var multi_mesh: MultiMesh = MultiMesh.new()
-	multi_mesh.transform_format = MultiMesh.TRANSFORM_3D
-	multi_mesh.mesh = hair_mesh
-	multi_mesh.instance_count = hair_transforms.size()
-	for instance_idx: int in range(hair_transforms.size()):
-		multi_mesh.set_instance_transform(instance_idx, hair_transforms[instance_idx])
-	var mesh_instance: MultiMeshInstance3D = MultiMeshInstance3D.new()
-	mesh_instance.name = node_name
-	mesh_instance.multimesh = multi_mesh
-	mesh_instance.material_override = hair_material
-	_hairs_root.add_child(mesh_instance)
+## 表面と同じ部屋に置いた物 (その表面自身の物を除く) の床の上の占有範囲を、HairField の除外範囲の形で返す
+static func _object_footprints_in_room(
+	layout: MansionLayout, surface: MansionLayout.SurfaceDef
+) -> Array[Dictionary]:
+	var footprints: Array[Dictionary] = []
+	for obj: MansionLayout.ObjectDef in layout.objects:
+		if (
+			obj.room_id != surface.room_id
+			or MansionBuilderScript.object_surface_id(obj.object_id) == surface.surface_id
+		):
+			continue
+		footprints.append({
+			"inverse": Transform3D(Basis(Vector3.UP, obj.rotation_y), obj.position).affine_inverse(),
+			"half": Vector2(obj.size.x * 0.5, obj.size.z * 0.5),
+		})
+	return footprints

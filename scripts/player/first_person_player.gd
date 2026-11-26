@@ -73,6 +73,16 @@ func apply_look_delta(relative_delta: Vector2) -> void:
 	_head.rotation.x = _pitch
 
 
+## 目線 (カメラ) が target を向くようにヨーとピッチを設定する (撮影と検証で狙う毛へ向けるため)
+func look_at_point(target: Vector3) -> void:
+	_ensure_rig()
+	var to_target: Vector3 = target - _camera.global_position
+	var horizontal: float = Vector2(to_target.x, to_target.z).length()
+	rotation = Vector3(0.0, atan2(-to_target.x, -to_target.z), 0.0)
+	_pitch = clampf(atan2(to_target.y, horizontal), -MAX_PITCH_RADIANS, MAX_PITCH_RADIANS)
+	_head.rotation = Vector3(_pitch, 0.0, 0.0)
+
+
 ## 現在のピッチ角 (ラジアン) を返す
 func get_pitch() -> float:
 	return _pitch

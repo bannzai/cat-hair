@@ -1,25 +1,17 @@
 class_name LookPrototypeRoom
 extends Node3D
 ## 見た目の試作 (issue #19) を、屋敷の最初の部屋 (プレイヤーが入る部屋) にだけ重ねるノード。
-## 写実寄りの材質・窓から差す光と影・量の多さが一目で分かる毛・一人称の手を、その部屋の中にいる間だけ見せる。
+## 写実寄りの材質・窓から差す光と影を最初の部屋に付け、光・影・色の環境はその部屋の中にいる間だけ切り替える。
+## 毛と画面の手は MansionWorld と手で毛を取る操作 (#9) が描く物をそのまま使い、ここでは描かない。
 ## ほかの部屋の見た目は変えない。MansionWorld の子は作り直しのたびに解放されるため、自分の物は自分の子に置き、
 ## MansionWorld のノードには材質と影の設定だけを上書きする。
 
-## 1 本ずつ描く毛のノード (#6 の毛の描画の試作。中身は変えずに使う)
-const HairFieldScript := preload("res://scripts/hair_field.gd")
-## 一人称の手
-const FirstPersonHandScript := preload("res://scripts/look/first_person_hand.gd")
 ## 屋敷の 3D ノード (壁の厚みの単一の正)
 const MansionWorldScript := preload("res://scripts/mansion/mansion_world.gd")
 
 ## 見た目を切り替える部屋の番号。0 はプレイヤーが最初に立つ部屋 (MansionBuilder の初期位置) で、
 ## 起動してすぐ試作の見た目を見られるため
 const TARGET_ROOM_INDEX: int = 0
-## 試作の部屋に 1 本ずつ描く毛の上限本数。CI の lavapipe で 10 万本が 187 ms/frame (ADR 0002 の実測) のため、
-## 撮影の 1 フレームを 10 万本の時より軽くする 6 万本で打ち切る
-const VISUAL_HAIR_CAP: int = 60000
-## 毛の配置の乱数の種 (試作を作った日 2026-11-26。撮るたびに同じ絵にするため)
-const VISUAL_HAIR_SEED: int = 20261126
 ## 自動化の構図で掃除ロボットが毛を取った帯の毛を消す高さの上限 (m)。床 (0.01) とカーペット (0.04) の毛だけを消し、
 ## 家具の上の毛を残す高さ
 const ROBOT_CLEAR_MAX_Y_M: float = 0.1
@@ -114,31 +106,24 @@ var _world_environment: WorldEnvironment = null
 var _base_environment: Environment = null
 ## 試作の部屋の中で使う環境
 var _prototype_environment: Environment = null
-## カメラに付けた一人称の手
-var _hand: FirstPersonHand = null
 ## 試作の部屋の中で試作の見た目を出しているか
 var _prototype_active: bool = false
 ## タイトルを抜けて屋敷を歩いているか (タイトルの画面と起動の録画の明るさを変えないため、歩いている間だけ試作を出す)
 var _playing: bool = false
-## 窓・光・毛・掃除ロボットの親 (作り直しのたびに入れ替える)
+## 窓・光・掃除ロボットの親 (作り直しのたびに入れ替える)
 var _content_root: Node3D = null
-## 試作の部屋に 1 本ずつ描く毛
-var _hair_field: Node3D = null
-## 試作の部屋に描いた毛の本数 (自動化の構図で消した分を含まない、置いた時の本数)
-var _placed_hair_count: int = 0
 ## 掃除ロボットと充電台の親
 var _robots_root: Node3D = null
 ## 材質の種類 (NODE_MATERIAL_KINDS の値) から試作の材質への対応 (テクスチャの生成は 1 回だけにする)
 var _materials: Dictionary = {}
 
 
-## 部屋の中にいるかに合わせて、環境と手の表示を切り替える
+## 部屋の中にいるかに合わせて、環境を切り替える
 func _process(_delta: float) -> void:
 	_refresh_active()
 
 
-## 部屋の中にいるかを見るプレイヤーと、差し替える環境を受け取り、プレイヤーのカメラに手を付ける。
-## 同じプレイヤーで 2 回呼んでも手は 1 つ (2 回目は環境の参照だけを更新する)
+## 部屋の中にいるかを見るプレイヤーと、差し替える環境を受け取る。2 回呼んでも試作の環境は作り直さない
 func setup(player: FirstPersonPlayer, world_environment: WorldEnvironment) -> void:
 	_player = player
 	_world_environment = world_environment
@@ -146,9 +131,6 @@ func setup(player: FirstPersonPlayer, world_environment: WorldEnvironment) -> vo
 	if _prototype_environment == null or world_environment.environment != _prototype_environment:
 		_base_environment = world_environment.environment
 		_prototype_environment = build_prototype_environment(_base_environment)
-	if not is_instance_valid(_hand):
-		_hand = FirstPersonHandScript.new()
-		player.get_camera().add_child(_hand)
 	_refresh_active()
 
 
@@ -160,7 +142,7 @@ func set_playing(playing: bool) -> void:
 
 ## レイアウトの最初の部屋に試作の見た目を重ねる。MansionWorld.rebuild の後に毎回呼ぶ (前回の物は消してから作る)。
 ## layout が null か部屋が無い時は何も重ねない
-func apply(layout: MansionLayout, progress: BuildingProgress, world: MansionWorld) -> void:
+func apply(layout: MansionLayout, world: MansionWorld) -> void:
 	_clear_content()
 	_room = null
 	if layout == null or layout.rooms.size() <= TARGET_ROOM_INDEX:
@@ -175,14 +157,13 @@ func apply(layout: MansionLayout, progress: BuildingProgress, world: MansionWorl
 	_override_room_materials(layout, world)
 	_add_window_and_daylight()
 	_enable_room_light_shadow(world)
-	_add_hair_field(layout, progress)
-	_hide_world_hairs_in_room(world)
 	_refresh_active()
 
 
 ## 掃除ロボットが部屋を回っている構図にする (掃除ロボットはまだ無いため、形だけの置き物と、走った帯の毛を消した絵)。
-## 消した毛の本数を返す。apply の前に呼んだ時は 0
-func show_automation_props() -> int:
+## hair_field (MansionWorld の毛) から帯の床とカーペットの毛を消し、消した本数を返す。消した毛は保存データの本数に
+## 数えないため、撮影 (scripts/dev/screenshot.gd) の最後の絵にだけ使う。apply の前に呼んだ時は 0
+func show_automation_props(hair_field: Node3D) -> int:
 	if _room == null or _content_root == null:
 		return 0
 	if _robots_root != null:
@@ -199,36 +180,14 @@ func show_automation_props() -> int:
 		var lane_z: float = _room.center.z + float(lane["z_ratio"]) * _room.size.z
 		var robot_x: float = _room.center.x + float(lane["end_x_ratio"]) * _room.size.x
 		_add_robot(_robots_root, "Robot%d" % lane_index, Vector3(robot_x, 0.0, lane_z))
-		removed += _remove_hairs_in_lane(lane_start_x, robot_x, lane_z)
+		removed += _remove_hairs_in_lane(hair_field, lane_start_x, robot_x, lane_z)
 	_add_dock(_robots_root)
 	return removed
-
-
-## 毛をつまんで引いている途中の手の構図を切り替える (手で抜く操作はまだ無いため、手と毛の位置を置いただけの構図)
-func set_pinch_pose(enabled: bool) -> void:
-	if is_instance_valid(_hand):
-		# 屋敷の床の面の高さは 0 (MansionWorld が床を y = 0 に置く)
-		_hand.set_pinch_pose(enabled, 0.0)
 
 
 ## 見た目を切り替えている部屋の id (無い時は空)
 func get_target_room_id() -> StringName:
 	return _room.room_id if _room != null else &""
-
-
-## 試作の部屋に今描いている毛の本数
-func get_visual_hair_count() -> int:
-	return _hair_field.get_remaining_count() if _hair_field != null else 0
-
-
-## 試作の部屋に置いた時の毛の本数
-func get_placed_hair_count() -> int:
-	return _placed_hair_count
-
-
-## 試作の部屋に 1 本ずつ描いている毛のノード (apply の前と、毛を描かなかった時は null。検証から毛の位置を読むため)
-func get_hair_field() -> Node3D:
-	return _hair_field
 
 
 ## 窓のノード (窓を付けなかった時は null)
@@ -257,11 +216,6 @@ func is_prototype_active() -> bool:
 	return _prototype_active
 
 
-## カメラに付けた一人称の手 (setup の前は null)
-func get_hand() -> FirstPersonHand:
-	return _hand
-
-
 ## 試作の材質の種類 (NODE_MATERIAL_KINDS の値) に対応する材質を返す。知らない種類は null
 func get_material_for_kind(kind: StringName) -> StandardMaterial3D:
 	_ensure_materials()
@@ -274,11 +228,6 @@ static func is_inside_room(room: MansionLayout.RoomDef, world_position: Vector3)
 		absf(world_position.x - room.center.x) <= room.size.x * 0.5
 		and absf(world_position.z - room.center.z) <= room.size.z * 0.5
 	)
-
-
-## 部屋で数えている毛の本数から、1 本ずつ描く本数を返す (上限 VISUAL_HAIR_CAP。0 以下は 0)
-static func visual_hair_count(counted_hairs: int) -> int:
-	return clampi(counted_hairs, 0, VISUAL_HAIR_CAP)
 
 
 ## 窓を付ける壁 (ドアの無い壁を西・南・東・北の順に探す)。全部の壁にドアがある時は空
@@ -307,7 +256,7 @@ static func build_prototype_environment(base: Environment) -> Environment:
 	return environment
 
 
-## 歩いている間にプレイヤーが試作の部屋の中にいる時だけ、試作の見た目 (環境と手) を出す
+## 歩いている間にプレイヤーが試作の部屋の中にいる時だけ、試作の環境を出す
 func _refresh_active() -> void:
 	var active: bool = (
 		_playing
@@ -322,19 +271,15 @@ func _refresh_active() -> void:
 	# 毎フレーム呼ばれるため、変わった時だけ差し替える
 	if _world_environment != null and _world_environment.environment != wanted_environment:
 		_world_environment.environment = wanted_environment
-	if is_instance_valid(_hand):
-		_hand.visible = active
 
 
-## 前回作った窓・光・毛・掃除ロボットを解放する
+## 前回作った窓・光・掃除ロボットを解放する
 func _clear_content() -> void:
 	if _content_root != null:
 		remove_child(_content_root)
 		_content_root.free()
 	_content_root = null
-	_hair_field = null
 	_robots_root = null
-	_placed_hair_count = 0
 
 
 ## 試作の部屋の床・壁・天井と、部屋に置いた物のメッシュに試作の材質を上書きする
@@ -464,73 +409,30 @@ func _enable_room_light_shadow(world: MansionWorld) -> void:
 		room_light.shadow_enabled = true
 
 
-## 部屋の表面ごとに数えている毛の本数を重みにして、部屋全体で visual_hair_count 本の毛を 1 本ずつ描く
-func _add_hair_field(layout: MansionLayout, progress: BuildingProgress) -> void:
-	if progress == null:
-		return
-	_hair_field = HairFieldScript.new()
-	_hair_field.name = "PrototypeHairField"
-	_content_root.add_child(_hair_field)
-	var counted_total: int = 0
-	for surface: MansionLayout.SurfaceDef in layout.surfaces:
-		if surface.room_id != _room.room_id:
-			continue
-		var surface_hair: SurfaceHair = progress.find_surface_hair(surface.surface_id)
-		var counted: int = surface_hair.total_count() if surface_hair != null else 0
-		if counted <= 0:
-			continue
-		var half_extent: Vector3 = Vector3(surface.extents.x * 0.5, 0.0, surface.extents.y * 0.5)
-		_hair_field.add_surface(
-			String(surface.surface_id),
-			surface.center - half_extent,
-			surface.center + half_extent,
-			float(counted),
-		)
-		counted_total += counted
-	_placed_hair_count = _hair_field.populate(visual_hair_count(counted_total), VISUAL_HAIR_SEED)
-
-
-## MansionWorld が描いた仮の毛 (細長い箱) のうち、試作の部屋の中にあるものを床の下へ移して見えなくする。
-## 試作の部屋の毛は _add_hair_field の 1 本ずつの毛で描くため。MansionWorld の毛の描画のコードは #9 が書き換えるため変えず、
-## 描画済みの MultiMesh の位置だけを動かす。headless では何もしない (MultiMesh.get_instance_transform が headless の
-## Dummy レンダラで既定値を返すことは、scripts/hair_field.gd の _create_surface_bucket のコメントの記述による。
-## この PR では確かめていない)
-func _hide_world_hairs_in_room(world: MansionWorld) -> void:
-	if world == null or DisplayServer.get_name() == "headless":
-		return
-	var hairs_root: Node = world.get_node_or_null("HairsRoot")
-	if hairs_root == null:
-		return
-	for child: Node in hairs_root.get_children():
-		if not child is MultiMeshInstance3D or (child as MultiMeshInstance3D).multimesh == null:
-			continue
-		var multi_mesh: MultiMesh = (child as MultiMeshInstance3D).multimesh
-		for instance_index: int in range(multi_mesh.instance_count):
-			var hair_transform: Transform3D = multi_mesh.get_instance_transform(instance_index)
-			if is_inside_room(_room, hair_transform.origin):
-				# 床 (y = 0) の 50 m 下は、どの部屋のカメラにも映らない
-				hair_transform.origin.y -= 50.0
-				multi_mesh.set_instance_transform(instance_index, hair_transform)
-
-
-## 掃除ロボットが走った帯 (X は lane_start_x〜robot_x、Z は lane_z ± ロボットの半径) にある床とカーペットの毛を消し、
-## 消した本数を返す
-func _remove_hairs_in_lane(lane_start_x: float, robot_x: float, lane_z: float) -> int:
-	if _hair_field == null:
+## 掃除ロボットが走った帯 (X は lane_start_x〜robot_x、Z は lane_z ± ロボットの半径) にある床とカーペットの毛を
+## hair_field から消し、消した本数を返す
+static func _remove_hairs_in_lane(
+	hair_field: Node3D, lane_start_x: float, robot_x: float, lane_z: float
+) -> int:
+	if hair_field == null:
 		return 0
+	# 消すと同じ表面の最後の毛が空いた位置へ移るため、消す毛を先に集めてから消す
+	var lane_hair_ids: PackedInt32Array = PackedInt32Array()
+	for surface_index: int in range(hair_field.get_surface_count()):
+		for slot: int in range(hair_field.get_surface_visible_instance_count(surface_index)):
+			var hair_id: int = hair_field.get_hair_id_at_slot(surface_index, slot)
+			var origin: Vector3 = hair_field.get_hair_transform(hair_id).origin
+			if (
+				origin.y <= ROBOT_CLEAR_MAX_Y_M
+				and origin.x >= minf(lane_start_x, robot_x)
+				and origin.x <= maxf(lane_start_x, robot_x)
+				and absf(origin.z - lane_z) <= ROBOT_RADIUS_M
+			):
+				lane_hair_ids.append(hair_id)
 	var removed: int = 0
-	for hair_id: int in range(_placed_hair_count):
-		if not _hair_field.has_hair(hair_id):
-			continue
-		var origin: Vector3 = _hair_field.get_hair_transform(hair_id).origin
-		if (
-			origin.y <= ROBOT_CLEAR_MAX_Y_M
-			and origin.x >= minf(lane_start_x, robot_x)
-			and origin.x <= maxf(lane_start_x, robot_x)
-			and absf(origin.z - lane_z) <= ROBOT_RADIUS_M
-		):
-			if _hair_field.remove_hair(hair_id):
-				removed += 1
+	for hair_id: int in lane_hair_ids:
+		if hair_field.remove_hair(hair_id):
+			removed += 1
 	return removed
 
 
@@ -543,7 +445,7 @@ func _add_robot(parent_node: Node3D, robot_name: String, floor_position: Vector3
 	# 本体は艶を抑えた濃い灰色、上蓋は明るい灰色 (実在の製品の配色と意匠を避けた無地)。
 	# 各部の比率は、家庭用の円盤型の掃除ロボットの一般的な形 (本体の上に一回り小さい蓋、後ろ寄りの小さなセンサーの突起、
 	# 前の縁の緩衝材) を、本体の半径と高さに対する割合で置いたもの
-	var body_material: StandardMaterial3D = FirstPersonHandScript.make_material(
+	var body_material: StandardMaterial3D = make_material(
 		Color(0.15, 0.15, 0.16), 0.55
 	)
 	_add_cylinder(
@@ -560,7 +462,7 @@ func _add_robot(parent_node: Node3D, robot_name: String, floor_position: Vector3
 		ROBOT_RADIUS_M * 0.88,
 		ROBOT_HEIGHT_M * 0.2,
 		Vector3(0.0, ROBOT_HEIGHT_M * 0.9, 0.0),
-		FirstPersonHandScript.make_material(Color(0.36, 0.37, 0.38), 0.45),
+		make_material(Color(0.36, 0.37, 0.38), 0.45),
 	)
 	_add_cylinder(
 		robot,
@@ -592,7 +494,7 @@ func _add_dock(parent_node: Node3D) -> void:
 		),
 		Vector3(0.14, 0.12, 0.32),
 		# 色はロボットの本体と同じ系統の濃い灰色で、本体より 1 段明るくして形の境目を見せる。粗さは本体と同じ艶消し
-		FirstPersonHandScript.make_material(Color(0.18, 0.18, 0.19), 0.6),
+		make_material(Color(0.18, 0.18, 0.19), 0.6),
 	)
 
 
@@ -659,13 +561,13 @@ func _ensure_materials() -> void:
 		Color(0.34, 0.21, 0.13), 0.5, wood_height, wood_height, 0.6, FLOOR_TEXTURE_REPEAT_M
 	)
 	# 濃い木 (巾木・窓枠・ドア枠): 床より暗くして、床と壁の境目と枠の輪郭が見える色
-	_materials[&"dark_wood"] = FirstPersonHandScript.make_material(Color(0.22, 0.14, 0.09), 0.55)
+	_materials[&"dark_wood"] = make_material(Color(0.22, 0.14, 0.09), 0.55)
 	# 壁: くすんだ緑灰の壁紙 (縦の細い縞)。窓の光の色を受けて写実寄りに見える彩度の低い色
 	_materials[&"wall"] = _make_textured_material(
 		Color(0.52, 0.56, 0.50), 0.9, _make_wallpaper_image(), null, 0.0, WALLPAPER_TEXTURE_REPEAT_M
 	)
 	# 天井: 漆喰のわずかに暖かい白。灯りを照り返さないよう粗さを高くする
-	_materials[&"ceiling"] = FirstPersonHandScript.make_material(Color(0.82, 0.81, 0.78), 0.95)
+	_materials[&"ceiling"] = make_material(Color(0.82, 0.81, 0.78), 0.95)
 	# カーペット: 深い臙脂の毛足。細かい凹凸と、毛足の明暗のむら
 	_materials[&"carpet"] = _make_textured_material(
 		Color(0.42, 0.10, 0.11), 0.98, fine_noise, fine_noise, 2.5, FABRIC_TEXTURE_REPEAT_M
@@ -692,7 +594,7 @@ func _ensure_materials() -> void:
 		Color(0.08, 0.085, 0.10), 0.9, fine_noise, fine_noise, 0.8, FABRIC_TEXTURE_REPEAT_M
 	)
 	# 金属: ハンガーラックの柱。鏡面の艶は避け、つや消しの鉄にする
-	var metal: StandardMaterial3D = FirstPersonHandScript.make_material(Color(0.40, 0.40, 0.42), 0.6)
+	var metal: StandardMaterial3D = make_material(Color(0.40, 0.40, 0.42), 0.6)
 	# 0.6 は鉄の色が出て、鏡のように部屋を映さない金属らしさ
 	metal.metallic = 0.6
 	_materials[&"metal"] = metal
@@ -773,7 +675,7 @@ static func _make_textured_material(
 	normal_strength: float,
 	repeat_m: float,
 ) -> StandardMaterial3D:
-	var surface_material: StandardMaterial3D = FirstPersonHandScript.make_material(
+	var surface_material: StandardMaterial3D = make_material(
 		albedo_color, roughness_value
 	)
 	surface_material.uv1_triplanar = true
@@ -792,3 +694,10 @@ static func _make_textured_material(
 		surface_material.normal_texture = ImageTexture.create_from_image(normal)
 	return surface_material
 
+
+## 指定色と粗さの StandardMaterial3D を生成する
+static func make_material(albedo_color: Color, roughness_value: float) -> StandardMaterial3D:
+	var surface_material: StandardMaterial3D = StandardMaterial3D.new()
+	surface_material.albedo_color = albedo_color
+	surface_material.roughness = roughness_value
+	return surface_material

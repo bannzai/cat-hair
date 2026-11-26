@@ -5,7 +5,8 @@ extends RefCounted
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 
 
-## 見た目の試作が最初の部屋の中にいる間だけ環境・手を切り替え、つまむ構図で伸びた毛が指先から床へ張られることを検証する
+## 見た目の試作が、歩いている間に最初の部屋の中にいる時だけ環境を切り替えることを検証する。
+## 終わる時はプレイヤーを最初の位置へ戻し、試作を重ね直す (後に続く手で毛を取る操作の検証の前提をそろえるため)。
 ## checker は結果を記録してフレームを進める integration の SceneTree
 static func verify_look_prototype_room(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	var player: FirstPersonPlayer = main.get_node("Player")
@@ -16,31 +17,25 @@ static func verify_look_prototype_room(checker: SceneTree, main: Node3D, game_st
 	await checker.process_frame
 	var inside_environment: Environment = environment_node.environment
 	checker._check(
-		look_room.is_prototype_active() and look_room.get_hand().visible,
-		"最初の部屋に立つと試作の見た目 (環境と手) が出る",
+		look_room.is_prototype_active() and environment_node.environment.ssao_enabled,
+		"最初の部屋に立つと試作の環境 (家具の陰あり) が出る",
 	)
 	checker._check(
 		main.look_hud.get_money_text() == "所持金 1,280 円"
 		and main.look_hud.get_parent() == main.get_node("UILayer/UI/HUD"),
 		"HUD に見本の所持金が 3 桁区切りで出る (%s)" % main.look_hud.get_money_text(),
 	)
-	# 同じプレイヤーで setup をもう一度呼んでも、カメラに付く手は 1 つのまま
+	# 試作の見た目を出している間に setup をもう一度呼んでも、試作の環境を部屋の外の環境として取り込まない
 	look_room.setup(player, environment_node)
-	var hand_count: int = 0
-	for child: Node in player.get_camera().get_children():
-		if child is FirstPersonHand:
-			hand_count += 1
-	checker._check(hand_count == 1, "setup を 2 回呼んでもカメラの手は 1 つ (%d)" % hand_count)
 	await checker.process_frame
 
 	player.global_position = Vector3(0.0, 0.05, -MansionTuningScript.DEFAULT_ROOM_SIZE_M)
 	await checker.process_frame
 	checker._check(
 		not look_room.is_prototype_active()
-		and not look_room.get_hand().visible
 		and environment_node.environment != inside_environment
 		and not environment_node.environment.ssao_enabled,
-		"隣の部屋に移ると試作の見た目が消え、環境が既定 (家具の陰なし) に戻る",
+		"隣の部屋に移ると試作の環境が消え、環境が既定 (家具の陰なし) に戻る",
 	)
 
 	# 試作の見た目を出していない時に setup を呼ぶと、その時の環境を既定の環境として取り込み直す
@@ -59,55 +54,28 @@ static func verify_look_prototype_room(checker: SceneTree, main: Node3D, game_st
 	environment_node.environment = original_environment
 	look_room.setup(player, environment_node)
 
+	# 最初の部屋の中にいても、タイトルの画面 (歩いていない間) では試作の環境を出さない。main.gd の画面の切り替えを通す
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
-	look_room.set_pinch_pose(true)
-	# 手の毛は _process で張り直し、プレイヤーは _physics_process で床へ降りる。降りている間は毛の張り直しが 1 フレーム
-	# 遅れて見えるため、床に着くまで待ってから比べる (60 フレームは 60 fps で 1 秒。出現位置から床までの落下より長い)
-	for _frame: int in range(60):
-		await checker.physics_frame
-		if player.is_on_floor():
-			break
-	await checker.process_frame
-	await checker.process_frame
-	var ends: PackedVector3Array = look_room.get_hand().get_stretched_hair_endpoints()
-	var hair_mesh_transform: Transform3D = look_room.get_hand().get_stretched_hair_transform()
-	# 毛のメッシュは高さ 1 の円柱なので、メッシュの中心が両端の中点に、Y 軸の長さが両端の距離になっていれば張られている
-	checker._check(
-		ends.size() == 2
-		and ends[0].y > ends[1].y
-		and ends[1].y < 0.01
-		and hair_mesh_transform.origin.is_equal_approx((ends[0] + ends[1]) * 0.5)
-		and is_equal_approx(hair_mesh_transform.basis.y.length(), ends[0].distance_to(ends[1])),
-		"つまむ構図の伸びた毛のメッシュは指先から床へ張られる (%s)" % [ends],
-	)
-	look_room.set_pinch_pose(false)
-
-	# 最初の部屋の中にいても、タイトルの画面 (歩いていない間) では試作の見た目を出さない。main.gd の画面の切り替えを通す
 	main._set_title_mode()
 	await checker.process_frame
 	checker._check(
-		not look_room.is_prototype_active()
-		and not look_room.get_hand().visible
-		and not environment_node.environment.ssao_enabled,
-		"最初の部屋の中でも、タイトルの画面では試作の見た目を出さない",
+		not look_room.is_prototype_active() and not environment_node.environment.ssao_enabled,
+		"最初の部屋の中でも、タイトルの画面では試作の環境を出さない",
 	)
 	main.enter_mansion()
 	await checker.process_frame
 	checker._check(
-		look_room.is_prototype_active() and look_room.get_hand().visible,
-		"タイトルから屋敷へ戻ると、最初の部屋で試作の見た目がまた出る",
+		look_room.is_prototype_active(),
+		"タイトルから屋敷へ戻ると、最初の部屋で試作の環境がまた出る",
 	)
 
-	# 歩いていて最初の部屋の位置にいても、重ねる部屋が無いレイアウトの後は試作の見た目を出さない
-	look_room.apply(null, null, null)
+	# 歩いていて最初の部屋の位置にいても、重ねる部屋が無いレイアウトの後は試作の環境を出さない
+	look_room.apply(null, null)
 	await checker.process_frame
 	checker._check(
-		not look_room.is_prototype_active()
-		and not look_room.get_hand().visible
-		and not environment_node.environment.ssao_enabled,
-		"重ねる部屋が無い時は、歩いていても試作の見た目を出さない",
+		not look_room.is_prototype_active() and not environment_node.environment.ssao_enabled,
+		"重ねる部屋が無い時は、歩いていても試作の環境を出さない",
 	)
-	look_room.apply(
-		layout, game_state.save_data.building_progress, main.mansion_world
-	)
+	look_room.apply(layout, main.mansion_world)
+	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	await checker.process_frame

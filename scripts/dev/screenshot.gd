@@ -14,24 +14,22 @@ const MainScript := preload("res://scripts/main.gd")
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 ## JSON 保存ストレージスクリプト
 const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
+## 目線を床の毛へ向ける手順
+const HandAim := preload("res://scripts/dev/hand_aim.gd")
+## 引いている途中を撮る時の進み具合 (毛が伸びて手が閉じかけた所)
+const PULL_SNAPSHOT_PROGRESS: float = 0.7
 
 ## 開発者向け調整値データ型スクリプト (見た目の試作の撮影で毛の本数を変える)
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
-## 見た目の試作の部屋のスクリプト (1 本ずつ描く毛の上限の単一の正)
-const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room.gd")
 
 ## screenshot 専用のセーブパス
 const TEST_SAVE_PATH: String = "user://screenshot_save_data.json"
-## 見た目の試作を撮る時の屋敷全体の毛の本数。既定の 4 部屋に分けた時に最初の部屋の毛が
-## 1 本ずつ描く上限 (LookPrototypeRoom.VISUAL_HAIR_CAP) に届き、量の多さが一目で分かる本数
-const LOOK_HAIR_COUNT: int = LookPrototypeRoomScript.VISUAL_HAIR_CAP * 4
+## 見た目の試作を撮る時の屋敷全体の毛の本数。既定の 4 部屋で 1 部屋 3 万本前後になり、量の多さが一目で分かる。
+## 屋敷は全部の毛を 1 本ずつ描くため (#9)、CI の lavapipe で 10 万本が 187 ms/frame (ADR 0002 の実測) を大きく
+## 超えない本数にした
+const LOOK_HAIR_COUNT: int = 120000
 ## 部屋に入った直後と自動化の絵で見下ろす角度 (rad)。床と家具の上の毛が画面の下半分を占める角度
 const LOOK_OVERVIEW_PITCH: float = -0.45
-## 毛をつまむ構図で見下ろす角度 (rad)。足元の床の毛と手が画面の中央に入る角度
-const LOOK_PINCH_PITCH: float = -0.85
-## 毛をつまむ構図の目の高さ (m)。床にしゃがんで顔を寄せた高さで、指先が床から 10 cm 前後になり、
-## 引っ張られて伸びた毛が手の長さほどに見える
-const LOOK_PINCH_EYE_HEIGHT_M: float = 0.6
 
 
 ## tree の準備が終わってから _run() を始める (シーンの追加は _initialize() の後でないとできない)
@@ -48,7 +46,7 @@ func _run() -> void:
 
 	var ok: bool = await _capture_scenes()
 	(audio_handle["manager"] as AudioManagerScript).stop_all()
-	# 音の解放を実時間で待つ。timer はフレームの経過時間で減るため、撮影の最後の重いフレーム (見た目の試作の 24 万本の毛)
+	# 音の解放を実時間で待つ。timer はフレームの経過時間で減るため、撮影の最後の重いフレーム (見た目の試作の多い毛)
 	# の直後では実時間より早く終わり、解放が間に合わずリーク警告が出た (PR #30 の CI。1 フレーム進めてから timer で
 	# 待っても実時間は 115 ms で、AUDIO_RELEASE_TIME_SEC に届かなかった)
 	var release_deadline_msec: int = (
@@ -90,15 +88,10 @@ func _capture_scenes() -> bool:
 		_cleanup(main, game_state, created_state)
 		return false
 
-	# 屋敷の中の一人称プレイ画面 (部屋・家具・布・仮の毛・残り本数の HUD)
-	main.enter_mansion()
-	if not await _capture("tmp/screenshot-mansion.png"):
-		_cleanup(main, game_state, created_state)
-		return false
-
-	# 開発者向け調整画面を開いた状態
-	main.open_dev_panel()
-	if not await _capture("tmp/screenshot-dev-panel.png"):
+	# 屋敷の中の一人称プレイ画面・床の毛を引いている途中・抜いた直後・図鑑・開発者向け調整画面
+	var mansion_error: String = await _capture_mansion_scenes(main)
+	if not mansion_error.is_empty():
+		push_error("screenshot FAIL: " + mansion_error)
 		_cleanup(main, game_state, created_state)
 		return false
 
@@ -120,30 +113,36 @@ func _capture_look_prototype(main: Node3D, game_state: Node) -> bool:
 	var tuning: MansionTuning = MansionTuningScript.new()
 	tuning.hair_count = LOOK_HAIR_COUNT
 	game_state.apply_tuning_and_rebuild(tuning, false)
+	var layout: MansionLayout = game_state.current_layout
 	var player: FirstPersonPlayer = main.get_node("Player")
 	var look_room: LookPrototypeRoom = main.look_room
-	if look_room.get_visual_hair_count() <= 0:
-		push_error("look prototype FAIL: 試作の部屋に毛が描かれていない")
-		return false
 
+	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
+	await physics_frame
 	_set_pitch(player, LOOK_OVERVIEW_PITCH)
 	if not await _capture("tmp/screenshot-look-enter.png"):
 		return false
 
-	# 一人称の頭のノード (カメラの親) を下げてしゃがんだ構図にし、撮った後に元の高さへ戻す
-	var head: Node3D = player.get_camera().get_parent() as Node3D
-	var standing_eye_height: float = head.position.y
-	head.position.y = LOOK_PINCH_EYE_HEIGHT_M
-	_set_pitch(player, LOOK_PINCH_PITCH)
-	look_room.set_pinch_pose(true)
-	var pinch_ok: bool = await _capture("tmp/screenshot-look-pinch.png")
-	look_room.set_pinch_pose(false)
-	head.position.y = standing_eye_height
+	# 手で毛を取る操作 (#9) の本物の引きで、試作の部屋の床の毛を引いている途中を撮る
+	var hand: HandController = main.hand
+	if await HandAim.aim_at_floor_hair(self, main) < 0 or not hand.begin_pull():
+		push_error("look prototype FAIL: 試作の部屋の床の毛をつまめない")
+		return false
+	hand.advance_pull(hand.get_pull_duration() * PULL_SNAPSHOT_PROGRESS)
+	await process_frame
+	if not look_room.is_prototype_active():
+		push_error("look prototype FAIL: つまんだ毛が試作の部屋の外にある")
+		hand.cancel_pull()
+		return false
+	var pinch_ok: bool = await _capture_frozen(main, "tmp/screenshot-look-pinch.png")
+	hand.cancel_pull()
 	if not pinch_ok:
 		return false
 
+	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
+	await physics_frame
 	_set_pitch(player, LOOK_OVERVIEW_PITCH)
-	if look_room.show_automation_props() <= 0:
+	if look_room.show_automation_props(main.mansion_world.get_hair_field()) <= 0:
 		push_error("look prototype FAIL: 掃除ロボットの帯で毛が 1 本も消えていない")
 		return false
 	return await _capture("tmp/screenshot-look-automation.png")
@@ -203,6 +202,51 @@ func _verify_windowed_mouse_capture(main: Node3D) -> bool:
 		push_error("windowed mouse check FAIL: 開発者画面を開いても MOUSE_MODE_VISIBLE に戻らない")
 		return false
 	return true
+
+
+## 屋敷に入った一人称プレイ画面 (部屋・家具・布・毛・画面の手・照準・残り本数と在庫の HUD)、毛を引く場面、
+## 図鑑、開発者向け調整画面を順に撮る。撮れたら空文字、失敗したら理由を返す
+func _capture_mansion_scenes(main: Node3D) -> String:
+	main.enter_mansion()
+	if not await _capture("tmp/screenshot-mansion.png"):
+		return "屋敷の画面を保存できない"
+	var pluck_error: String = await _capture_pluck(main)
+	if not pluck_error.is_empty():
+		return pluck_error
+	main.open_hair_book()
+	var book_ok: bool = await _capture("tmp/screenshot-hair-book.png")
+	main.close_hair_book()
+	if not book_ok:
+		return "図鑑を保存できない"
+	main.open_dev_panel()
+	return "" if await _capture("tmp/screenshot-dev-panel.png") else "開発者向け調整画面を保存できない"
+
+
+## 床の毛を狙って引いている途中 (伸びた毛と閉じかけた手) と、抜いた直後 (「+1 本」) を撮る。
+## 引いている途中と「+1 本」が撮る間に進んだり消えたりしないよう、撮る間はメインシーンの処理を止める。
+## 撮れたら空文字、失敗したら理由を返す
+func _capture_pluck(main: Node3D) -> String:
+	var hand: HandController = main.hand
+	if await HandAim.aim_at_floor_hair(self, main) < 0:
+		return "床の毛を狙える位置が見つからない"
+	if not hand.begin_pull():
+		return "狙った床の毛をつまめない"
+	hand.advance_pull(hand.get_pull_duration() * PULL_SNAPSHOT_PROGRESS)
+	if not await _capture_frozen(main, "tmp/screenshot-pluck.png"):
+		return "引いている途中を保存できない"
+	if hand.advance_pull(hand.get_pull_duration()) < 1:
+		return "引き終えても毛が抜けない"
+	if not await _capture_frozen(main, "tmp/screenshot-plucked.png"):
+		return "抜いた直後を保存できない"
+	return ""
+
+
+## メインシーンの処理を止めたまま現在の画面を path に保存する。保存できたら true
+func _capture_frozen(main: Node3D, path: String) -> bool:
+	main.process_mode = Node.PROCESS_MODE_DISABLED
+	var ok: bool = await _capture(path)
+	main.process_mode = Node.PROCESS_MODE_INHERIT
+	return ok
 
 
 ## 撮影に使ったメインシーン・自前生成 GameState・一時セーブファイルを片付ける

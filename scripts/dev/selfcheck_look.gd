@@ -1,10 +1,8 @@
 extends RefCounted
-## 見た目の試作 (issue #19) の部屋・手・画面の表示の検証スイート (scripts/dev/selfcheck.gd から呼ぶ)。
+## 見た目の試作 (issue #19) の部屋・画面の表示の検証スイート (scripts/dev/selfcheck.gd から呼ぶ)。
 
 ## 見た目の試作の部屋のスクリプト
 const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room.gd")
-## 一人称の手のスクリプト
-const FirstPersonHandScript := preload("res://scripts/look/first_person_hand.gd")
 ## 見た目の試作の画面の表示のスクリプト
 const LookPrototypeHudScript := preload("res://scripts/look/look_prototype_hud.gd")
 ## 開発者向け調整値データ型スクリプト
@@ -32,11 +30,10 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_automation_props()
 	suite._check_apply_edges()
 	suite._check_textured_material()
-	suite._check_hand_pose()
 	suite._check_hud_samples()
 
 
-## 部屋の範囲・描く毛の本数・窓を付ける壁の判定の境界を検証する
+## 部屋の範囲・窓を付ける壁の判定の境界を検証する
 func _check_room_predicates() -> void:
 	var room: MansionLayout.RoomDef = MansionLayoutScript.RoomDef.new()
 	room.center = Vector3(10.0, 0.0, -4.0)
@@ -47,15 +44,6 @@ func _check_room_predicates() -> void:
 		and not LookPrototypeRoomScript.is_inside_room(room, Vector3(13.01, 0.0, -4.0))
 		and not LookPrototypeRoomScript.is_inside_room(room, Vector3(10.0, 0.0, -6.01)),
 		"部屋の範囲の判定は壁の線上を内、1 cm 外を外とする",
-	)
-	var cap: int = LookPrototypeRoomScript.VISUAL_HAIR_CAP
-	_check(
-		LookPrototypeRoomScript.visual_hair_count(-5) == 0
-		and LookPrototypeRoomScript.visual_hair_count(0) == 0
-		and LookPrototypeRoomScript.visual_hair_count(321) == 321
-		and LookPrototypeRoomScript.visual_hair_count(cap) == cap
-		and LookPrototypeRoomScript.visual_hair_count(cap + 1) == cap,
-		"1 本ずつ描く毛の本数は数えている本数 (0 未満は 0) で、上限で打ち切る",
 	)
 	# 期待値の配列リテラルと == で比べるため、型付きでない Array にする
 	var sides: Array = []
@@ -97,19 +85,19 @@ func _check_prototype_environment() -> void:
 	)
 
 
-## 最初の部屋だけに材質・影・毛を重ね、作り直しても重ねた物が 1 組のままであることを検証する
+## 最初の部屋だけに材質・影を重ね、作り直しても重ねた物が 1 組のままで、屋敷の毛を増やさないことを検証する
 func _check_apply_to_first_room_only() -> void:
 	var tuning: MansionTuning = MansionTuningScript.new()
 	tuning.room_count = 2
 	tuning.object_count = 6
 	tuning.hair_count = 4000
 	var layout: MansionLayout = MansionBuilderScript.build_layout(tuning)
-	var progress: BuildingProgress = MansionBuilderScript.build_initial_progress(layout, tuning)
 	var world: MansionWorld = MansionWorldScript.new()
-	world.rebuild(layout, progress)
+	world.rebuild(layout, MansionBuilderScript.build_initial_progress(layout, tuning))
 	var look_room: LookPrototypeRoom = LookPrototypeRoomScript.new()
-	look_room.apply(layout, progress, world)
-	look_room.apply(layout, progress, world)
+	var world_hairs_before: int = world.get_hair_field().get_remaining_count()
+	look_room.apply(layout, world)
+	look_room.apply(layout, world)
 
 	var first_room_id: StringName = layout.rooms[0].room_id
 	_check(
@@ -154,50 +142,48 @@ func _check_apply_to_first_room_only() -> void:
 		"影は最初の部屋の灯りだけに付く",
 	)
 
-	var counted_in_first_room: int = 0
-	for surface: MansionLayout.SurfaceDef in layout.surfaces:
-		if surface.room_id == first_room_id:
-			counted_in_first_room += progress.find_surface_hair(surface.surface_id).total_count()
+	# 毛は屋敷 (MansionWorld) が描く物だけで、試作は毛を足しも消しもしない (手で毛を取る操作 #9 が数える毛と同じにするため)
 	_check(
-		counted_in_first_room > 0
-		and look_room.get_visual_hair_count() == counted_in_first_room
-		and look_room.get_placed_hair_count() == counted_in_first_room,
-		"上限より少ない時は、最初の部屋で数えている本数と同じ本数の毛を描く (%d / %d)"
-		% [look_room.get_visual_hair_count(), counted_in_first_room],
+		world_hairs_before > 0
+		and world.get_hair_field().get_remaining_count() == world_hairs_before
+		and look_room.find_children("*", "MultiMeshInstance3D", true, false).is_empty(),
+		"試作は屋敷の毛の本数を変えず、自分の毛を描かない (%d 本)" % world_hairs_before,
 	)
 	_check(
 		look_room.get_child_count() == 1,
-		"2 回重ねても重ねた物 (窓・光・毛) は 1 組だけ残る (子 %d)" % look_room.get_child_count(),
+		"2 回重ねても重ねた物 (窓・光) は 1 組だけ残る (子 %d)" % look_room.get_child_count(),
 	)
 
-	look_room.apply(null, null, world)
+	look_room.apply(null, world)
 	_check(
-		look_room.get_target_room_id() == &""
-		and look_room.get_child_count() == 0
-		and look_room.get_visual_hair_count() == 0,
+		look_room.get_target_room_id() == &"" and look_room.get_child_count() == 0,
 		"レイアウトが無い時は何も重ねない",
 	)
 	look_room.free()
 	world.free()
 
 
-## 掃除ロボットの置き物が 3 台並び、走った帯の床とカーペットの毛だけが消えることを検証する
+## 掃除ロボットの置き物が 3 台並び、屋敷の毛のうち走った帯の床とカーペットの毛だけが消えることを検証する
 func _check_automation_props() -> void:
 	var look_room: LookPrototypeRoom = LookPrototypeRoomScript.new()
-	_check(look_room.show_automation_props() == 0, "部屋を重ねる前は掃除ロボットを置かない")
+	_check(look_room.show_automation_props(null) == 0, "部屋を重ねる前は掃除ロボットを置かない")
 	var tuning: MansionTuning = MansionTuningScript.new()
 	tuning.room_count = 1
 	tuning.object_count = 4
 	tuning.hair_count = 20000
 	var layout: MansionLayout = MansionBuilderScript.build_layout(tuning)
-	var progress: BuildingProgress = MansionBuilderScript.build_initial_progress(layout, tuning)
-	look_room.apply(layout, progress, null)
-	var hair_field: Node3D = look_room.get_hair_field()
-	var origins: Array[Vector3] = []
-	for hair_id: int in range(look_room.get_placed_hair_count()):
-		origins.append(hair_field.get_hair_transform(hair_id).origin)
-	var before: int = look_room.get_visual_hair_count()
-	var removed: int = look_room.show_automation_props()
+	var world: MansionWorld = MansionWorldScript.new()
+	world.rebuild(layout, MansionBuilderScript.build_initial_progress(layout, tuning))
+	look_room.apply(layout, world)
+	var hair_field: Node3D = world.get_hair_field()
+	# 消す前の全部の毛の ID と根元 (消すと同じ表面の毛の位置が入れ替わるため、ID で控える)
+	var origins: Dictionary = {}
+	for surface_index: int in range(hair_field.get_surface_count()):
+		for slot: int in range(hair_field.get_surface_visible_instance_count(surface_index)):
+			var slot_hair_id: int = hair_field.get_hair_id_at_slot(surface_index, slot)
+			origins[slot_hair_id] = hair_field.get_hair_transform(slot_hair_id).origin
+	var before: int = hair_field.get_remaining_count()
+	var removed: int = look_room.show_automation_props(hair_field)
 	# 帯の外の毛 (家具の上・どの帯の Z 幅にも入らない・走り始めより壁側) が 1 本も消えていないことを、
 	# ROBOT_LANES と部屋の寸法から帯を求め直して確かめる
 	var room: MansionLayout.RoomDef = layout.rooms[0]
@@ -212,7 +198,7 @@ func _check_automation_props() -> void:
 	var ahead_of_robot_count: int = 0
 	# 帯の Z 幅に入る床の毛のうち、走り始めより壁側 (-X) にあるもの。X の下限の境界の側
 	var behind_start_count: int = 0
-	for hair_id: int in range(origins.size()):
+	for hair_id: int in origins:
 		var origin: Vector3 = origins[hair_id]
 		var in_any_lane: bool = false
 		for lane: Dictionary in LookPrototypeRoomScript.ROBOT_LANES:
@@ -252,13 +238,13 @@ func _check_automation_props() -> void:
 	)
 	_check(
 		removed > 0
-		and look_room.get_visual_hair_count() == before - removed
+		and hair_field.get_remaining_count() == before - removed
 		and look_room.get_robot_count() == LookPrototypeRoomScript.ROBOT_LANES.size(),
-		"掃除ロボットが %d 台並び、走った帯の毛 %d 本が描く毛から消える"
+		"掃除ロボットが %d 台並び、走った帯の毛 %d 本が屋敷の毛から消える"
 		% [look_room.get_robot_count(), removed],
 	)
 	_check(
-		look_room.show_automation_props() == 0
+		look_room.show_automation_props(hair_field) == 0
 		and look_room.get_robot_count() == LookPrototypeRoomScript.ROBOT_LANES.size(),
 		"2 回置いても掃除ロボットは同じ台数で、消えた帯の毛は増えも減りもしない",
 	)
@@ -276,23 +262,16 @@ func _check_automation_props() -> void:
 		% [dock.position if dock != null else null],
 	)
 	look_room.free()
+	world.free()
 
 
-## 描く毛の上限・部屋の無いレイアウト・進行の無い時・窓を付ける壁が無い時と西の壁に付ける時の重ね方を検証する
+## 部屋の無いレイアウト・屋敷の無い時・プレイヤーの無い時・窓を付ける壁が無い時と 4 面の壁に付ける時の重ね方を検証する
 func _check_apply_edges() -> void:
 	var look_room: LookPrototypeRoom = LookPrototypeRoomScript.new()
 	var tuning: MansionTuning = MansionTuningScript.new()
 	tuning.room_count = 1
 	tuning.object_count = 4
-	# 1 部屋の屋敷で、部屋の毛が描く毛の上限を超える本数
-	tuning.hair_count = LookPrototypeRoomScript.VISUAL_HAIR_CAP + 5000
 	var layout: MansionLayout = MansionBuilderScript.build_layout(tuning)
-	var progress: BuildingProgress = MansionBuilderScript.build_initial_progress(layout, tuning)
-	look_room.apply(layout, progress, null)
-	_check(
-		look_room.get_visual_hair_count() == LookPrototypeRoomScript.VISUAL_HAIR_CAP,
-		"部屋で数えている毛が上限を超える時は上限の本数だけ描く (%d)" % look_room.get_visual_hair_count(),
-	)
 
 	var room: MansionLayout.RoomDef = layout.rooms[0]
 	# 縦横の違う部屋にして、東西の壁は幅 (size.x)・南北の壁は奥行 (size.z) から位置を求めることを見分ける
@@ -313,7 +292,7 @@ func _check_apply_edges() -> void:
 		room.open_south = side != &"south"
 		room.open_east = side != &"east"
 		room.open_north = side != &"north"
-		look_room.apply(layout, progress, null)
+		look_room.apply(layout, null)
 		var window: Node3D = look_room.get_window_node()
 		var daylight: SpotLight3D = look_room.get_daylight()
 		_check(
@@ -342,8 +321,7 @@ func _check_apply_edges() -> void:
 	# setup の前 (プレイヤーが無い) は、歩いていて部屋があっても試作の見た目を出さない
 	look_room.set_playing(true)
 	_check(not look_room.is_prototype_active(), "プレイヤーが無い時は試作の見た目を出さない")
-	# プレイヤーが tree の外の時と、プレイヤーを解放した後 (カメラの子の手も一緒に解放される) は、試作の見た目を出さず、
-	# 解放された手にも触れない
+	# プレイヤーが tree の外の時と、プレイヤーを解放した後は、試作の見た目を出さない
 	var outside_player: FirstPersonPlayer = FirstPersonPlayerScript.new()
 	var environment_node: WorldEnvironment = WorldEnvironment.new()
 	look_room.setup(outside_player, environment_node)
@@ -358,40 +336,25 @@ func _check_apply_edges() -> void:
 	look_room.set_playing(false)
 	environment_node.free()
 
-	look_room.apply(layout, null, null)
+	look_room.apply(layout, null)
 	_check(
-		look_room.get_target_room_id() == room.room_id
-		and look_room.get_hair_field() == null
-		and look_room.get_visual_hair_count() == 0,
-		"進行が無い時は部屋を重ねるが毛は描かない",
+		look_room.get_target_room_id() == room.room_id and look_room.get_window_node() != null,
+		"屋敷 (MansionWorld) が無い時も、部屋の窓と光は重ねる",
 	)
 	_check(
-		look_room.show_automation_props() == 0
+		look_room.show_automation_props(null) == 0
 		and look_room.get_robot_count() == LookPrototypeRoomScript.ROBOT_LANES.size(),
-		"毛を描いていない部屋でも掃除ロボットは置き、消える毛は 0 本",
+		"毛の無い時も掃除ロボットは置き、消える毛は 0 本",
 	)
 
 	room.open_west = true
 	room.open_south = true
 	room.open_east = true
 	room.open_north = true
-	look_room.apply(layout, progress, null)
+	look_room.apply(layout, null)
 	_check(look_room.get_window_node() == null, "4 面ともドアの部屋には窓を付けない")
 
-	# 毛が 0 本の屋敷: 部屋は重ねるが、毛は 1 本も描かない
-	tuning.hair_count = 0
-	var empty_layout: MansionLayout = MansionBuilderScript.build_layout(tuning)
-	look_room.apply(
-		empty_layout, MansionBuilderScript.build_initial_progress(empty_layout, tuning), null
-	)
-	_check(
-		look_room.get_target_room_id() == empty_layout.rooms[0].room_id
-		and look_room.get_visual_hair_count() == 0
-		and look_room.get_placed_hair_count() == 0,
-		"毛が 0 本の屋敷では部屋を重ね、毛は描かない (%d)" % look_room.get_visual_hair_count(),
-	)
-
-	look_room.apply(MansionLayoutScript.new(), progress, null)
+	look_room.apply(MansionLayoutScript.new(), null)
 	_check(
 		look_room.get_target_room_id() == &"" and look_room.get_child_count() == 0,
 		"部屋の無いレイアウトには何も重ねない",
@@ -418,41 +381,6 @@ func _check_textured_material() -> void:
 		and with_both.uv1_scale.is_equal_approx(Vector3.ONE),
 		"凹凸は高さの画像があり強さが正の時だけ付き、テクスチャは繰り返しの長さ 1 m で 3 方向から投影する",
 	)
-
-
-## 手の構図の切り替えで、伸びた毛が毛をつまんでいる間だけ見えることを検証する
-func _check_hand_pose() -> void:
-	var hand: FirstPersonHand = FirstPersonHandScript.new()
-	var idle_visible: bool = hand.is_stretched_hair_visible()
-	hand.set_pinch_pose(true, 0.0)
-	var pinch_state: Array = [hand.is_pinching(), hand.is_stretched_hair_visible()]
-	# つまむ構図: 手首はつまむ位置と回転になり、人差し指は他の 3 本より曲げが浅い (親指の先と合わせるため)
-	_check(
-		hand.position.is_equal_approx(FirstPersonHandScript.PINCH_POSITION)
-		and hand.rotation.is_equal_approx(FirstPersonHandScript.PINCH_ROTATION)
-		and is_equal_approx(
-			-(hand.get_node("Finger0") as Node3D).rotation.x, FirstPersonHandScript.PINCH_INDEX_CURL
-		)
-		and is_equal_approx(
-			-(hand.get_node("Finger3") as Node3D).rotation.x,
-			FirstPersonHandScript.PINCH_FOLDED_FINGER_CURL
-		),
-		"つまむ構図では手首がつまむ位置と回転になり、人差し指だけ浅く曲げる",
-	)
-	hand.set_pinch_pose(false, 0.0)
-	_check(
-		not idle_visible
-		and pinch_state == [true, true]
-		and not hand.is_pinching()
-		and not hand.is_stretched_hair_visible()
-		and hand.position == FirstPersonHandScript.IDLE_POSITION,
-		"伸びた毛は平常時に隠れ、つまんでいる間だけ見え、戻すと平常の位置に戻る",
-	)
-	_check(
-		hand.get_stretched_hair_endpoints().is_empty(),
-		"tree に入っていない手は伸びた毛の両端を返さない",
-	)
-	hand.free()
 
 
 ## 画面の表示の見本の値 (所持金・道具の枠・案内) を検証する
