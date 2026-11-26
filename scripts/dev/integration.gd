@@ -408,14 +408,23 @@ func _check_focus_pause_resume(audio_manager: AudioManagerScript) -> void:
 		"RESUMED で BGMPlayer.stream_paused が false に戻る"
 	)
 
-	# 一時停止中に別曲へ切り替えると一時停止状態とフラグが解除されて新曲が再生される
+	# 一時停止中に別曲へ切り替えても裏のまま鳴り出さず、曲だけ差し替えて復帰時に再開する
 	audio_manager.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
 	audio_manager.play_bgm(AudioCatalog.BGM_MANSION)
 	_check(
-		not audio_manager.is_bgm_paused_by_focus()
+		audio_manager.get_current_bgm_name() == AudioCatalog.BGM_MANSION
+		and audio_manager.is_bgm_paused_by_focus()
+		and bgm_player.stream_paused
+		and not bgm_player.playing,
+		"一時停止中の別曲 play_bgm では裏のまま鳴り出さず一時停止を維持して曲を差し替える"
+	)
+	audio_manager.notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	_check(
+		audio_manager.get_current_bgm_name() == AudioCatalog.BGM_MANSION
+		and not audio_manager.is_bgm_paused_by_focus()
 		and not bgm_player.stream_paused
 		and bgm_player.playing,
-		"一時停止中の別曲 play_bgm で stream_paused とフラグが解除され再生される"
+		"一時停止中に別曲へ切り替えた後の FOCUS_IN で新曲が再開される"
 	)
 
 	# 一時停止中に stop_bgm() すると一時停止状態とフラグが解除され、直後の FOCUS_IN でも再開しない

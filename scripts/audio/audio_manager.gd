@@ -121,11 +121,16 @@ func play_bgm_path(scene_name: String, path: String) -> bool:
 	var stream: AudioStream = load_stream(path)
 	if stream == null:
 		return false
+	var keep_paused: bool = _paused_by_focus
 	_enable_loop(stream)
 	_bgm_player.stream = stream
 	_bgm_player.stream_paused = false
-	_paused_by_focus = false
 	_bgm_player.play()
+	if keep_paused:
+		_bgm_player.stream_paused = true
+		_paused_by_focus = true
+	else:
+		_paused_by_focus = false
 	_bgm_play_count += 1
 	_current_bgm_name = scene_name
 	_needs_exit_release_wait = true
