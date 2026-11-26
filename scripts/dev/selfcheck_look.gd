@@ -334,7 +334,6 @@ func _check_apply_edges() -> void:
 		"プレイヤーが tree の外の時と解放した後は試作の見た目を出さない",
 	)
 	look_room.set_playing(false)
-	environment_node.free()
 
 	look_room.apply(layout, null)
 	_check(
@@ -360,6 +359,8 @@ func _check_apply_edges() -> void:
 		"部屋の無いレイアウトには何も重ねない",
 	)
 	look_room.free()
+	# setup に渡した環境のノードは、試作の部屋が環境を差し替えなくなった (look_room を解放した) 後に解放する
+	environment_node.free()
 
 
 ## 材質の凹凸は、高さの画像があり強さが正の時だけ付くことを検証する

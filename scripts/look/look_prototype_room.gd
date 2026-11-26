@@ -269,7 +269,7 @@ func _refresh_active() -> void:
 	_prototype_active = active
 	var wanted_environment: Environment = _prototype_environment if active else _base_environment
 	# 毎フレーム呼ばれるため、変わった時だけ差し替える
-	if _world_environment != null and _world_environment.environment != wanted_environment:
+	if is_instance_valid(_world_environment) and _world_environment.environment != wanted_environment:
 		_world_environment.environment = wanted_environment
 
 
