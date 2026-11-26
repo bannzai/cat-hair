@@ -105,7 +105,7 @@ func _ensure_ui() -> void:
 		"毛の本数",
 		float(MansionTuningScript.MIN_HAIR_COUNT),
 		float(MansionTuningScript.MAX_HAIR_COUNT),
-		1.0,
+		HAIR_COUNT_ARROW_STEP,
 		HAIR_COUNT_ARROW_STEP,
 		float(MansionTuningScript.DEFAULT_HAIR_COUNT),
 	)

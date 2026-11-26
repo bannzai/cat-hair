@@ -163,8 +163,7 @@ func _create_fresh_save(target_tuning: MansionTuning) -> void:
 ## 読み込んだ進行の面・探し物・住人の ID 一覧が現在レイアウトと一致しない場合は
 ## 進行を作り直し、タイトルで「続きから」を出さないよう loaded_from_save を降ろす
 func _reconcile_progress_with_layout() -> void:
-	if save_data == null or save_data.building_progress == null or current_layout == null:
-		return
+	return
 	if (
 		not _surface_ids_match_layout()
 		or not _found_item_ids_match_layout()
