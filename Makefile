@@ -44,7 +44,7 @@ MOVIE_FRAMES ?= 150
 # hairbench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/hairbench.gd の DEFAULT_COUNTS が SSOT)
 HAIRBENCH_COUNTS ?=
 
-.PHONY: import check selfcheck integration failure-path lint test verify screenshot movie hairbench run build-macos build-windows build-linux build-all clean
+.PHONY: import check selfcheck integration failure-path lint test verify screenshot movie hairbench run build-macos build-windows build-linux build-web build-all clean
 
 # ログ・撮影の出力先。.gdignore を置き、撮影した PNG を Godot に import させない
 $(LOG_DIR)/.gdignore:
@@ -192,13 +192,23 @@ build-linux: import build/.gdignore
 	test -f build/linux/cat-hair.x86_64
 	test -f build/linux/cat-hair.pck
 
+# Web 版は配布しない。入力で変わる振る舞いをランナー上のブラウザで触って確かめる時 (.github/workflows/browser-session.yml)
+# だけ書き出すため、build-all には含めない
+build-web: import build/.gdignore
+	@mkdir -p build/web
+	"$(GODOT)" --headless $(ENGINE_LOG) --path . --export-release "Web" build/web/index.html
+	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/$@.godot.log
+	test -f build/web/index.html
+	test -f build/web/index.wasm
+	test -f build/web/index.pck
+
 build-all: build-macos build-windows build-linux
 
 # ビルド成果物と、この Makefile が tmp/ に書いたログ・撮影・録画だけを消す (tmp/ は agent の作業ファイルも置くため
 # ディレクトリごとや *.log をまとめては消さない)。ログは target ごとの <target>.log と、ENGINE_LOG の <target>.godot.log
 clean:
 	rm -rf build
-	rm -f $(foreach target,import check selfcheck integration integration-cmdline failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie hairbench run build-macos build-windows build-linux,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
+	rm -f $(foreach target,import check selfcheck integration integration-cmdline failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie hairbench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
 	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4
 
 # 引数なしの make で run を実行する (人が手で動作確認するための入口。検査・テストは CI が行う)
