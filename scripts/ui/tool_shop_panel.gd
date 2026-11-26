@@ -56,6 +56,8 @@ var _money_label: Label = null
 var _sell_button: Button = null
 ## 毛を運ぶダンプカーを呼ぶボタン (ダンプカーを持っている時だけ見せる)
 var _haul_button: Button = null
+## 道具の行と手の強化を縦に送って見る枠 (道具の行が画面の高さに収まらないため)
+var _scroll: ScrollContainer = null
 ## 道具ごとの説明の行 (tool_id -> Label)
 var _tool_labels: Dictionary = {}
 ## 道具ごとの買う / レベルを上げるボタン (tool_id -> Button)
@@ -223,6 +225,12 @@ func get_haul_button() -> Button:
 	return _haul_button
 
 
+## 道具 tool_id の行が見える所まで、道具の行の枠を送る (画面を開いて並びが決まった後に呼ぶ)
+func scroll_to_tool(tool_id: StringName) -> void:
+	if _tool_buttons.has(tool_id):
+		_scroll.ensure_control_visible(_tool_buttons[tool_id])
+
+
 ## 所持金と在庫の見出しの文言を返す (検証用)
 func get_money_label_text() -> String:
 	return _money_label.text
@@ -282,17 +290,16 @@ func _build() -> void:
 	_haul_button.pressed.connect(func() -> void: haul_requested.emit())
 	layout.add_child(_haul_button)
 
-	# 道具の行と手の強化は画面の高さに収まらないため、縦に送って見る枠に入れる
-	var scroll: ScrollContainer = ScrollContainer.new()
-	scroll.name = "Scroll"
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	layout.add_child(scroll)
+	_scroll = ScrollContainer.new()
+	_scroll.name = "Scroll"
+	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	layout.add_child(_scroll)
 	var rows: VBoxContainer = VBoxContainer.new()
 	rows.name = "Rows"
 	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rows.add_theme_constant_override("separation", 6)
-	scroll.add_child(rows)
+	_scroll.add_child(rows)
 
 	for tool_def: Dictionary in ToolCatalogScript.TOOLS:
 		var tool_id: StringName = tool_def["id"]

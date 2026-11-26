@@ -15,6 +15,16 @@ const BigToolModelsScript := preload("res://scripts/tools/big_tool_models.gd")
 
 ## アンドロイドが 1 回掃除する間隔 (遊んだ時間の秒)。部屋を歩いて回る間に何回か掃除したと分かる長さ
 const ANDROID_INTERVAL_SECONDS: float = 4.0
+## アンドロイドを立たせる所の候補 (部屋の中央からの、部屋の幅・奥行に対する割合)。中央と 4 隅寄りの順に見る
+const ANDROID_SPOT_RATIOS: Array[Vector2] = [
+	Vector2(0.0, 0.0),
+	Vector2(0.25, -0.25),
+	Vector2(-0.25, -0.25),
+	Vector2(0.25, 0.25),
+	Vector2(-0.25, 0.25),
+]
+## アンドロイドを物から離す余白 (m。体の幅の半分ほど)
+const ANDROID_CLEARANCE_M: float = 0.25
 ## 加工機を買取業者から東へ並べる時の、買取業者からの距離と台の間隔 (m)
 const PROCESSOR_ROW_START_M: float = 0.8
 ## 加工機の台の間隔 (m。箱の幅 0.5 m に 0.1 m のすき間)
@@ -166,14 +176,35 @@ func get_models_root() -> Node3D:
 	return _models_root
 
 
-## アンドロイドを立たせる所 (最後に掃除した部屋の、中央から北東へ部屋の 4 分の 1 寄った所。中央の家具と重ならないため。
-## 掃除する前は最初の部屋) を返す
+## アンドロイドを立たせる所を返す。最後に掃除した部屋 (掃除する前は最初の部屋) の中央と、中央から 4 隅へ部屋の 4 分の 1
+## 寄った所を順に見て、物 (家具・敷物) の足元の範囲に入らない最初の所にする (家具の上に立って見えないため)。
+## どこも物と重なる時は中央
 func _android_position() -> Vector3:
-	var rooms: Array = _game_state.current_layout.rooms
-	if rooms.is_empty():
+	var layout: MansionLayout = _game_state.current_layout
+	if layout.rooms.is_empty():
 		return Vector3.ZERO
-	var target: MansionLayout.RoomDef = rooms[0]
-	for room: MansionLayout.RoomDef in rooms:
+	var target: MansionLayout.RoomDef = layout.rooms[0]
+	for room: MansionLayout.RoomDef in layout.rooms:
 		if room.room_id == _android_room_id:
 			target = room
-	return target.center + Vector3(target.size.x * 0.25, 0.0, -target.size.z * 0.25)
+	for ratio: Vector2 in ANDROID_SPOT_RATIOS:
+		var spot: Vector3 = target.center + Vector3(
+			target.size.x * ratio.x, 0.0, target.size.z * ratio.y
+		)
+		if not _is_on_object(layout, target.room_id, spot):
+			return spot
+	return target.center
+
+
+## 部屋 room_id の物のどれかの足元の範囲 (アンドロイドの体の幅の余白を足した範囲) に spot が入るか
+func _is_on_object(layout: MansionLayout, room_id: StringName, spot: Vector3) -> bool:
+	for obj: MansionLayout.ObjectDef in layout.objects:
+		if obj.room_id != room_id:
+			continue
+		var local: Vector3 = (spot - obj.position).rotated(Vector3.UP, -obj.rotation_y)
+		if (
+			absf(local.x) <= obj.size.x * 0.5 + ANDROID_CLEARANCE_M
+			and absf(local.z) <= obj.size.z * 0.5 + ANDROID_CLEARANCE_M
+		):
+			return true
+	return false

@@ -91,8 +91,9 @@ func _verify_suction_truck(main: Node3D, game_state: Node) -> void:
 	await _checker._press_physical_key(KEY_9)
 	_check(
 		main.tools.get_selected_tool_id() == truck and main.tools.is_in_driver_seat()
+		and not main.hand.get_hand_view().visible
 		and main.look_hud.get_tool_slot_texts()[8] == "9 業務用の吸引車",
-		"9 キーで吸引車を選ぶと運転席からの眺めになり、9 番目の枠に吸引車が出る",
+		"9 キーで吸引車を選ぶと運転席からの眺めになって画面の手が隠れ、9 番目の枠に吸引車が出る",
 	)
 	var room_before: int = int(game_state.get_room_status(room.room_id)["hair_count"])
 	var field_before: int = main.mansion_world.get_hair_field().get_remaining_count()
@@ -129,8 +130,9 @@ func _verify_suction_truck(main: Node3D, game_state: Node) -> void:
 	await _checker._press_physical_key(KEY_1)
 	_check(
 		main.tools.get_selected_tool_id() == ToolCatalogScript.TOOL_HAND
-		and not main.tools.is_in_driver_seat(),
-		"手に持ち替えると運転席から降りる",
+		and not main.tools.is_in_driver_seat()
+		and main.hand.get_hand_view().visible,
+		"手に持ち替えると運転席から降りて、画面の手がまた見える",
 	)
 
 

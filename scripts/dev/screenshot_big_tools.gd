@@ -101,6 +101,10 @@ static func _capture_processing(shooter: SceneTree, main: Node3D, game_state: No
 	if not await shooter._capture_frozen(main, "tmp/screenshot-dump-truck.png"):
 		return "ダンプカーを保存できない"
 	main.open_tool_shop()
+	# 道具の行の並びが決まってから、加工機とダンプカーの行が見える所まで送る
+	await shooter.process_frame
+	await shooter.process_frame
+	main.tool_shop_panel.scroll_to_tool(ToolCatalogScript.TOOL_DUMP_TRUCK)
 	var shop_ok: bool = await shooter._capture("tmp/screenshot-tool-shop-big-tools.png")
 	main.close_tool_shop()
 	return "" if shop_ok else "加工品とダンプカーのボタンが出た道具を買う画面を保存できない"
