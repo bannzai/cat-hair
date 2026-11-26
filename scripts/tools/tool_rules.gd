@@ -53,7 +53,7 @@ static func miss_ratio(tool_id: StringName, level: int, surface_type: StringName
 			ratio *= ToolCatalogScript.GOOD_SURFACE_FACTOR
 		RATING_BAD:
 			ratio *= ToolCatalogScript.BAD_SURFACE_FACTOR
-	return clampf(ratio, 0.0, MAX_MISS_RATIO)
+	return clampf(ratio, MIN_MISS_RATIO, MAX_MISS_RATIO)
 
 
 ## 範囲内の 1 本について、0 以上 1 未満の乱数 roll が取りこぼし (その毛が残る) になるか

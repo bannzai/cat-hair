@@ -236,7 +236,7 @@ func apply_tool_sweep(
 	tool_id: StringName, surface_id: StringName, counts_by_color: Dictionary
 ) -> int:
 	var owned: OwnedTool = find_owned_tool(tool_id)
-	if owned == null:
+	if owned == null or not ToolRulesScript.can_use(tool_id, owned.consumable_count):
 		return -1
 	var consumed: bool = ToolRulesScript.uses_consumable(tool_id)
 	if consumed:
@@ -417,7 +417,7 @@ func advance_time(delta_seconds: float) -> int:
 func _spend(price: int) -> bool:
 	if save_data == null or save_data.building_progress == null:
 		return false
-	if price < 0:
+	if not ToolRulesScript.can_afford(save_data.building_progress.money, price):
 		return false
 	save_data.building_progress.money -= price
 	return true
