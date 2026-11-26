@@ -67,7 +67,7 @@ func refresh(game_state: Node) -> void:
 	_game_state = game_state
 	# 台の数か屋敷の部屋が変わった時だけボタンを作り直す。毛の本数やお金が変わるたび (掃除ロボットが 1 秒に 1 本取る
 	# たび) に作り直すと、押している途中のボタンが消えて押した操作が失われるため、それ以外は文字と押せるかだけ変える
-	if _robot_rows.get_child_count() >= 0:
+	if _robot_rows.get_child_count() != robots.size():
 		_clear_children(_robot_rows)
 		for robot_index: int in range(robots.size()):
 			var select: Button = Button.new()

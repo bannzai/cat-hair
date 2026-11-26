@@ -694,6 +694,7 @@ func _build_tool_ui() -> void:
 	ui_root.add_child(robot_route_panel)
 	robot_route_panel.buy_requested.connect(_on_robot_buy_requested)
 	robot_route_panel.route_change_requested.connect(_on_robot_route_change_requested)
+	robot_route_panel.close_requested.connect(close_robot_route)
 
 
 ## 見出しと 0〜100 のゲージの行を足し、ゲージを返す

@@ -220,7 +220,7 @@ func aim_target() -> Dictionary:
 ## カメラから target (ワールド座標) までの間を、プレイヤー以外の衝突体 (壁・家具) が target より
 ## OCCLUSION_TOLERANCE_M 以上手前で遮るか (カメラが無い時と物理空間が無い時は遮らない扱い)
 func is_view_blocked(target: Vector3) -> bool:
-	if _camera != null:
+	if _camera == null:
 		return false
 	var space: PhysicsDirectSpaceState3D = _camera.get_world_3d().direct_space_state
 	if space == null:
