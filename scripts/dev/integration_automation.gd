@@ -82,6 +82,17 @@ func _verify_cats_walk(main: Node3D, game_state: Node) -> void:
 func _verify_hair_sync(main: Node3D, game_state: Node) -> void:
 	var hair_field: Node3D = main.get_node("MansionWorld").get_hair_field()
 	var field_before: int = hair_field.get_remaining_count()
+	# 猫の毛は面の最初の本数までしか溜まらないため、猫が立ち止まる面を先にきれいにする (手で取り切った後と同じ)。
+	# 今いる部屋 (後で掃除ロボットを置く部屋) は、掃除ロボットが取る毛を残すためにきれいにしない
+	var current_room: MansionLayout.RoomDef = main.get_current_room()
+	var keep_room: StringName = (
+		current_room.room_id if current_room != null else game_state.current_layout.rooms[0].room_id
+	)
+	for route: Dictionary in game_state.automation.get_cat_routes():
+		for stop: Dictionary in route["stops"]:
+			if stop["room_id"] != keep_room:
+				_clear_surface(hair_field, game_state, stop["surface_id"])
+	field_before = hair_field.get_remaining_count()
 	var state_before: int = game_state.get_total_remaining_hairs()
 	var progress: BuildingProgress = game_state.save_data.building_progress
 	var surface_before: Dictionary = {}
@@ -209,6 +220,7 @@ func _verify_robot_cleaning(main: Node3D, game_state: Node) -> void:
 	var cycle: float = float(route["cycle_seconds"])
 	var to_cycle_start: float = cycle - fposmod(game_state.automation.get_seconds(), cycle)
 	game_state.automation.advance(to_cycle_start)
+	stock_before = game_state.get_raw_hair_stock_count()
 	var hairs_before: int = game_state.get_total_remaining_hairs()
 	var changes: Dictionary = game_state.automation.advance(RobotRulesScript.ROOM_SECONDS - 1.0)
 	await _checker.process_frame
@@ -292,6 +304,22 @@ func _aim_at_cat(main: Node3D, cat_id: StringName) -> bool:
 		if main.tools.aimed_cat_id() == cat_id:
 			return true
 	return false
+
+
+## surface_id の面の毛を、保存データと屋敷の毛の見た目の両方から取り除く
+static func _clear_surface(hair_field: Node3D, game_state: Node, surface_id: StringName) -> void:
+	var surfaces: Array[MansionLayout.SurfaceDef] = game_state.current_layout.surfaces
+	for index: int in range(surfaces.size()):
+		if surfaces[index].surface_id != surface_id:
+			continue
+		for hair_id: int in hair_field.find_hairs_near(
+			index, surfaces[index].center, INF, hair_field.get_surface_remaining_count(index)
+		):
+			hair_field.remove_hair(hair_id)
+	var surface: SurfaceHair = game_state.save_data.building_progress.find_surface_hair(surface_id)
+	if surface != null:
+		for color_id: Variant in surface.hair_counts.keys():
+			surface.hair_counts[color_id] = 0
 
 
 ## つまむ入力を押して離す (道具を使う)
