@@ -33,6 +33,15 @@ const PLUCK_POPUP_SECONDS: float = 1.5
 const CROSSHAIR_LINE_SIZE: Vector2 = Vector2(16.0, 2.0)
 ## 照準の線の色
 const CROSSHAIR_COLOR: Color = Color(1.0, 1.0, 1.0, 0.85)
+## 見た目の試作 (issue #19) を屋敷の最初の部屋に重ねるノードのスクリプト
+const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room.gd")
+## 見た目の試作の画面の表示 (所持金・道具の枠・案内) のスクリプト
+const LookPrototypeHudScript := preload("res://scripts/look/look_prototype_hud.gd")
+
+## 見た目の試作を屋敷の最初の部屋に重ねるノード (_ready で作る)
+var look_room: LookPrototypeRoom = null
+## 見た目の試作の画面の表示 (_ready で HUD の子に作る)
+var look_hud: LookPrototypeHud = null
 
 ## 狙った毛を手でつまんで抜く操作
 var hand: HandController = null
@@ -79,6 +88,8 @@ var _pluck_popup_remaining: float = 0.0
 @onready var remaining_hair_label: Label = $UILayer/UI/HUD/RemainingHairPanel/RemainingHairLabel
 ## 開発者向け調整パネル
 @onready var dev_tuning_panel: DevTuningPanel = $UILayer/UI/DevTuningPanel
+## 光・影・色の環境
+@onready var world_environment: WorldEnvironment = $WorldEnvironment
 
 
 ## 起動の入口
@@ -94,6 +105,14 @@ func _ready() -> void:
 	settings_button.pressed.connect(_on_settings_pressed)
 	dev_tuning_panel.apply_requested.connect(_on_dev_tuning_applied)
 	dev_tuning_panel.close_requested.connect(close_dev_panel)
+
+	look_room = LookPrototypeRoomScript.new()
+	look_room.name = "LookPrototypeRoom"
+	add_child(look_room)
+	look_room.setup(player, world_environment)
+	look_hud = LookPrototypeHudScript.new()
+	hud.add_child(look_hud)
+	look_hud.set_money_digits(format_hair_count(LookPrototypeHudScript.SAMPLE_MONEY_YEN))
 
 	_game_state = _resolve_game_state()
 	_build_hand_ui()
@@ -149,6 +168,7 @@ func enter_mansion() -> void:
 	dev_tuning_panel.visible = false
 	hair_book_panel.visible = false
 	_sync_controls()
+	look_room.set_playing(true)
 	_refresh_hud()
 	var audio_manager: AudioManagerScript = (
 		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
@@ -263,6 +283,7 @@ func _set_title_mode() -> void:
 	dev_tuning_panel.visible = false
 	hair_book_panel.visible = false
 	_sync_controls()
+	look_room.set_playing(false)
 
 
 ## 保存データの有無に応じてタイトルのボタン文言と「はじめから」表示を更新する
@@ -282,6 +303,7 @@ func _rebuild_world_from_state() -> void:
 	var layout: MansionLayout = _game_state.current_layout
 	hand.cancel_pull()
 	mansion_world.rebuild(layout, _game_state.save_data.building_progress)
+	look_room.apply(layout, mansion_world)
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	_refresh_hud()
 
