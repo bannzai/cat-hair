@@ -2,8 +2,6 @@ extends Control
 ## BGM と効果音のオン・オフを個別に切り替える設定画面。
 ## 切替と同時に AudioManager を通じてバス消音へ反映し、ConfigFile へ保存する。
 
-## 出来事名の定数を持つ音声カタログ
-const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## AudioManager の型解決と実行時取得用スクリプト参照 (headless --script で autoload 名を静的参照しない)
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 ## BGM トグルのパネル内ノードパス (UI とテストで共有する単一の正)
@@ -62,7 +60,7 @@ func _on_bgm_toggled(toggled_on: bool) -> void:
 	if audio_manager == null:
 		return
 	audio_manager.set_bgm_enabled(toggled_on)
-	audio_manager.play_sfx(AudioCatalog.SFX_BUTTON)
+	AudioManagerScript.play_button_sfx(get_tree())
 
 
 ## 効果音トグル切替時の処理
@@ -73,7 +71,7 @@ func _on_sfx_toggled(toggled_on: bool) -> void:
 	if audio_manager == null:
 		return
 	audio_manager.set_sfx_enabled(toggled_on)
-	audio_manager.play_sfx(AudioCatalog.SFX_BUTTON)
+	AudioManagerScript.play_button_sfx(get_tree())
 
 
 ## 閉じるボタン押下時の処理

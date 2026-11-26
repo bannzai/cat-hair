@@ -12,6 +12,10 @@ const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 const AudioSettings := preload("res://scripts/audio/audio_settings.gd")
 ## project.godot の [autoload] に登録するノード名 (実行時取得の単一の正)
 const NODE_NAME: String = "AudioManager"
+## BGM 再生用子ノード名 (本体とテストで共有する単一の正)
+const BGM_PLAYER_NAME: String = "BGMPlayer"
+## 効果音再生用子ノード名の書式 (本体とテストで共有する単一の正)
+const SFX_PLAYER_NAME_FORMAT: String = "SFXPlayer%d"
 ## 効果音を同時に重ねて鳴らせるプレイヤーの本数。手で毛を連続して抜く序盤に 1 秒あたり 2〜3 回鳴らしつつ
 ## UI 操作やお金取得の効果音が重なっても先行の音が途切れにくい余裕として 4 本にした (実機調整で変更可)
 const SFX_POOL_SIZE: int = 4
@@ -246,13 +250,13 @@ func get_last_sfx_player_index() -> int:
 func _setup_players() -> void:
 	if _bgm_player == null:
 		_bgm_player = AudioStreamPlayer.new()
-		_bgm_player.name = "BGMPlayer"
+		_bgm_player.name = BGM_PLAYER_NAME
 		_bgm_player.bus = AudioCatalog.BUS_BGM
 		add_child(_bgm_player)
 	if _sfx_players.is_empty():
 		for index: int in range(SFX_POOL_SIZE):
 			var player: AudioStreamPlayer = AudioStreamPlayer.new()
-			player.name = "SFXPlayer%d" % index
+			player.name = SFX_PLAYER_NAME_FORMAT % index
 			player.bus = AudioCatalog.BUS_SFX
 			add_child(player)
 			_sfx_players.append(player)

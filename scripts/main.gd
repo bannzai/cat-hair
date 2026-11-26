@@ -11,15 +11,19 @@ const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 ## 設定画面パネルの型解決用スクリプト参照
 const AudioSettingsPanelScript := preload("res://scripts/ui/audio_settings_panel.gd")
+## はじめるボタンのノードパス (本体・テスト・撮影で共有する単一の正)
+const START_BUTTON_PATH: String = "Layout/StartButton"
+## 設定ボタンのノードパス (本体・テスト・撮影で共有する単一の正)
+const SETTINGS_BUTTON_PATH: String = "Layout/SettingsButton"
+## 設定画面パネルのノードパス (本体・テストで共有する単一の正)
+const SETTINGS_PANEL_PATH: String = "AudioSettingsPanel"
 
 ## はじめるボタン
-@onready var _start_button: Button = $Layout/StartButton
+var _start_button: Button = null
 ## 設定ボタン
-@onready var _settings_button: Button = $Layout/SettingsButton
+var _settings_button: Button = null
 ## 設定画面パネル
-@onready var _settings_panel: AudioSettingsPanelScript = (
-	$AudioSettingsPanel as AudioSettingsPanelScript
-)
+var _settings_panel: AudioSettingsPanelScript = null
 
 
 ## 起動の入口
@@ -29,6 +33,9 @@ func _ready() -> void:
 	var main_theme: Theme = Theme.new()
 	main_theme.default_font = FONT
 	theme = main_theme
+	_start_button = get_node(START_BUTTON_PATH) as Button
+	_settings_button = get_node(SETTINGS_BUTTON_PATH) as Button
+	_settings_panel = get_node(SETTINGS_PANEL_PATH) as AudioSettingsPanelScript
 	_start_button.pressed.connect(_on_start_button_pressed)
 	_settings_button.pressed.connect(_on_settings_button_pressed)
 	var audio_manager: AudioManagerScript = (

@@ -8,6 +8,8 @@ extends SceneTree
 const HeadlessCheck := preload("res://scripts/dev/headless_check.gd")
 ## 撮影するメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
+## メインシーンのノードパス定数参照用
+const MainScript := preload("res://scripts/main.gd")
 ## 音声管理ノード (AUDIO_RELEASE_TIME_SEC の単一の正と型解決用)
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 
@@ -43,7 +45,7 @@ func _capture_scenes() -> bool:
 	await create_timer(0.3).timeout
 	if not await _capture("tmp/screenshot-title.png"):
 		return false
-	var settings_button: Button = main.get_node_or_null("Layout/SettingsButton")
+	var settings_button: Button = main.get_node_or_null(MainScript.SETTINGS_BUTTON_PATH)
 	if settings_button != null:
 		settings_button.pressed.emit()
 	return await _capture("tmp/screenshot-settings.png")

@@ -4,6 +4,8 @@ extends "res://scripts/dev/headless_check.gd"
 
 ## 動かして確かめるメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
+## メインシーンのノードパス定数参照用
+const MainScript := preload("res://scripts/main.gd")
 ## 音声カタログ
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## 音声設定の永続化検証用
@@ -58,8 +60,15 @@ func _check_title_screen_basics(main: Control) -> void:
 
 ## 題名画面起動時の BGM 再生、同一曲の継続、停止後の再再生、ループ有効化、効果音の出来事別入口を確認する
 func _check_audio_playback_entry(audio_manager: AudioManagerScript, main: Control) -> void:
-	var bgm_player: AudioStreamPlayer = audio_manager.get_node_or_null("BGMPlayer")
+	var bgm_player: AudioStreamPlayer = audio_manager.get_node_or_null(
+		AudioManagerScript.BGM_PLAYER_NAME
+	)
 	_check(bgm_player != null, "AudioManager 配下に BGMPlayer がある")
+	if bgm_player != null:
+		_check(
+			bgm_player.bus == AudioCatalog.BUS_BGM,
+			"BGMPlayer が BGM バスに接続されている (実際: %s)" % bgm_player.bus
+		)
 	_check(
 		audio_manager.get_current_bgm_name() == AudioCatalog.BGM_TITLE,
 		"題名の画面を開くと題名 BGM が再生される (実際: %s)" % audio_manager.get_current_bgm_name()
@@ -117,8 +126,8 @@ func _check_audio_playback_entry(audio_manager: AudioManagerScript, main: Contro
 	)
 
 	# はじめるボタンで効果音 button が実際に鳴ることを確認する
-	var start_button: Button = main.get_node_or_null("Layout/StartButton")
-	_check(start_button != null, "はじめるボタン (Layout/StartButton) がある")
+	var start_button: Button = main.get_node_or_null(MainScript.START_BUTTON_PATH)
+	_check(start_button != null, "はじめるボタン (%s) がある" % MainScript.START_BUTTON_PATH)
 	if start_button != null:
 		var count_before_start: int = audio_manager.get_sfx_play_count()
 		start_button.pressed.emit()
@@ -161,7 +170,9 @@ func _check_sfx_pool_round_robin(audio_manager: AudioManagerScript) -> void:
 	audio_manager.stop_all()
 	var pool_size: int = AudioManagerScript.SFX_POOL_SIZE
 	for index: int in range(pool_size):
-		var player: AudioStreamPlayer = audio_manager.get_node_or_null("SFXPlayer%d" % index)
+		var player: AudioStreamPlayer = audio_manager.get_node_or_null(
+			AudioManagerScript.SFX_PLAYER_NAME_FORMAT % index
+		)
 		_check(
 			player != null and player.bus == AudioCatalog.BUS_SFX,
 			"SFXPlayer%d が SFX バスに接続されている" % index
@@ -188,10 +199,10 @@ func _check_settings_screen_toggles(
 ) -> void:
 	var bgm_bus_index: int = AudioServer.get_bus_index(AudioCatalog.BUS_BGM)
 	var sfx_bus_index: int = AudioServer.get_bus_index(AudioCatalog.BUS_SFX)
-	var settings_button: Button = main.get_node_or_null("Layout/SettingsButton")
-	var panel: Control = main.get_node_or_null("AudioSettingsPanel")
-	_check(settings_button != null, "設定ボタン (Layout/SettingsButton) がある")
-	_check(panel != null, "設定画面パネル (AudioSettingsPanel) がある")
+	var settings_button: Button = main.get_node_or_null(MainScript.SETTINGS_BUTTON_PATH)
+	var panel: Control = main.get_node_or_null(MainScript.SETTINGS_PANEL_PATH)
+	_check(settings_button != null, "設定ボタン (%s) がある" % MainScript.SETTINGS_BUTTON_PATH)
+	_check(panel != null, "設定画面パネル (%s) がある" % MainScript.SETTINGS_PANEL_PATH)
 	if settings_button == null or panel == null:
 		return
 
@@ -301,7 +312,7 @@ func _check_reload_persisted_settings(
 	var reopened_main: Control = MAIN_SCENE.instantiate()
 	root.add_child(reopened_main)
 	await process_frame
-	var panel: Control = reopened_main.get_node_or_null("AudioSettingsPanel")
+	var panel: Control = reopened_main.get_node_or_null(MainScript.SETTINGS_PANEL_PATH)
 	var bgm_toggle: CheckButton = (
 		panel.get_node_or_null(AudioSettingsPanelScript.BGM_TOGGLE_PATH) if panel != null else null
 	)
@@ -319,7 +330,9 @@ func _check_reload_persisted_settings(
 
 ## ウィンドウが裏に回った時・戻った時の BGM 一時停止と再開 (実際の BGMPlayer 状態を確認)
 func _check_focus_pause_resume(audio_manager: AudioManagerScript) -> void:
-	var bgm_player: AudioStreamPlayer = audio_manager.get_node_or_null("BGMPlayer")
+	var bgm_player: AudioStreamPlayer = audio_manager.get_node_or_null(
+		AudioManagerScript.BGM_PLAYER_NAME
+	)
 	_check(bgm_player != null, "フォーカス検証用に BGMPlayer を取得できる")
 	if bgm_player == null:
 		return
@@ -396,7 +409,7 @@ func _check_button_sfx_played(
 	audio_manager: AudioManagerScript, count_before: int, action_label: String
 ) -> void:
 	var player: AudioStreamPlayer = audio_manager.get_node_or_null(
-		"SFXPlayer%d" % audio_manager.get_last_sfx_player_index()
+		AudioManagerScript.SFX_PLAYER_NAME_FORMAT % audio_manager.get_last_sfx_player_index()
 	)
 	_check(
 		audio_manager.get_sfx_play_count() == count_before + 1

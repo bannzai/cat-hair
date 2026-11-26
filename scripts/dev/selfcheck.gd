@@ -199,13 +199,21 @@ func _check_audio_settings_persistence() -> void:
 		"audio セクションが無い設定ファイルは既定値 (オン, オン) になる"
 	)
 
-	# 異常系: 不正型 (片方だけ正常・片方だけ不正型) とキー欠落
+	# 異常系: 不正型 (sfx 側のみ不正型 / bgm 側のみ不正型) とキー欠落
 	_write_raw_text(test_path, "[audio]\nbgm_enabled=false\nsfx_enabled=\"bad\"\n")
 	var partial_type_reader: RefCounted = AudioSettings.new(true, false)
-	_check(partial_type_reader.load_from_path(test_path) == OK, "不正型混在ファイルは安全に読める")
+	_check(partial_type_reader.load_from_path(test_path) == OK, "sfx 不正型混在ファイルは安全に読める")
 	_check(
 		(not partial_type_reader.bgm_enabled) and partial_type_reader.sfx_enabled,
 		"正常な bgm_enabled=false は保持し、不正型の sfx_enabled は既定値 true になる"
+	)
+
+	_write_raw_text(test_path, "[audio]\nbgm_enabled=\"bad\"\nsfx_enabled=false\n")
+	var bgm_type_reader: RefCounted = AudioSettings.new(false, true)
+	_check(bgm_type_reader.load_from_path(test_path) == OK, "bgm 不正型混在ファイルは安全に読める")
+	_check(
+		bgm_type_reader.bgm_enabled and (not bgm_type_reader.sfx_enabled),
+		"不正型の bgm_enabled は既定値 true になり、正常な sfx_enabled=false は保持する"
 	)
 
 	_write_raw_text(test_path, "[audio]\nsfx_enabled=false\n")
