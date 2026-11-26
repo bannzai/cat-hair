@@ -142,8 +142,8 @@ func _verify_buy_use_and_sell(main: Node3D, game_state: Node) -> void:
 		bool(result["used"]) and int(result["in_range"]) >= 2
 		and int(result["removed"]) > 0 and int(result["missed"]) > 0
 		and int(result["removed"]) + int(result["missed"]) == int(result["in_range"]),
-		"粘着ローラーを床の毛にかけると範囲の毛が減り、取りこぼしが残る (範囲 %d 本・取れた %d 本・残った %d 本)"
-		% [result["in_range"], result["removed"], result["missed"]],
+		"粘着ローラーを床の毛にかけると範囲の毛が減り、取りこぼしが残る (範囲 %d 本・取れた %d 本・残った %d 本: %s)"
+		% [result["in_range"], result["removed"], result["missed"], result.get("message", "")],
 	)
 	_check(
 		int(result["total_before"]) - game_state.get_total_remaining_hairs() == int(result["removed"])
@@ -293,8 +293,13 @@ func _verify_every_tool_once(main: Node3D, game_state: Node) -> void:
 				_check(
 					bool(result.get("used", false)) and removed > 0
 					and int(result["total_before"]) - game_state.get_total_remaining_hairs() == removed,
-					"%s を床の毛にかけると %d 本取れて残り本数が同じだけ減る (範囲 %d 本)"
-					% [tool_def["name"], removed, int(result.get("in_range", 0))],
+					"%s を床の毛にかけると %d 本取れて残り本数が同じだけ減る (範囲 %d 本: %s)"
+					% [
+						tool_def["name"],
+						removed,
+						int(result.get("in_range", 0)),
+						result.get("message", ""),
+					],
 				)
 				if removed > 0:
 					used_ids.append(tool_id)
@@ -369,7 +374,14 @@ func _aim_at_floor_hairs(main: Node3D) -> bool:
 ## 床の毛を狙い、選んでいる道具を 1 回使い、結果と使う前の本数を返す (狙えなければ "used" が false)
 func _use_on_floor(main: Node3D, game_state: Node) -> Dictionary:
 	if not await _aim_at_floor_hairs(main):
-		return {"used": false, "total_before": game_state.get_total_remaining_hairs()}
+		return {
+			"used": false,
+			"in_range": 0,
+			"removed": 0,
+			"missed": 0,
+			"message": "床の毛を狙える位置が見つからない",
+			"total_before": game_state.get_total_remaining_hairs(),
+		}
 	var target: Dictionary = main.hand.aim_target()
 	var before: Dictionary = {
 		"total_before": game_state.get_total_remaining_hairs(),
@@ -383,7 +395,17 @@ func _use_on_floor(main: Node3D, game_state: Node) -> Dictionary:
 	main.tools.tool_used.connect(on_used)
 	await _press_and_release_use()
 	main.tools.tool_used.disconnect(on_used)
-	var result: Dictionary = captured[0] if not captured.is_empty() else {"used": false}
+	var result: Dictionary = (
+		captured[0]
+		if not captured.is_empty()
+		else {
+			"used": false,
+			"in_range": 0,
+			"removed": 0,
+			"missed": 0,
+			"message": "つまむ入力で道具が使われなかった",
+		}
+	)
 	result.merge(before, true)
 	return result
 
@@ -401,9 +423,13 @@ func _pluck_with_hand(main: Node3D, game_state: Node) -> bool:
 	return plucked
 
 
-## つまむ入力を 1 フレーム押して離す (手以外の道具を選んでいる時は道具を 1 回使う)
+## つまむ入力を押して離す (手以外の道具を選んでいる時は道具を 1 回使う)。
+## SceneTree の process_frame はノードの _process より先に出るため、physics_frame の待ちから呼ばれた時に
+## 1 フレームの待ちで離すと、ToolController._process が押した状態を 1 度も見ない。2 フレーム押してから離す
 func _press_and_release_use() -> void:
 	Input.action_press(HandController.ACTION_PLUCK)
 	await _checker.process_frame
+	await _checker.process_frame
 	Input.action_release(HandController.ACTION_PLUCK)
+	await _checker.process_frame
 	await _checker.process_frame
