@@ -17,6 +17,8 @@ const ProcessingRulesScript := preload("res://scripts/economy/processing_rules.g
 const RNG_SEED: int = 20261127
 ## 撮る前に持たせる在庫 (色ごとの毛のままの本数)。加工機 3 台で色ごとの人形・フェルト・毛玉ができる本数
 const STOCK_HAIRS_PER_COLOR: int = 1240
+## アンドロイドを撮る時の、アンドロイドからカメラまでの距離 (m)。背の高さ 1.6 m の全身が縦の画角に収まる距離
+const ANDROID_VIEW_DISTANCE_M: float = 2.6
 ## 部屋の中で見下ろす角度 (rad。床に敷いたシートと残った毛が画面の下半分に入る角度)
 const ROOM_PITCH: float = -0.5
 
@@ -63,14 +65,15 @@ static func capture_all(shooter: SceneTree, main: Node3D) -> String:
 	var android_result: Dictionary = main.big_tools.step_android()
 	if int(android_result.get("removed", 0)) <= 0:
 		return "アンドロイドが掃除しない (%s)" % str(android_result)
-	var cleaned: MansionLayout.RoomDef = _room(game_state, android_result["room_id"])
+	var android: Node3D = main.big_tools.get_models_root().get_node_or_null("Android")
+	if android == null:
+		return "アンドロイドの姿が無い"
+	# 全身が入るように、アンドロイドの立つ所から南へ ANDROID_VIEW_DISTANCE_M 離れて腰の高さを見る
 	main.player.set_spawn(
-		cleaned.center + Vector3(-cleaned.size.x * 0.3, 0.0, cleaned.size.z * 0.3), 0.0
+		android.global_position + Vector3(0.0, 0.0, ANDROID_VIEW_DISTANCE_M), 0.0
 	)
 	await shooter.physics_frame
-	main.player.look_at_point(
-		cleaned.center + Vector3(cleaned.size.x * 0.25, 1.0, -cleaned.size.z * 0.25)
-	)
+	main.player.look_at_point(android.global_position + Vector3(0.0, 0.8, 0.0))
 	if not await shooter._capture_frozen(main, "tmp/screenshot-android.png"):
 		return "アンドロイドを保存できない"
 	return await _capture_processing(shooter, main, game_state)
@@ -109,10 +112,3 @@ static func _capture_processing(shooter: SceneTree, main: Node3D, game_state: No
 	main.close_tool_shop()
 	return "" if shop_ok else "加工品とダンプカーのボタンが出た道具を買う画面を保存できない"
 
-
-## レイアウトから部屋の定義を返す
-static func _room(game_state: Node, room_id: StringName) -> MansionLayout.RoomDef:
-	for room: MansionLayout.RoomDef in game_state.current_layout.rooms:
-		if room.room_id == room_id:
-			return room
-	return game_state.current_layout.rooms[0]
