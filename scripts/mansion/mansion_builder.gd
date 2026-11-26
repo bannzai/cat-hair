@@ -20,6 +20,8 @@ const FLOOR_HAIR_WEIGHT: float = 2.5
 const INITIAL_RESIDENT_MOOD: float = 0.5
 ## ソファ表面 (座面) の高さ比率。MansionWorld の座面メッシュ高さ比率の単一情報源
 const SOFA_SEAT_HEIGHT_RATIO: float = 0.56
+## サイドボード天板の上に乗る装飾縁の高さ (m)。MansionWorld の TopTrim メッシュ高さの単一情報源
+const SIDEBOARD_TOP_TRIM_HEIGHT_M: float = 0.04
 ## 3 色分配で面インデックスに応じて主色・次点色へ割り振る比率 (3 色すべてが混ざりつつ偏りが見える値)
 const PRIMARY_COLOR_RATIO_STANDARD: float = 0.50
 ## 3 色分配で標準パターンの次点色へ割り振る比率
@@ -281,11 +283,7 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		surface.surface_type = obj.surface_type
 		surface.center = Vector3(
 			obj.position.x,
-			(
-				obj.size.y * SOFA_SEAT_HEIGHT_RATIO
-				if obj.object_kind == MansionLayoutScript.OBJECT_SOFA
-				else obj.size.y
-			)
+			surface_top_height_for_object(obj.object_kind, obj.size.y)
 			+ MansionLayoutScript.SURFACE_Y_OFFSET_M,
 			obj.position.z,
 		)
@@ -416,6 +414,15 @@ static func _split_by_color(surface_total: int, surface_index: int) -> Dictionar
 ## 部屋 id から対応する住人 id を生成する (進行生成とレイアウト照合の単一情報源)
 static func resident_id_for_room(room_id: StringName) -> StringName:
 	return StringName("resident_%s" % String(room_id))
+
+
+## 家具の種別と高さから、毛が乗る実際の上面高さ (m) を返す (MansionWorld のメッシュ高さと単一情報源で整合)
+static func surface_top_height_for_object(object_kind: StringName, object_height: float) -> float:
+	if object_kind == MansionLayoutScript.OBJECT_SOFA:
+		return object_height * SOFA_SEAT_HEIGHT_RATIO
+	if object_kind == MansionLayoutScript.OBJECT_SIDEBOARD:
+		return object_height + SIDEBOARD_TOP_TRIM_HEIGHT_M
+	return object_height
 
 
 ## 各部屋に対応する住人の初期機嫌辞書を生成する

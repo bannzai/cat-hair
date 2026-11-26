@@ -130,6 +130,24 @@ func _check_mansion_builder_default() -> void:
 			rotated_checked = true
 			break
 	_check(rotated_checked, "既定レイアウトに 90 度回転かつ非正方形の家具が存在し検証できた")
+	var sideboard_checked: bool = false
+	for obj: MansionLayout.ObjectDef in layout.objects:
+		if obj.object_kind == MansionLayoutScript.OBJECT_SIDEBOARD:
+			var sb_surface: MansionLayout.SurfaceDef = layout.find_surface(
+				StringName("%s_surface" % String(obj.object_id))
+			)
+			var expected_y: float = (
+				obj.size.y
+				+ MansionBuilderScript.SIDEBOARD_TOP_TRIM_HEIGHT_M
+				+ MansionLayoutScript.SURFACE_Y_OFFSET_M
+			)
+			_check(
+				sb_surface != null and is_equal_approx(sb_surface.center.y, expected_y),
+				"サイドボード表面高さが TopTrim 上面 + オフセットに一致する",
+			)
+			sideboard_checked = true
+			break
+	_check(sideboard_checked, "既定レイアウトにサイドボードが存在し天板高さを検証できた")
 
 
 ## 調整値変更・最大部屋数 (16 部屋・9 部屋目以降の連番 ID)・内側リング配置 (ring > 0)・物 200 個を検証する
@@ -905,29 +923,6 @@ func _check_game_state_and_builder_edge_cases() -> void:
 		"start_new_game(custom_tuning) が指定値で新規開始して保存する",
 	)
 	state.free()
-
-	# autoload GameState 不在時に Main が自前 LocalGameState を生成し _exit_tree で解放する経路
-	# AudioManager も一時退避し、同期 selfcheck 中に未解放 BGM 再生が走らないようにする
-	var saved_autoload: Node = _checker.root.get_node_or_null("GameState")
-	var saved_audio: Node = _checker.root.get_node_or_null("AudioManager")
-	if saved_autoload != null:
-		_checker.root.remove_child(saved_autoload)
-	if saved_audio != null:
-		_checker.root.remove_child(saved_audio)
-	var standalone_main: Node3D = (load(MAIN_SCENE_PATH) as PackedScene).instantiate()
-	_checker.root.add_child(standalone_main)
-	var local_state: Node = standalone_main.get_game_state()
-	_check(
-		local_state != null and local_state.name == "LocalGameState",
-		"autoload 不在時に Main が自前 LocalGameState を生成する",
-	)
-	_checker.root.remove_child(standalone_main)
-	standalone_main.free()
-	_check(not is_instance_valid(local_state), "Main の _exit_tree で自前 LocalGameState が解放される")
-	if saved_audio != null:
-		_checker.root.add_child(saved_audio)
-	if saved_autoload != null:
-		_checker.root.add_child(saved_autoload)
 
 
 ## 毛の本数の 3 桁区切り整形を検証する

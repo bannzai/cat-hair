@@ -83,6 +83,7 @@ func _run() -> void:
 	main.free()
 
 	await _verify_resume_and_new_game_from_saved_state(game_state)
+	await _verify_standalone_main_local_game_state()
 
 	audio_manager.stop_all()
 	AudioSettings.apply_to_audio_server(true, true)
@@ -846,6 +847,33 @@ func _verify_resume_and_new_game_from_saved_state(game_state: Node) -> void:
 
 	root.remove_child(resumed_main)
 	resumed_main.free()
+
+
+## autoload GameState 不在時に Main が自前 LocalGameState を生成し _exit_tree で解放することを検証する
+func _verify_standalone_main_local_game_state() -> void:
+	var saved_state: Node = root.get_node_or_null("GameState")
+	var saved_audio: Node = root.get_node_or_null(AudioManagerScript.NODE_NAME)
+	if saved_state != null:
+		root.remove_child(saved_state)
+	if saved_audio != null:
+		root.remove_child(saved_audio)
+
+	var standalone_main: Node3D = MAIN_SCENE.instantiate()
+	root.add_child(standalone_main)
+	await process_frame
+	var local_state: Node = standalone_main.get_game_state()
+	_check(
+		local_state != null and local_state.name == "LocalGameState",
+		"autoload 不在時に Main が自前 LocalGameState を生成する",
+	)
+	root.remove_child(standalone_main)
+	standalone_main.free()
+	_check(not is_instance_valid(local_state), "Main の _exit_tree で自前 LocalGameState が解放される")
+
+	if saved_audio != null:
+		root.add_child(saved_audio)
+	if saved_state != null:
+		root.add_child(saved_state)
 
 
 ## 指定した移動アクションを指定フレーム数だけ押し続けてから離す

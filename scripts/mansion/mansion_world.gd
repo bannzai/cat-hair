@@ -529,11 +529,12 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 			_material_wood,
 			true,
 		)
+		var top_trim_height: float = MansionBuilderScript.SIDEBOARD_TOP_TRIM_HEIGHT_M
 		_add_static_box(
 			object_root,
 			"TopTrim",
-			Vector3(0.0, object_height + 0.02, 0.0),
-			Vector3(object_width + 0.05, 0.04, object_depth + 0.05),
+			Vector3(0.0, object_height + top_trim_height * 0.5, 0.0),
+			Vector3(object_width + 0.05, top_trim_height, object_depth + 0.05),
 			_material_door_frame,
 			false,
 		)
