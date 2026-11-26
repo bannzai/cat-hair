@@ -178,6 +178,14 @@ func _check_miss_ratio() -> void:
 		"毛を取らない道具 (手・ライト) と表に無い道具の取りこぼしは 0",
 	)
 	_check(
+		ToolRulesScript.touchable_count(10, 4) == 4
+		and ToolRulesScript.touchable_count(5, 60) == 4
+		and ToolRulesScript.touchable_count(1, 60) == 0
+		and ToolRulesScript.touchable_count(0, 60) == 0
+		and ToolRulesScript.touchable_count(10, 0) == 0,
+		"1 回で抽選するのは触れる上限までで、範囲の最後の 1 本は残す (範囲 1 本・0 本・上限 0 では抽選しない)",
+	)
+	_check(
 		ToolRulesScript.is_missed(0.29, 0.3) and not ToolRulesScript.is_missed(0.3, 0.3)
 		and not ToolRulesScript.is_missed(0.5, 0.3),
 		"乱数が取りこぼしの割合より小さい時だけ、その毛が残る (同じ値は取れる)",

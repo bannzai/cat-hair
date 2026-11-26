@@ -360,6 +360,7 @@ func _verify_every_tool_once(main: Node3D, game_state: Node) -> void:
 					).size()
 					_check(
 						left_in_range == int(result["missed"])
+						and left_in_range >= 1
 						and removed <= int(tool_def["max_hairs"]),
 						"%s の取りこぼしの本数 %d が、かけた範囲に実際に残る本数 %d と同じで、取れた本数は 1 回で触れる上限 %d 以下"
 						% [tool_def["name"], int(result["missed"]), left_in_range, int(tool_def["max_hairs"])],

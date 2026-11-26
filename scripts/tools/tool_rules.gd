@@ -57,6 +57,13 @@ static func miss_ratio(tool_id: StringName, level: int, surface_type: StringName
 	return clampf(ratio, MIN_MISS_RATIO, MAX_MISS_RATIO)
 
 
+## 範囲に range_count 本ある所に道具を 1 回かけた時に、抽選する (取れる見込みのある) 本数を返す。
+## 道具が 1 回で触れる上限 max_hairs までで、範囲の最後の 1 本は残す (PROJECT.md「道具」: どの道具も 1 回では
+## 範囲内の毛を取り切れない。最後の 1 本は手でつまむか、別の所からかけ直す)
+static func touchable_count(range_count: int, max_hairs: int) -> int:
+	return clampi(mini(max_hairs, range_count - 1), 0, maxi(0, range_count))
+
+
 ## 範囲内の 1 本について、0 以上 1 未満の乱数 roll が取りこぼし (その毛が残る) になるか
 static func is_missed(roll: float, ratio: float) -> bool:
 	return roll < ratio

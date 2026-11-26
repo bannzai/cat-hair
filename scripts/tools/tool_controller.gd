@@ -222,7 +222,7 @@ func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 	var surface_index: int = target["surface_index"]
 	var surface_def: MansionLayout.SurfaceDef = _world.get_surface_def(surface_index)
 	var hair_field: Node3D = _world.get_hair_field()
-	# 範囲の毛を近い順に全部取り、道具が 1 回で触れる本数 (max_hairs) までを抽選する。
+	# 範囲の毛を近い順に全部取り、ToolRules.touchable_count の本数 (触れる上限まで、最後の 1 本は残す) を抽選する。
 	# 触れなかった毛も範囲に残った毛なので、取りこぼしの表示の分母は範囲の全部の本数にする
 	var hair_ids: PackedInt32Array = hair_field.find_hairs_near(
 		surface_index, target["point"], float(tool_def["radius_m"]), hair_field.get_remaining_count()
@@ -230,7 +230,9 @@ func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 	var ratio: float = ToolRulesScript.miss_ratio(tool_id, owned.level, surface_def.surface_type)
 	var counts_by_color: Dictionary = {}
 	var removed_ids: PackedInt32Array = PackedInt32Array()
-	for hair_id: int in hair_ids.slice(0, int(tool_def["max_hairs"])):
+	for hair_id: int in hair_ids.slice(
+		0, ToolRulesScript.touchable_count(hair_ids.size(), int(tool_def["max_hairs"]))
+	):
 		if ToolRulesScript.is_missed(_rng.randf(), ratio):
 			continue
 		var color_id: StringName = _world.get_hair_color_id(hair_id)
