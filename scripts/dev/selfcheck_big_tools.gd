@@ -56,6 +56,8 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_game_state_haul()
 	suite._check_game_state_room_tools()
 	suite._check_shop_panel()
+	suite._check_vacuum_pack_rules()
+	suite._check_vacuum_pack_in_game_state()
 
 
 ## 検証結果を selfcheck 本体へ記録する
@@ -731,6 +733,107 @@ func _check_android_room_choice(state: Node, world: MansionWorld) -> void:
 		"どの表面も 1 本ずつしか残っていない時は、アンドロイドが掃除する部屋は無い",
 	)
 	site.free()
+
+
+## 掃除機のパックは「あと何回吸えるか」で数え、交換すると 25 回に戻り (足さない)、紙・シートは買い足すと足され、
+## 尽きた時の文言がパックは「一杯」、紙は「無い」になるか
+func _check_vacuum_pack_rules() -> void:
+	var vacuum: StringName = ToolCatalogScript.TOOL_VACUUM
+	var roller: StringName = ToolCatalogScript.TOOL_LINT_ROLLER
+	_check(
+		ToolRulesScript.refill_replaces(vacuum)
+		and not ToolRulesScript.refill_replaces(roller)
+		and not ToolRulesScript.refill_replaces(ToolCatalogScript.TOOL_ADHESIVE_SHEET)
+		and not ToolRulesScript.refill_replaces(&"no_such_tool"),
+		"交換で戻す消耗品は掃除機のパックだけで、紙・シート・表に無い道具は足す",
+	)
+	_check(
+		ToolRulesScript.refilled_count(vacuum, 0) == 25
+		and ToolRulesScript.refilled_count(vacuum, 7) == 25
+		and ToolRulesScript.refilled_count(roller, 3) == 23
+		and ToolRulesScript.refilled_count(&"no_such_tool", 4) == 4,
+		"パックの交換は残りによらず 25 回に戻り、紙は 20 枚足され (3 → 23)、表に無い道具は変わらない",
+	)
+	_check(
+		ToolRulesScript.consumable_unit(vacuum) == "回"
+		and ToolRulesScript.consumable_unit(roller) == "枚"
+		and ToolRulesScript.consumable_unit(ToolCatalogScript.TOOL_TWEEZERS) == "枚",
+		"パックの空きは「回」、紙は「枚」で数え、消耗品の無い道具も既定の「枚」",
+	)
+	_check(
+		ToolRulesScript.consumable_empty_message(vacuum).contains("パックが一杯")
+		and ToolRulesScript.consumable_empty_message(vacuum).contains("アンドロイド")
+		and (
+			ToolRulesScript.consumable_empty_message(roller) == "粘着ローラー の紙が無い (T で買い足す)"
+		),
+		"尽きた時の文言は、掃除機は「パックが一杯」でアンドロイドの自動の交換を案内し、粘着ローラーは「紙が無い」 (実際: %s)"
+		% ToolRulesScript.consumable_empty_message(vacuum),
+	)
+
+
+## GameState で掃除機を 25 回使うとパックが一杯になって使えなくなり、手で交換すると 30 円で 25 回に戻り、
+## アンドロイドを持っていれば一杯の時だけ同じ値段で交換させられるか
+func _check_vacuum_pack_in_game_state() -> void:
+	var state: Node = GameStateScript.new()
+	state.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray(["--hair-count=6000"]))
+	var progress: BuildingProgress = state.save_data.building_progress
+	var vacuum: StringName = ToolCatalogScript.TOOL_VACUUM
+	var exchange: StringName = GameStateScript.PURCHASE_ANDROID_PACK_EXCHANGE
+	progress.money = 400
+	state.purchase(GameStateScript.PURCHASE_TOOL, vacuum)
+	var owned: OwnedTool = state.find_owned_tool(vacuum)
+	var surface: SurfaceHair = null
+	for candidate: SurfaceHair in progress.surface_hairs:
+		if candidate.count_for_color(SurfaceHairScript.COLOR_WHITE) > 30:
+			surface = candidate
+			break
+	var used: int = 0
+	for _step: int in range(30):
+		var sweep: Dictionary = {surface.surface_id: {SurfaceHairScript.COLOR_WHITE: 1}}
+		if state.apply_tool_sweep(vacuum, sweep) >= 0:
+			used += 1
+	_check(
+		owned.consumable_count == 0 and used == 25,
+		"掃除機は買うとパックの空きが 25 回で、25 回使うと一杯になり 26 回目からは使えない (使えた回数 %d)" % used,
+	)
+	progress.money = 1000
+	_check(
+		not state.purchase(exchange, vacuum)
+		and state.get_money() == 1000 and owned.consumable_count == 0,
+		"アンドロイドを持っていない時は、一杯のパックをアンドロイドに交換させられず、お金も減らない",
+	)
+	_check(
+		state.purchase(GameStateScript.PURCHASE_CONSUMABLE, vacuum)
+		and owned.consumable_count == 25 and state.get_money() == 970,
+		"手でパックを交換すると 30 円で空きが 25 回に戻る",
+	)
+	progress.money = 20000 + 1000
+	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_ANDROID)
+	owned.consumable_count = 3
+	_check(
+		not state.purchase(exchange, vacuum)
+		and owned.consumable_count == 3 and state.get_money() == 1000,
+		"アンドロイドを持っていても、パックがまだ一杯でない時は交換しない",
+	)
+	owned.consumable_count = 0
+	var exchanged: bool = state.purchase(exchange, vacuum)
+	_check(
+		exchanged and owned.consumable_count == 25 and state.get_money() == 970,
+		"アンドロイドを持っていてパックが一杯の時は、アンドロイドが 30 円で交換し、空きが 25 回に戻る",
+	)
+	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_LINT_ROLLER)
+	var roller_owned: OwnedTool = state.find_owned_tool(ToolCatalogScript.TOOL_LINT_ROLLER)
+	roller_owned.consumable_count = 0
+	owned.consumable_count = 0
+	progress.money = 29
+	_check(
+		not state.purchase(exchange, vacuum) and owned.consumable_count == 0 and state.get_money() == 29
+		and not state.purchase(exchange, ToolCatalogScript.TOOL_LINT_ROLLER)
+		and roller_owned.consumable_count == 0,
+		"お金が交換の値段に 1 円足りない時と、パックでない消耗品 (紙) は、アンドロイドに交換させられない",
+	)
+	state.free()
+	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
 
 ## 道具を買う画面が、加工機の並べた台数・ダンプカーのボタン・加工品の個数を出すか

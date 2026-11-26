@@ -4,6 +4,10 @@ extends RefCounted
 
 ## 道具の定義
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
+## 状態管理 autoload スクリプト (買う物の種類の定数を使う)
+const GameStateScript := preload("res://scripts/state/game_state.gd")
+## 床の毛を狙う手順 (掃除機を床の毛に向ける)
+const HandAimScript := preload("res://scripts/dev/hand_aim.gd")
 ## 道具のルールの計算
 const ToolRulesScript := preload("res://scripts/tools/tool_rules.gd")
 ## 毛の加工機とダンプカーの計算
@@ -194,6 +198,48 @@ func _verify_android(main: Node3D, game_state: Node) -> void:
 		% [BigToolSite.ANDROID_INTERVAL_SECONDS, removed],
 	)
 	await _verify_android_releases_pull(main)
+	await _verify_android_exchanges_vacuum_pack(main, game_state)
+
+
+## 掃除機のパックが一杯の時、アンドロイドがいれば 6 キーで選んで使うとパックを交換してから吸い、
+## アンドロイドがいなければ吸わずに「パックが一杯」と出るか
+func _verify_android_exchanges_vacuum_pack(main: Node3D, game_state: Node) -> void:
+	var vacuum: StringName = ToolCatalogScript.TOOL_VACUUM
+	if game_state.find_owned_tool(vacuum) == null:
+		game_state.purchase(GameStateScript.PURCHASE_TOOL, vacuum)
+	var owned: OwnedTool = game_state.find_owned_tool(vacuum)
+	await _checker._press_physical_key(KEY_6)
+	await HandAimScript.aim_at_floor_hair(_checker, main)
+	owned.consumable_count = 0
+	var money_before: int = game_state.get_money()
+	var total_before: int = game_state.get_total_remaining_hairs()
+	await _checker.press_and_release_use()
+	_check(
+		main.tools.get_selected_tool_id() == vacuum
+		and owned.consumable_count == ToolRulesScript.refilled_count(vacuum, 0) - 1
+		and (
+			game_state.get_money()
+			== money_before - int(ToolCatalogScript.find_tool(vacuum)["refill_price"])
+		)
+		and game_state.get_total_remaining_hairs() < total_before
+		and main.tool_message_label.text.begins_with("アンドロイドがパックを交換した"),
+		"パックが一杯の掃除機を使うと、アンドロイドが交換してから吸い、空きが 24 回になり、「アンドロイドがパックを交換した」と出る (%s)"
+		% main.tool_message_label.text,
+	)
+	var android: OwnedTool = game_state.find_owned_tool(ToolCatalogScript.TOOL_ANDROID)
+	game_state.save_data.building_progress.owned_tools.erase(android)
+	owned.consumable_count = 0
+	var total_without: int = game_state.get_total_remaining_hairs()
+	await _checker.press_and_release_use()
+	game_state.save_data.building_progress.owned_tools.append(android)
+	_check(
+		owned.consumable_count == 0
+		and game_state.get_total_remaining_hairs() == total_without
+		and main.tool_message_label.text.contains("パックが一杯"),
+		"アンドロイドがいない時、パックが一杯の掃除機は吸わず「パックが一杯」と出る (%s)" % main.tool_message_label.text,
+	)
+	owned.consumable_count = ToolRulesScript.refilled_count(vacuum, 0)
+	await _checker._press_physical_key(KEY_1)
 
 
 ## 手で引いている毛の一部をアンドロイドが取ると、手は引くのをやめ、取られずに残った毛は消えずに残るか。

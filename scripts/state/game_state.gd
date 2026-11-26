@@ -44,6 +44,8 @@ const PURCHASE_LEVEL_UP: StringName = &"level_up"
 const PURCHASE_CONSUMABLE: StringName = &"consumable"
 ## お金で買う物の種類: 手の強化を 1 段上げる
 const PURCHASE_HAND_UPGRADE: StringName = &"hand_upgrade"
+## お金で買う物の種類: アンドロイドが、一杯になった道具のパックを交換する (アンドロイドを持っている時だけ買える)
+const PURCHASE_ANDROID_PACK_EXCHANGE: StringName = &"android_pack_exchange"
 
 ## セーブデータの保存先パス (テスト時に差し替え可能)
 var save_path: String = SaveStorageScript.DEFAULT_SAVE_PATH
@@ -353,6 +355,8 @@ func purchase(kind: StringName, item_id: StringName) -> bool:
 			bought = _buy_consumable(item_id)
 		PURCHASE_HAND_UPGRADE:
 			bought = _buy_hand_upgrade(item_id)
+		PURCHASE_ANDROID_PACK_EXCHANGE:
+			bought = _exchange_pack_by_android(item_id)
 	if bought:
 		state_changed.emit()
 	return bought
@@ -400,8 +404,22 @@ func _buy_consumable(tool_id: StringName) -> bool:
 	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
 	if not _spend(int(tool_def["refill_price"])):
 		return false
-	owned.consumable_count += int(tool_def["refill_count"])
+	owned.consumable_count = ToolRulesScript.refilled_count(tool_id, owned.consumable_count)
 	return true
+
+
+## アンドロイドを持っていて、tool_id の道具のパック (ToolRules.refill_replaces の消耗品) が一杯の時に、
+## アンドロイドがパックを交換する (値段は手で交換する時と同じだけ払う)。交換したら true。
+## アンドロイドを持っていない・パックの道具でない・まだ一杯でない・お金が足りない時は何も変えずに false
+func _exchange_pack_by_android(tool_id: StringName) -> bool:
+	var owned: OwnedTool = find_owned_tool(tool_id)
+	return (
+		owned != null
+		and ToolRulesScript.refill_replaces(tool_id)
+		and owned.consumable_count <= 0
+		and find_owned_tool(ToolCatalogScript.TOOL_ANDROID) != null
+		and _buy_consumable(tool_id)
+	)
 
 
 ## 手の強化を 1 段上げる。手の強化の種類でない id・上限・お金が足りない時は false

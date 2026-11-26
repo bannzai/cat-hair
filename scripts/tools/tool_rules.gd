@@ -128,6 +128,37 @@ static func uses_consumable(tool_id: StringName) -> bool:
 	return not tool_def.is_empty() and not str(tool_def["consumable_name"]).is_empty()
 
 
+## 消耗品を買い足すと、残りに足すのではなく決まった数に戻す (掃除機のパックの交換) 道具か
+static func refill_replaces(tool_id: StringName) -> bool:
+	return bool(ToolCatalogScript.find_tool(tool_id).get("refill_replaces", false))
+
+
+## 消耗品の残りの数え方 (「枚」「回」。消耗品を使わない道具と表に無い道具も「枚」)
+static func consumable_unit(tool_id: StringName) -> String:
+	return str(ToolCatalogScript.find_tool(tool_id).get("consumable_unit", "枚"))
+
+
+## 消耗品の残り consumable_count に、消耗品を 1 回買い足した後の残りを返す
+## (パックの交換の道具は refill_count に戻し、それ以外は refill_count を足す。表に無い道具は変えない)
+static func refilled_count(tool_id: StringName, consumable_count: int) -> int:
+	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
+	if tool_def.is_empty():
+		return consumable_count
+	if refill_replaces(tool_id):
+		return int(tool_def["refill_count"])
+	return consumable_count + int(tool_def["refill_count"])
+
+
+## 消耗品が尽きて道具を使えない時の文言 (パックの交換の道具は「パックが一杯」、それ以外は「紙が無い」の形)
+static func consumable_empty_message(tool_id: StringName) -> String:
+	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
+	if refill_replaces(tool_id):
+		return "%s の%sが一杯 (T で交換する。アンドロイドがいれば自動で交換する)" % [
+			tool_def["name"], tool_def["consumable_name"]
+		]
+	return "%s の%sが無い (T で買い足す)" % [tool_def["name"], tool_def["consumable_name"]]
+
+
 ## 消耗品の残り consumable_count でその道具を使えるか (消耗品を使う道具は 0 以下なら使えない)
 static func can_use(tool_id: StringName, consumable_count: int) -> bool:
 	if ToolCatalogScript.find_tool(tool_id).is_empty():

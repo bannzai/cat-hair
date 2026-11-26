@@ -81,8 +81,12 @@ func _check_tool_catalog() -> void:
 		if bool(tool_def["damages_found_items"]):
 			damaging_tools.append(tool_def["id"])
 	_check(
-		consumable_tools == [ToolCatalogScript.TOOL_LINT_ROLLER, ToolCatalogScript.TOOL_ADHESIVE_SHEET],
-		"消耗品を使う道具は粘着ローラーと建物を覆う粘着シートだけ (実際: %s)" % str(consumable_tools),
+		consumable_tools == [
+			ToolCatalogScript.TOOL_LINT_ROLLER,
+			ToolCatalogScript.TOOL_VACUUM,
+			ToolCatalogScript.TOOL_ADHESIVE_SHEET,
+		],
+		"消耗品を使う道具は粘着ローラー・掃除機 (パック)・建物を覆う粘着シートだけ (実際: %s)" % str(consumable_tools),
 	)
 	_check(
 		damaging_tools.has(ToolCatalogScript.TOOL_PACKING_TAPE)

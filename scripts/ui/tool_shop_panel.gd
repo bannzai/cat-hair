@@ -132,9 +132,21 @@ func refresh(game_state: Node, near_trader: bool) -> void:
 		if _refill_buttons.has(tool_id):
 			var refill: Button = _refill_buttons[tool_id]
 			refill.visible = owned != null
-			refill.text = "%sを %d 枚買い足す (%d 円)" % [
-				tool_def["consumable_name"], int(tool_def["refill_count"]), int(tool_def["refill_price"])
-			]
+			refill.text = (
+				"%sを交換する (%d 円。%d %s分の空きに戻る)" % [
+					tool_def["consumable_name"],
+					int(tool_def["refill_price"]),
+					int(tool_def["refill_count"]),
+					ToolRulesScript.consumable_unit(tool_id),
+				]
+				if ToolRulesScript.refill_replaces(tool_id)
+				else "%sを %d %s買い足す (%d 円)" % [
+					tool_def["consumable_name"],
+					int(tool_def["refill_count"]),
+					ToolRulesScript.consumable_unit(tool_id),
+					int(tool_def["refill_price"]),
+				]
+			)
 			refill.disabled = not ToolRulesScript.can_afford(money, int(tool_def["refill_price"]))
 	for upgrade_id: StringName in _hand_upgrade_buttons.keys():
 		var level: int = game_state.get_hand_upgrade_level(upgrade_id)
@@ -193,12 +205,14 @@ static func describe_tool(tool_id: StringName, owned: OwnedTool, owned_count: in
 	elif tool_def["kind"] == ToolCatalogScript.KIND_CAT:
 		parts.append("猫をブラッシングして落ちる前の毛を取る")
 	if ToolRulesScript.uses_consumable(tool_id):
+		var unit: String = ToolRulesScript.consumable_unit(tool_id)
 		parts.append(
-			"%s: %s" % [
+			"%s%s: %s" % [
 				tool_def["consumable_name"],
-				"%d 枚" % owned.consumable_count if owned != null else "買うと %d 枚" % int(
-					tool_def["initial_consumables"]
-				),
+				"の空き" if ToolRulesScript.refill_replaces(tool_id) else "",
+				"%d %s" % [owned.consumable_count, unit]
+				if owned != null
+				else "買うと %d %s" % [int(tool_def["initial_consumables"]), unit],
 			]
 		)
 	if bool(tool_def["damages_found_items"]):

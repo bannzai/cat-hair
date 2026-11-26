@@ -26,6 +26,8 @@ const CatRulesScript := preload("res://scripts/automation/cat_rules.gd")
 
 ## 見た目の試作の部屋 (部屋の中にいるかの判定を使う)
 const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room.gd")
+## 状態管理 autoload スクリプト (買う物の種類の定数を使う)
+const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## 大型の道具の見た目 (運転席・床一面のシート)
 const BigToolModelsScript := preload("res://scripts/tools/big_tool_models.gd")
 
@@ -292,13 +294,30 @@ func _cat_name(cat_id: StringName) -> String:
 	return String(cat_id)
 
 
-## 毛を取る道具を狙った点の周りにかけ、範囲内の毛を 1 本ずつ抽選して取りこぼし以外を取る
+## 手に持つ毛を取る道具を使う。パックの道具 (掃除機) のパックが一杯で、アンドロイドを持っている時は先に交換させ、
+## 文言の先頭に交換したことを出す。消耗品が尽きている時は使わずに文言だけを入れる
 func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 	var tool_id: StringName = tool_def["id"]
 	var owned: OwnedTool = _game_state.find_owned_tool(tool_id)
+	var exchanged: bool = _game_state.purchase(
+		GameStateScript.PURCHASE_ANDROID_PACK_EXCHANGE, tool_id
+	)
 	if not ToolRulesScript.can_use(tool_id, owned.consumable_count):
-		result["message"] = "%s の%sが無い (T で買い足す)" % [tool_def["name"], tool_def["consumable_name"]]
+		result["message"] = ToolRulesScript.consumable_empty_message(tool_id)
 		return
+	_use_sweep_tool_on_target(tool_def, owned, result)
+	if exchanged:
+		result["exchanged"] = true
+		result["message"] = "アンドロイドが%sを交換した。%s" % [
+			tool_def["consumable_name"], result["message"]
+		]
+
+
+## 毛を取る道具を狙った点の周りにかけ、範囲内の毛を 1 本ずつ抽選して取りこぼし以外を取る (消耗品の確認の後に呼ぶ)
+func _use_sweep_tool_on_target(
+	tool_def: Dictionary, owned: OwnedTool, result: Dictionary
+) -> void:
+	var tool_id: StringName = tool_def["id"]
 	var target: Dictionary = _hand.aim_target() if _hand != null else {}
 	if target.is_empty():
 		result["message"] = "狙いの先に毛の付く表面が無い"
@@ -339,7 +358,7 @@ func _use_room_tool(tool_def: Dictionary, result: Dictionary) -> void:
 	var tool_id: StringName = tool_def["id"]
 	var owned: OwnedTool = _game_state.find_owned_tool(tool_id)
 	if not ToolRulesScript.can_use(tool_id, owned.consumable_count):
-		result["message"] = "%s の%sが無い (T で買い足す)" % [tool_def["name"], tool_def["consumable_name"]]
+		result["message"] = ToolRulesScript.consumable_empty_message(tool_id)
 		return
 	var room: MansionLayout.RoomDef = current_room()
 	if room == null:

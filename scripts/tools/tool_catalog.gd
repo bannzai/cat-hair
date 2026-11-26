@@ -71,6 +71,10 @@ const BAD_SURFACE_FACTOR: float = 1.6
 ## (部屋ごとにかける道具は表面 1 つあたり)、base_miss_ratio はレベル 1 で得意でも不得意でもない表面の取りこぼしの割合、
 ## good・bad は得意・不得意な表面、consumable_name が空でなければ消耗品を使う (initial_consumables は買った時の数、
 ## refill_price・refill_count は買い足す値段と増える数)、damages_found_items は探し物にかけると傷めるか。
+## consumable_unit は消耗品の残りの数え方 (無い道具は「枚」)。refill_replaces が true の道具 (掃除機のパック) は、
+## 消耗品の残りを「今のパックにあと何回吸えるか」で持ち、買い足すと足すのではなく refill_count 回分に戻す (パックの交換)。
+## 掃除機のパックは、1 つのパックで部屋 1 つ分ほど (既定の部屋の毛を、掃除機の 1 回の上限で割った回数の見当) 吸える回数にし、
+## 交換の値段は粘着ローラーの紙と同じく掃除機の値段の 1 割未満にして、交換のたびに止まる手間が主な負担になるようにした。
 ## max_owned がある道具は同じ物を max_owned 台まで並べて持てる (無い道具は 1 つ)。
 ## 大型の道具の値段は、手に持つ道具でいちばん高い掃除機より 1 桁上にし、取れる量の多い順に高くした
 ## (アンドロイドは買える道具の中でいちばん高い。PROJECT.md「道具」)。加工機とダンプカーは毛を取らない代わりに売値を上げる道具で、
@@ -174,10 +178,12 @@ const TOOLS: Array[Dictionary] = [
 		"base_miss_ratio": 0.4,
 		"good": [MansionLayoutScript.SURFACE_FLOOR, MansionLayoutScript.SURFACE_CARPET],
 		"bad": [MansionLayoutScript.SURFACE_KNIT, MansionLayoutScript.SURFACE_SUIT],
-		"consumable_name": "",
-		"initial_consumables": 0,
-		"refill_price": 0,
-		"refill_count": 0,
+		"consumable_name": "パック",
+		"initial_consumables": 25,
+		"refill_price": 30,
+		"refill_count": 25,
+		"consumable_unit": "回",
+		"refill_replaces": true,
 		"damages_found_items": true,
 	},
 	{
