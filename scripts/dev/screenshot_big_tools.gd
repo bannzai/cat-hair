@@ -7,6 +7,8 @@ extends RefCounted
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## 大型の道具の入力統合テスト (色ごとの在庫の作り方を使う)
 const IntegrationBigToolsScript := preload("res://scripts/dev/integration_big_tools.gd")
+## 見た目の試作の部屋 (位置からいる部屋を求める)
+const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room.gd")
 ## 道具の定義
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 加工機が 1 回加工する間隔を使う
@@ -17,6 +19,9 @@ const RNG_SEED: int = 20261127
 const STOCK_HAIRS_PER_COLOR: int = 1240
 ## アンドロイドを撮る時の、アンドロイドからカメラまでの距離 (m)。背の高さ 1.6 m の全身が縦の画角に収まる距離
 const ANDROID_VIEW_DISTANCE_M: float = 2.6
+## アンドロイドから離れる距離の上限を、部屋の短い辺に対する割合で表した値。アンドロイドは中央か中央から 4 分の 1 寄った所に
+## 立つため、短い辺の 0.45 倍までなら部屋の中に収まる
+const ANDROID_VIEW_ROOM_RATIO: float = 0.45
 ## 部屋の中で見下ろす角度 (rad。床に敷いたシートと残った毛が画面の下半分に入る角度)
 const ROOM_PITCH: float = -0.5
 
@@ -66,9 +71,19 @@ static func capture_all(shooter: SceneTree, main: Node3D) -> String:
 	var android: Node3D = main.big_tools.get_models_root().get_node_or_null("Android")
 	if android == null:
 		return "アンドロイドの姿が無い"
-	# 全身が入るように、アンドロイドの立つ所から南へ ANDROID_VIEW_DISTANCE_M 離れて腰の高さを見る
+	# 全身が入るように、アンドロイドから部屋の中央の向きへ離れた所 (中央に立つ時は南へ) から腰の高さを見る。
+	# 部屋の外へ出ないよう、離れる距離は部屋の奥行きの ANDROID_VIEW_ROOM_RATIO までにする
+	var room: MansionLayout.RoomDef = LookPrototypeRoomScript.room_at(
+		game_state.current_layout, android.global_position
+	)
+	var away: Vector3 = Vector3(
+		room.center.x - android.global_position.x, 0.0, room.center.z - android.global_position.z
+	)
 	main.player.set_spawn(
-		android.global_position + Vector3(0.0, 0.0, ANDROID_VIEW_DISTANCE_M), 0.0
+		android.global_position
+		+ (away.normalized() if away.length() > 0.1 else Vector3.BACK)
+		* minf(ANDROID_VIEW_DISTANCE_M, minf(room.size.x, room.size.z) * ANDROID_VIEW_ROOM_RATIO),
+		0.0,
 	)
 	await shooter.physics_frame
 	main.player.look_at_point(android.global_position + Vector3(0.0, 0.8, 0.0))
