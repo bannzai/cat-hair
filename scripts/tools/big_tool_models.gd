@@ -1,7 +1,9 @@
 extends RefCounted
 ## 大型の道具の見た目 (吸引車の運転席・床一面の粘着シート・アンドロイド・毛の加工機・ダンプカー) を、
 ## 箱・円柱・輪の組み合わせで組み立てる。実在の車や機械の意匠に似せない、色の付いた単純な形にする
-## (DIRECTION.md「決めたこと」: 実在の商品名・メーカー名・意匠を使わない)。状態は持たない
+## (DIRECTION.md「決めたこと」: 実在の商品名・メーカー名・意匠を使わない)。状態は持たない。
+## 寸法と色は、CI の撮影 (tmp/screenshot-*.png) で、部屋の家具 (1 m 前後) と並べて道具と分かる大きさ・色を目で見て決めた値で、
+## ゲームの計算には使わない
 
 ## 運転席の内装の色 (濃い灰色。部屋の暖かい色の前で、運転席の枠と分かる色)
 const COCKPIT_COLOR: Color = Color(0.18, 0.19, 0.21)
@@ -111,9 +113,11 @@ static func build_android() -> Node3D:
 static func build_processor() -> Node3D:
 	var processor: Node3D = Node3D.new()
 	processor.name = "HairProcessor"
-	var body: StandardMaterial3D = _material(PROCESSOR_COLOR, 0.5)
 	var dark: StandardMaterial3D = _material(COCKPIT_COLOR, 0.7)
-	_add_box(processor, "Body", Vector3(0.0, PROCESSOR_SIZE_M.y * 0.5, 0.0), PROCESSOR_SIZE_M, body)
+	_add_box(
+		processor, "Body", Vector3(0.0, PROCESSOR_SIZE_M.y * 0.5, 0.0), PROCESSOR_SIZE_M,
+		_material(PROCESSOR_COLOR, 0.5)
+	)
 	_add_box(
 		processor, "Hopper", Vector3(0.0, PROCESSOR_SIZE_M.y + 0.06, 0.0),
 		Vector3(PROCESSOR_SIZE_M.x * 0.6, 0.12, PROCESSOR_SIZE_M.z * 0.6), dark
@@ -129,11 +133,14 @@ static func build_processor() -> Node3D:
 static func build_dump_truck() -> Node3D:
 	var truck: Node3D = Node3D.new()
 	truck.name = "DumpTruck"
-	var cab: StandardMaterial3D = _material(WORK_VEHICLE_COLOR, 0.5)
-	var bed: StandardMaterial3D = _material(DUMP_BED_COLOR, 0.6)
 	var tire: StandardMaterial3D = _material(Color(0.08, 0.08, 0.08), 0.9)
-	_add_box(truck, "Cab", Vector3(0.0, 1.0, -1.3), Vector3(1.6, 1.3, 1.0), cab)
-	_add_box(truck, "Bed", Vector3(0.0, 1.0, 0.6), Vector3(1.8, 0.9, 2.6), bed)
+	_add_box(
+		truck, "Cab", Vector3(0.0, 1.0, -1.3), Vector3(1.6, 1.3, 1.0),
+		_material(WORK_VEHICLE_COLOR, 0.5)
+	)
+	_add_box(
+		truck, "Bed", Vector3(0.0, 1.0, 0.6), Vector3(1.8, 0.9, 2.6), _material(DUMP_BED_COLOR, 0.6)
+	)
 	_add_box(truck, "Chassis", Vector3(0.0, 0.45, -0.2), Vector3(1.6, 0.25, 4.0), tire)
 	# 屋敷の外には地面が無いため、停める所の舗装を敷いて宙に浮いて見えないようにする
 	_add_box(
@@ -165,22 +172,22 @@ static func _material(albedo: Color, roughness_value: float) -> StandardMaterial
 
 ## 親に箱を足す
 static func _add_box(
-	parent: Node3D, node_name: String, at: Vector3, box_size: Vector3, material: Material
+	parent: Node3D, node_name: String, local_position: Vector3, box_size: Vector3, material: Material
 ) -> MeshInstance3D:
 	var box: BoxMesh = BoxMesh.new()
 	box.size = box_size
-	return _add_mesh(parent, node_name, box, at, material)
+	return _add_mesh(parent, node_name, box, local_position, material)
 
 
 ## 親にメッシュを足す (影は落とさない。大型の道具の影が部屋の毛を隠さないため)
 static func _add_mesh(
-	parent: Node3D, node_name: String, mesh: Mesh, at: Vector3, material: Material
+	parent: Node3D, node_name: String, mesh: Mesh, local_position: Vector3, material: Material
 ) -> MeshInstance3D:
 	var instance: MeshInstance3D = MeshInstance3D.new()
 	instance.name = node_name
 	instance.mesh = mesh
 	instance.material_override = material
 	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	instance.position = at
+	instance.position = local_position
 	parent.add_child(instance)
 	return instance

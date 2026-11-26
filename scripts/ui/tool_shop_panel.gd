@@ -93,10 +93,9 @@ func refresh(game_state: Node, near_trader: bool) -> void:
 		if near_trader
 		else "毛と加工品を売る (裏口の買取業者の近くで売れる)"
 	)
-	var has_truck: bool = (
+	_haul_button.visible = (
 		ToolRulesScript.count_owned(owned_tools, ToolCatalogScript.TOOL_DUMP_TRUCK) > 0
 	)
-	_haul_button.visible = has_truck
 	_haul_button.disabled = stock_value <= 0
 	_haul_button.text = "毛を運ぶダンプカーで運び出して売る (1 回 %d 本分まで。どこからでも)" % (
 		ProcessingRulesScript.DUMP_TRUCK_CAPACITY_HAIRS

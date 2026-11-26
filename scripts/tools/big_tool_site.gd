@@ -25,7 +25,7 @@ const ANDROID_SPOT_RATIOS: Array[Vector2] = [
 ]
 ## アンドロイドを物から離す余白 (m。体の幅の半分ほど)
 const ANDROID_CLEARANCE_M: float = 0.25
-## 加工機を買取業者から東へ並べる時の、買取業者からの距離と台の間隔 (m)
+## 加工機を買取業者から東へ並べる時の、買取業者から 1 台目までの距離 (m。買取業者の体の幅 0.5 m と加工機の幅の半分の和に余白を足した距離)
 const PROCESSOR_ROW_START_M: float = 0.8
 ## 加工機の台の間隔 (m。箱の幅 0.5 m に 0.1 m のすき間)
 const PROCESSOR_SPACING_M: float = 0.6
@@ -143,7 +143,8 @@ func reset_for_new_progress() -> void:
 
 ## 持っている大型の道具に合わせて、加工機・ダンプカー・アンドロイドの見た目を置き直す (持ち物が変わった時だけ作り直す)
 func refresh_models() -> void:
-	if _game_state == null or _world == null or _game_state.save_data == null:
+	# 置く位置を世界座標で決めるため、tree に入っていない時 (selfcheck で単体で動かす時) は置かない
+	if not is_inside_tree() or _game_state == null or _world == null or _game_state.save_data == null:
 		return
 	var owned_tools: Array[OwnedTool] = _game_state.save_data.building_progress.owned_tools
 	var processors: int = ToolRulesScript.count_owned(

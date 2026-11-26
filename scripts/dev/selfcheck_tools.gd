@@ -250,13 +250,13 @@ func _check_hair_prices() -> void:
 		"珍しい毛は種類の値段 (金色 300 円・ひげ 100 円) で、表に無い種類は色の値段",
 	)
 	var stocks: Array[HairStock] = [
-		_make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_RAW, 10),
-		_make_stock(SurfaceHairScript.COLOR_CALICO, &"", HairStockScript.FORM_RAW, 3),
-		_make_stock(
+		make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_RAW, 10),
+		make_stock(SurfaceHairScript.COLOR_CALICO, &"", HairStockScript.FORM_RAW, 3),
+		make_stock(
 			SurfaceHairScript.COLOR_BLACK, HandRulesScript.RARE_WHISKER, HairStockScript.FORM_RAW, 1
 		),
-		_make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_FELT, 50),
-		_make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_RAW, -4),
+		make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_FELT, 50),
+		make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_RAW, -4),
 		null,
 	]
 	_check(
@@ -471,7 +471,7 @@ func _check_game_state_tool_sweep_and_sell() -> void:
 		_first_color(state.save_data.building_progress.surface_hairs[1]),
 		HandRulesScript.RARE_GOLDEN,
 	)
-	var felt: HairStock = _make_stock(color_id, &"", HairStockScript.FORM_FELT, 5)
+	var felt: HairStock = make_stock(color_id, &"", HairStockScript.FORM_FELT, 5)
 	state.save_data.building_progress.hair_stocks.append(felt)
 	var expected: int = ProcessingRulesScript.stock_value(
 		state.save_data.building_progress.hair_stocks
@@ -702,8 +702,8 @@ func _check_tool_shop_limits(state: Node, panel: PanelContainer) -> void:
 	)
 
 
-## 在庫 1 件を作る
-func _make_stock(
+## 在庫 1 件を作る (大型の道具の検証 scripts/dev/selfcheck_big_tools.gd も使う)
+static func make_stock(
 	color_id: StringName, rare_id: StringName, form: StringName, count: int
 ) -> HairStock:
 	var stock: HairStock = HairStockScript.new()

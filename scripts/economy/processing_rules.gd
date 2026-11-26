@@ -17,14 +17,18 @@ const FORMS_IN_ORDER: Array[StringName] = [
 	HairStockScript.FORM_FELT,
 	HairStockScript.FORM_DOLL,
 ]
-## 加工した物 1 個に使う毛の本数。毛玉 20 本、フェルトは毛玉 5 個分、人形はフェルト 4 枚分
+## 加工した物 1 個に使う毛の本数。毛玉 20 本、フェルトは毛玉 5 個分、人形はフェルト 4 枚分。
+## 毛玉は手で数十本取ればできる量にして最初の加工機ですぐ結果が見え、人形は部屋 1 つ分 (既定の毛 12,000 本を 15 部屋で割った
+## 800 本) の半分にして、部屋を片付けるたびに 1〜2 体できる大きさにした
 const HAIRS_PER_UNIT: Dictionary = {
 	HairStockScript.FORM_RAW: 1,
 	HairStockScript.FORM_BALL: 20,
 	HairStockScript.FORM_FELT: 100,
 	HairStockScript.FORM_DOLL: 400,
 }
-## 加工した物の売値を、使った毛を毛のまま売った値段の何倍にするか。段階が進むほど高い
+## 加工した物の売値を、使った毛を毛のまま売った値段の何倍にするか。段階が進むほど高い。
+## 加工機 1 台 (800 円) の元が、白の毛で毛玉なら 1,600 本、人形なら 400 本を加工すると取れる値にし、
+## 加工を進めるほど元が早く取れる差が出るようにした
 const STAGE_PRICE_FACTOR: Dictionary = {
 	HairStockScript.FORM_RAW: 1.0,
 	HairStockScript.FORM_BALL: 1.5,
@@ -40,11 +44,13 @@ const MIXABLE_COLORS: Array[StringName] = [
 	SurfaceHairScript.COLOR_WHITE,
 	SurfaceHairScript.COLOR_BLACK,
 ]
-## 加工機 1 台が 1 回の加工で使う毛の本数の上限 (人形 1 体分)
+## 加工機 1 台が 1 回の加工で使う毛の本数の上限 (人形 1 体分。1 回で最上位の段階まで作れる量)
 const HAIRS_PER_MACHINE_RUN: int = 400
-## 加工機が 1 回加工する間隔 (遊んだ時間の秒)。台数を並べると同じ時間で加工できる量が増える
+## 加工機が 1 回加工する間隔 (遊んだ時間の秒)。台数を並べると同じ時間で加工できる量が増える。
+## 掃除代を払う間隔 (60 秒) より短くし、道具を買う画面を開け閉めする間に加工が進んだと見て分かる長さにした
 const PROCESS_INTERVAL_SECONDS: float = 10.0
-## 毛を運ぶダンプカーが 1 回で運べる量 (毛の本数に直した量。加工した物は使った毛の本数で数える)
+## 毛を運ぶダンプカーが 1 回で運べる量 (毛の本数に直した量。加工した物は使った毛の本数で数える)。
+## 屋敷の毛の既定の本数 (12,000 本) を 3 回ほどで運び切れる量にし、在庫が多くなると何度か呼ぶ必要が出るようにした
 const DUMP_TRUCK_CAPACITY_HAIRS: int = 5000
 
 
@@ -71,10 +77,9 @@ static func line_capacity(machine_count: int, line_index: int) -> int:
 	var line_count: int = processing_lines(machine_count).size()
 	if line_count <= 0 or line_index < 0 or line_index >= line_count:
 		return 0
-	var machines_on_line: int = _whole_part(machine_count, line_count) + (
-		1 if line_index < machine_count % line_count else 0
-	)
-	return machines_on_line * HAIRS_PER_MACHINE_RUN
+	return (
+		_whole_part(machine_count, line_count) + (1 if line_index < machine_count % line_count else 0)
+	) * HAIRS_PER_MACHINE_RUN
 
 
 ## 在庫 1 種類の 1 個の売値 (円) を返す。毛のままは EconomyRules.hair_price、加工した物は
@@ -84,14 +89,14 @@ static func unit_price(form: StringName, hair_color: StringName, rare_hair_id: S
 		return EconomyRulesScript.hair_price(hair_color, rare_hair_id)
 	var mixed: bool = hair_color == HairStockScript.COLOR_MIXED
 	# 混ぜた物は白と黒だけでできているため、白・黒の 1 本の値段を元にする
-	var raw_price: int = EconomyRulesScript.hair_price(
-		SurfaceHairScript.COLOR_WHITE if mixed else hair_color, &""
-	)
-	var price: float = (
-		float(raw_price * int(HAIRS_PER_UNIT[form])) * float(STAGE_PRICE_FACTOR[form])
+	return roundi(
+		float(
+			EconomyRulesScript.hair_price(SurfaceHairScript.COLOR_WHITE if mixed else hair_color, &"")
+			* int(HAIRS_PER_UNIT[form])
+		)
+		* float(STAGE_PRICE_FACTOR[form])
 		* (MIXED_PRICE_FACTOR if mixed else 1.0)
 	)
-	return roundi(price)
 
 
 ## 在庫をすべて売った時に入るお金 (円) を返す (毛のままと加工した物の両方)
@@ -130,9 +135,8 @@ static func process_once(stocks: Array[HairStock], machine_count: int) -> Array[
 		var available: int = 0
 		for color_id: Variant in colors:
 			available += _raw_count(result, StringName(color_id))
-		var per_ball: int = int(HAIRS_PER_UNIT[HairStockScript.FORM_BALL])
 		var used: int = mini(available, line_capacity(machine_count, line_index))
-		used -= used % per_ball
+		used -= used % int(HAIRS_PER_UNIT[HairStockScript.FORM_BALL])
 		if used <= 0:
 			continue
 		var remaining_to_take: int = used

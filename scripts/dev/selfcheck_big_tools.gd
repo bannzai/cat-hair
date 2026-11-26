@@ -3,6 +3,8 @@ extends RefCounted
 ## (scripts/dev/selfcheck.gd から呼ぶ)。加工の段階ごとの売値・色を分けるか混ぜるかの差・シートの消費・吸引車が部屋から取る本数・
 ## アンドロイドが探し物を傷めないこと・ダンプカーが運ぶ量を確かめる。
 
+## 道具・お金の検証スイート (表面の種類の一覧と在庫の作り方を共有する)
+const SelfcheckToolsScript := preload("res://scripts/dev/selfcheck_tools.gd")
 ## 道具の定義
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 道具のルールの計算
@@ -29,15 +31,6 @@ const GameStateScript := preload("res://scripts/state/game_state.gd")
 const ToolShopPanelScript := preload("res://scripts/ui/tool_shop_panel.gd")
 ## selfcheck が使う一時セーブファイルパス (GameState の初期化だけに使い、保存はしない)
 const TEST_SAVE_PATH: String = "user://selfcheck_big_tools_save_data.json"
-## 表面の種類の一覧 (取りこぼしの割合を全部の組み合わせで確かめる)
-const ALL_SURFACES: Array[StringName] = [
-	MansionLayoutScript.SURFACE_FLOOR,
-	MansionLayoutScript.SURFACE_CARPET,
-	MansionLayoutScript.SURFACE_SOFA,
-	MansionLayoutScript.SURFACE_KNIT,
-	MansionLayoutScript.SURFACE_SUIT,
-	MansionLayoutScript.SURFACE_FURNITURE,
-]
 ## 部屋ごとにかける毛を取る大型の道具
 const ROOM_TOOLS: Array[StringName] = [
 	ToolCatalogScript.TOOL_SUCTION_TRUCK,
@@ -115,7 +108,7 @@ func _check_room_tool_miss_ratio() -> void:
 	var all_in_range: bool = true
 	for tool_id: StringName in ROOM_TOOLS:
 		for level: int in range(1, ToolRulesScript.MAX_TOOL_LEVEL + 1):
-			for surface_type: StringName in ALL_SURFACES:
+			for surface_type: StringName in SelfcheckToolsScript.ALL_SURFACES:
 				var ratio: float = ToolRulesScript.miss_ratio(tool_id, level, surface_type)
 				if ratio <= 0.0 or ratio >= 1.0:
 					all_in_range = false
@@ -136,14 +129,14 @@ func _check_room_tool_miss_ratio() -> void:
 	var sheet: StringName = ToolCatalogScript.TOOL_ADHESIVE_SHEET
 	var sheet_surfaces: Array[StringName] = []
 	var truck_surfaces: int = 0
-	for surface_type: StringName in ALL_SURFACES:
+	for surface_type: StringName in SelfcheckToolsScript.ALL_SURFACES:
 		if ToolRulesScript.covers_surface(sheet, surface_type):
 			sheet_surfaces.append(surface_type)
 		if ToolRulesScript.covers_surface(truck, surface_type):
 			truck_surfaces += 1
 	_check(
 		sheet_surfaces == [MansionLayoutScript.SURFACE_FLOOR, MansionLayoutScript.SURFACE_CARPET]
-		and truck_surfaces == ALL_SURFACES.size()
+		and truck_surfaces == SelfcheckToolsScript.ALL_SURFACES.size()
 		and ToolRulesScript.covers_surface(
 			ToolCatalogScript.TOOL_ANDROID, MansionLayoutScript.SURFACE_SUIT
 		)
@@ -238,8 +231,9 @@ func _check_processing_lines() -> void:
 		and ProcessingRulesScript.line_capacity(4, 1) == 400
 		and ProcessingRulesScript.line_capacity(6, 2) == 800
 		and ProcessingRulesScript.line_capacity(1, 1) == 0
+		and ProcessingRulesScript.line_capacity(1, -1) == 0
 		and ProcessingRulesScript.line_capacity(0, 0) == 0,
-		"1 列の 1 回の量は受け持つ台数 × 400 本 (4 台は 2・1・1 台、6 台は 2 台ずつ)、無い列は 0",
+		"1 列の 1 回の量は受け持つ台数 × 400 本 (4 台は 2・1・1 台、6 台は 2 台ずつ)、無い列と負の列番号は 0",
 	)
 	_check(
 		ProcessingRulesScript.runs_due(0.0, 9.9) == 0
@@ -264,10 +258,10 @@ func _check_process_once() -> void:
 	var black: StringName = SurfaceHairScript.COLOR_BLACK
 	var calico: StringName = SurfaceHairScript.COLOR_CALICO
 	var stocks: Array[HairStock] = [
-		_make_stock(white, &"", HairStockScript.FORM_RAW, 450),
-		_make_stock(black, &"", HairStockScript.FORM_RAW, 30),
-		_make_stock(calico, &"", HairStockScript.FORM_RAW, 50),
-		_make_stock(white, HandRulesScript.RARE_GOLDEN, HairStockScript.FORM_RAW, 1),
+		SelfcheckToolsScript.make_stock(white, &"", HairStockScript.FORM_RAW, 450),
+		SelfcheckToolsScript.make_stock(black, &"", HairStockScript.FORM_RAW, 30),
+		SelfcheckToolsScript.make_stock(calico, &"", HairStockScript.FORM_RAW, 50),
+		SelfcheckToolsScript.make_stock(white, HandRulesScript.RARE_GOLDEN, HairStockScript.FORM_RAW, 1),
 	]
 	var mixed_once: Array[HairStock] = ProcessingRulesScript.process_once(stocks, 1)
 	_check(
@@ -300,7 +294,7 @@ func _check_process_once() -> void:
 	)
 	var none: Array[HairStock] = ProcessingRulesScript.process_once(stocks, 0)
 	var too_few: Array[HairStock] = ProcessingRulesScript.process_once(
-		[_make_stock(white, &"", HairStockScript.FORM_RAW, 19)], 3
+		[SelfcheckToolsScript.make_stock(white, &"", HairStockScript.FORM_RAW, 19)], 3
 	)
 	_check(
 		ProcessingRulesScript.stock_value(none) == raw_value
@@ -314,9 +308,11 @@ func _check_process_once() -> void:
 func _check_haul_plan() -> void:
 	var white: StringName = SurfaceHairScript.COLOR_WHITE
 	var stocks: Array[HairStock] = [
-		_make_stock(white, &"", HairStockScript.FORM_RAW, 3000),
-		_make_stock(white, &"", HairStockScript.FORM_DOLL, 10),
-		_make_stock(SurfaceHairScript.COLOR_BLACK, &"", HairStockScript.FORM_RAW, 1000),
+		SelfcheckToolsScript.make_stock(white, &"", HairStockScript.FORM_RAW, 3000),
+		SelfcheckToolsScript.make_stock(white, &"", HairStockScript.FORM_DOLL, 10),
+		SelfcheckToolsScript.make_stock(
+			SurfaceHairScript.COLOR_BLACK, &"", HairStockScript.FORM_RAW, 1000
+		),
 	]
 	var plan: Dictionary = ProcessingRulesScript.haul_plan(
 		stocks, ProcessingRulesScript.DUMP_TRUCK_CAPACITY_HAIRS
@@ -329,13 +325,24 @@ func _check_haul_plan() -> void:
 		% str(plan),
 	)
 	var small: Dictionary = ProcessingRulesScript.haul_plan(
-		[_make_stock(white, &"", HairStockScript.FORM_DOLL, 3)], 399
+		[SelfcheckToolsScript.make_stock(white, &"", HairStockScript.FORM_DOLL, 3)], 399
 	)
 	_check(
 		small.is_empty()
 		and ProcessingRulesScript.haul_plan(stocks, 0).is_empty()
 		and ProcessingRulesScript.haul_plan([], 5000).is_empty(),
 		"人形 1 体 (400 本分) は 399 本分の空きには積まず、積める量 0 と在庫が空の時は何も積まない",
+	)
+	var with_empty_rows: Array[HairStock] = [
+		null,
+		SelfcheckToolsScript.make_stock(white, &"", HairStockScript.FORM_RAW, 0),
+		SelfcheckToolsScript.make_stock(white, &"", HairStockScript.FORM_RAW, -3),
+		SelfcheckToolsScript.make_stock(white, &"", HairStockScript.FORM_RAW, 7),
+	]
+	_check(
+		ProcessingRulesScript.haul_plan(with_empty_rows, 5000) == {3: 7},
+		"ダンプカーは null の行と、本数が 0 以下の行を積まない (実際: %s)"
+		% str(ProcessingRulesScript.haul_plan(with_empty_rows, 5000)),
 	)
 
 
@@ -348,8 +355,8 @@ func _check_game_state_processing() -> void:
 	var white: StringName = SurfaceHairScript.COLOR_WHITE
 	var calico: StringName = SurfaceHairScript.COLOR_CALICO
 	progress.hair_stocks = [
-		_make_stock(white, &"", HairStockScript.FORM_RAW, 500),
-		_make_stock(calico, &"", HairStockScript.FORM_RAW, 100),
+		SelfcheckToolsScript.make_stock(white, &"", HairStockScript.FORM_RAW, 500),
+		SelfcheckToolsScript.make_stock(calico, &"", HairStockScript.FORM_RAW, 100),
 	]
 	var raw_value: int = ProcessingRulesScript.stock_value(progress.hair_stocks)
 	state.advance_time(30.0)
@@ -388,6 +395,9 @@ func _check_game_state_processing() -> void:
 		"続けて進めると残りの白 100 本も混ぜたフェルトになり、在庫の売値が毛のままより上がる (%d → %d 円)"
 		% [raw_value, processed_value],
 	)
+	progress.hair_stocks.append(
+		SelfcheckToolsScript.make_stock(white, &"", HairStockScript.FORM_RAW, 0)
+	)
 	var money_before: int = state.get_money()
 	var earned: int = state.sell_hair_stocks()
 	_check(
@@ -405,7 +415,9 @@ func _check_game_state_haul() -> void:
 	state.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray(["--hair-count=300"]))
 	var progress: BuildingProgress = state.save_data.building_progress
 	progress.hair_stocks = [
-		_make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_RAW, 6000)
+		SelfcheckToolsScript.make_stock(
+			SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_RAW, 6000
+		)
 	]
 	var without: Dictionary = state.haul_with_dump_truck()
 	_check(
@@ -478,11 +490,12 @@ func _check_game_state_room_tools() -> void:
 	_remove_from_field(world, truck_plan["removed_ids"])
 	var after_room: int = int(state.get_room_status(room_id)["hair_count"])
 	var truck_in_range: int = int(truck_plan["in_range"])
-	var miss: float = float(truck_in_range - truck_removed) / float(truck_in_range)
 	_check(
 		int(truck_plan["in_range"]) == before_room
 		and truck_removed > 0 and after_room == before_room - truck_removed
-		and after_room > 0 and miss >= ToolRulesScript.MIN_MISS_RATIO,
+		and after_room > 0
+		and float(truck_in_range - truck_removed) / float(truck_in_range)
+		>= ToolRulesScript.MIN_MISS_RATIO,
 		"吸引車は部屋のすべての表面 (%d 本) から 1 回で %d 本を取り、部屋の毛が同じだけ減り、取り切らない (残り %d 本)"
 		% [before_room, truck_removed, after_room],
 	)
@@ -503,10 +516,158 @@ func _check_game_state_room_tools() -> void:
 		and not ToolRulesScript.damages_found_items(ToolCatalogScript.TOOL_ANDROID),
 		"アンドロイドは部屋の毛を取りきらずに取り (%d / %d 本)、探し物を傷めない" % [android_removed, other_before],
 	)
+	_check_room_plan_per_surface(world, android_plan, other_room)
+	_check_last_hair_kept(world, rng)
+	# 部屋の選び方の検証は全部の表面を 1 本ずつにするため、毛が要る掃除の間隔の検証を先に行う
+	_check_android_timing(state, world)
 	_check_android_room_choice(state, world)
+	_check_select_only_keyed_tools(state)
+	_check_sweep_rejects_partly_unknown_surfaces(state)
 	world.free()
 	state.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+
+
+## アンドロイドの 1 回の計画 plan (部屋 room_id) が、表面ごとに max_hairs (30 本) までしか取らず、表面ごとに 1 本以上残すか
+func _check_room_plan_per_surface(
+	world: MansionWorld, plan: Dictionary, room_id: StringName
+) -> void:
+	var max_hairs: int = int(
+		ToolCatalogScript.find_tool(ToolCatalogScript.TOOL_ANDROID)["max_hairs"]
+	)
+	var hair_field: Node3D = world.get_hair_field()
+	var within_cap: bool = true
+	var over_cap_surface_seen: bool = false
+	for surface_index: int in range(hair_field.get_surface_count()):
+		var surface_def: MansionLayout.SurfaceDef = world.get_surface_def(surface_index)
+		if surface_def.room_id != room_id:
+			continue
+		var on_surface: int = hair_field.get_surface_remaining_count(surface_index)
+		over_cap_surface_seen = over_cap_surface_seen or on_surface > max_hairs + 1
+		var taken: int = 0
+		var counts_by_color: Dictionary = plan["counts_by_surface"].get(surface_def.surface_id, {})
+		for count: Variant in counts_by_color.values():
+			taken += int(count)
+		if taken > max_hairs or (on_surface > 0 and taken > on_surface - 1):
+			within_cap = false
+	_check(
+		over_cap_surface_seen and within_cap,
+		"アンドロイドは表面 1 つから %d 本までしか取らず、どの表面にも 1 本以上残す (%d 本より多い表面を含む部屋で確かめた)"
+		% [max_hairs, max_hairs + 1],
+	)
+
+
+## 毛が 1 本だけ・2 本だけの表面に部屋ごとの道具をかけると、1 本だけの表面からは取らず、2 本の表面からは 1 本までしか取らないか
+func _check_last_hair_kept(world: MansionWorld, rng: RandomNumberGenerator) -> void:
+	var hair_field: Node3D = world.get_hair_field()
+	var room_id: StringName = world.get_surface_def(0).room_id
+	var one_index: int = -1
+	var two_index: int = -1
+	for surface_index: int in range(hair_field.get_surface_count()):
+		if world.get_surface_def(surface_index).room_id != room_id:
+			continue
+		var keep: int = 1 if one_index < 0 else (2 if two_index < 0 else -1)
+		if keep < 0:
+			break
+		if hair_field.get_surface_remaining_count(surface_index) < keep:
+			continue
+		while hair_field.get_surface_remaining_count(surface_index) > keep:
+			hair_field.remove_hair(hair_field.get_hair_id_at_slot(surface_index, 0))
+		if keep == 1:
+			one_index = surface_index
+		else:
+			two_index = surface_index
+	var removed_from: Dictionary = {}
+	for _attempt: int in range(20):
+		var plan: Dictionary = ToolController.plan_room_removal(
+			world, room_id, ToolCatalogScript.TOOL_SUCTION_TRUCK, ToolRulesScript.MAX_TOOL_LEVEL, rng
+		)
+		for surface_id: Variant in (plan["counts_by_surface"] as Dictionary).keys():
+			var taken: int = 0
+			for count: Variant in (plan["counts_by_surface"][surface_id] as Dictionary).values():
+				taken += int(count)
+			removed_from[surface_id] = maxi(int(removed_from.get(surface_id, 0)), taken)
+	_check(
+		one_index >= 0 and two_index >= 0
+		and int(removed_from.get(world.get_surface_def(one_index).surface_id, 0)) == 0
+		and int(removed_from.get(world.get_surface_def(two_index).surface_id, 0)) == 1,
+		"部屋ごとの道具を 20 回計画しても、毛が 1 本の表面からは取らず、2 本の表面からは 1 本までしか取らない (最後の 1 本を残す)",
+	)
+
+
+## アンドロイドは掃除の間隔 (4 秒) の直前では掃除せず、間隔ごとに掃除し、進行を作り直すとたまった時間が戻り、
+## 持っていなければ何も変えないか
+func _check_android_timing(state: Node, world: MansionWorld) -> void:
+	var site: BigToolSite = BigToolSite.new()
+	site.setup(state, world, null)
+	site.set_rng_seed(7)
+	var owned: OwnedTool = state.find_owned_tool(ToolCatalogScript.TOOL_ANDROID)
+	var progress: BuildingProgress = state.save_data.building_progress
+	progress.owned_tools.erase(owned)
+	var total_before: int = state.get_total_remaining_hairs()
+	var unowned: Dictionary = site.step_android()
+	var unowned_advance: int = site.advance(BigToolSite.ANDROID_INTERVAL_SECONDS * 2.0)
+	progress.owned_tools.append(owned)
+	site.reset_for_new_progress()
+	_check(
+		unowned.is_empty() and unowned_advance == 0 and state.get_total_remaining_hairs() == total_before,
+		"アンドロイドを持っていない時は掃除せず、時間が進んでも毛が変わらない",
+	)
+	var just_before: int = site.advance(BigToolSite.ANDROID_INTERVAL_SECONDS - 0.1)
+	site.reset_for_new_progress()
+	var after_reset: int = site.advance(0.2)
+	var on_time: int = site.advance(BigToolSite.ANDROID_INTERVAL_SECONDS)
+	_check(
+		just_before == 0 and after_reset == 0 and on_time > 0,
+		"アンドロイドは 4 秒の直前では掃除せず、作り直すとたまった時間が戻り (3.9 秒 + 0.2 秒では掃除しない)、4 秒で掃除する (%d 本)"
+		% on_time,
+	)
+	site.free()
+
+
+## キーで選ばない道具 (アンドロイド・加工機・ダンプカー) は持っていても選べず、キーで選ぶ大型の道具は持っていれば選べるか
+func _check_select_only_keyed_tools(state: Node) -> void:
+	var controller: ToolController = ToolController.new()
+	controller._game_state = state
+	state.save_data.building_progress.money = 100000
+	for tool_id: StringName in [
+		ToolCatalogScript.TOOL_HAIR_PROCESSOR, ToolCatalogScript.TOOL_DUMP_TRUCK
+	]:
+		state.purchase(GameStateScript.PURCHASE_TOOL, tool_id)
+	_check(
+		not controller.select_tool(ToolCatalogScript.TOOL_ANDROID)
+		and not controller.select_tool(ToolCatalogScript.TOOL_HAIR_PROCESSOR)
+		and not controller.select_tool(ToolCatalogScript.TOOL_DUMP_TRUCK)
+		and controller.get_selected_tool_id() == ToolCatalogScript.TOOL_HAND
+		and controller.select_tool(ToolCatalogScript.TOOL_SUCTION_TRUCK)
+		and controller.get_selected_tool_id() == ToolCatalogScript.TOOL_SUCTION_TRUCK,
+		"持っているアンドロイド・加工機・ダンプカーは選べず手のまま、持っている吸引車は選べる",
+	)
+	controller.free()
+
+
+## 道具を面ごとにかける時、無い面が 1 つでも混ざると、ほかの面の毛・在庫・消耗品を変えずに -1 を返すか
+func _check_sweep_rejects_partly_unknown_surfaces(state: Node) -> void:
+	var sheet: StringName = ToolCatalogScript.TOOL_ADHESIVE_SHEET
+	var owned: OwnedTool = state.find_owned_tool(sheet)
+	owned.consumable_count = 2
+	var surface: SurfaceHair = null
+	for candidate: SurfaceHair in state.save_data.building_progress.surface_hairs:
+		if candidate.count_for_color(SurfaceHairScript.COLOR_WHITE) > 0:
+			surface = candidate
+			break
+	var before_white: int = surface.count_for_color(SurfaceHairScript.COLOR_WHITE)
+	var before_stock: int = state.get_raw_hair_stock_count()
+	_check(
+		state.apply_tool_sweep(
+			sheet,
+			{surface.surface_id: {SurfaceHairScript.COLOR_WHITE: 1}, &"no_such_surface": {}},
+		) == -1
+		and surface.count_for_color(SurfaceHairScript.COLOR_WHITE) == before_white
+		and state.get_raw_hair_stock_count() == before_stock
+		and owned.consumable_count == 2,
+		"有る面と無い面が混ざると、有る面の毛・在庫・シートの枚数を変えずに -1 を返す",
+	)
 
 
 ## アンドロイドが掃除する部屋は、道具で取れる毛 (表面ごとの最後の 1 本を除いた本数) のいちばん多い部屋で、
@@ -515,7 +676,18 @@ func _check_android_room_choice(state: Node, world: MansionWorld) -> void:
 	var site: BigToolSite = BigToolSite.new()
 	site.setup(state, world, null)
 	var hair_field: Node3D = world.get_hair_field()
+	var rooms: Array = state.current_layout.rooms
+	var expected_room: StringName = rooms[rooms.size() - 1].room_id
+	for surface_index: int in range(hair_field.get_surface_count()):
+		if world.get_surface_def(surface_index).room_id == expected_room:
+			continue
+		while hair_field.get_surface_remaining_count(surface_index) > 2:
+			hair_field.remove_hair(hair_field.get_hair_id_at_slot(surface_index, 0))
 	var first_choice: StringName = site.dirtiest_room_id()
+	_check(
+		first_choice == expected_room,
+		"ほかの部屋の表面を 2 本以下にすると、毛を残した最後の部屋 %s を選ぶ (実際: %s)" % [expected_room, first_choice],
+	)
 	var leftover: int = 0
 	for surface_index: int in range(hair_field.get_surface_count()):
 		if world.get_surface_def(surface_index).room_id != first_choice:
@@ -548,6 +720,11 @@ func _check_shop_panel() -> void:
 	var progress: BuildingProgress = state.save_data.building_progress
 	progress.money = 800
 	panel.refresh(state, false)
+	var unowned_text: String = ToolShopPanelScript.describe_tool(processor, null, 0)
+	_check(
+		unowned_text.contains("未購入") and not unowned_text.contains("台 ("),
+		"持っていない加工機の説明は「未購入」で、並べた台数を出さない (実際: %s)" % unowned_text,
+	)
 	_check(
 		panel.get_tool_button(processor).text == "買う (800 円)"
 		and not panel.get_haul_button().visible,
@@ -574,8 +751,8 @@ func _check_shop_panel() -> void:
 		state.purchase(GameStateScript.PURCHASE_TOOL, processor)
 	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_DUMP_TRUCK)
 	progress.hair_stocks = [
-		_make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_BALL, 3),
-		_make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_DOLL, 1),
+		SelfcheckToolsScript.make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_BALL, 3),
+		SelfcheckToolsScript.make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_DOLL, 1),
 	]
 	panel.refresh(state, false)
 	var haul_requested: Array[int] = [0]
@@ -631,14 +808,3 @@ func _rare_count(stocks: Array[HairStock]) -> int:
 			total += stock.count
 	return total
 
-
-## 在庫 1 件を作る
-func _make_stock(
-	color_id: StringName, rare_id: StringName, form: StringName, count: int
-) -> HairStock:
-	var stock: HairStock = HairStockScript.new()
-	stock.hair_color = color_id
-	stock.rare_hair_id = rare_id
-	stock.form = form
-	stock.count = count
-	return stock
