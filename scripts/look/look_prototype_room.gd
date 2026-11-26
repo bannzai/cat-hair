@@ -146,7 +146,7 @@ func setup(player: FirstPersonPlayer, world_environment: WorldEnvironment) -> vo
 	if _prototype_environment == null or world_environment.environment != _prototype_environment:
 		_base_environment = world_environment.environment
 		_prototype_environment = build_prototype_environment(_base_environment)
-	if _hand == null:
+	if not is_instance_valid(_hand):
 		_hand = FirstPersonHandScript.new()
 		player.get_camera().add_child(_hand)
 	_refresh_active()
@@ -206,7 +206,7 @@ func show_automation_props() -> int:
 
 ## 毛をつまんで引いている途中の手の構図を切り替える (手で抜く操作はまだ無いため、手と毛の位置を置いただけの構図)
 func set_pinch_pose(enabled: bool) -> void:
-	if _hand != null:
+	if is_instance_valid(_hand):
 		# 屋敷の床の面の高さは 0 (MansionWorld が床を y = 0 に置く)
 		_hand.set_pinch_pose(enabled, 0.0)
 
@@ -322,7 +322,7 @@ func _refresh_active() -> void:
 	# 毎フレーム呼ばれるため、変わった時だけ差し替える
 	if _world_environment != null and _world_environment.environment != wanted_environment:
 		_world_environment.environment = wanted_environment
-	if _hand != null:
+	if is_instance_valid(_hand):
 		_hand.visible = active
 
 

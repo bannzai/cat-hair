@@ -13,6 +13,8 @@ const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
 ## 屋敷ビルダーロジックスクリプト
 const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd")
+## 一人称プレイヤーのスクリプト (tree の外のプレイヤーを作る)
+const FirstPersonPlayerScript := preload("res://scripts/player/first_person_player.gd")
 ## 3D 屋敷構築ノードスクリプト
 const MansionWorldScript := preload("res://scripts/mansion/mansion_world.gd")
 
@@ -340,7 +342,21 @@ func _check_apply_edges() -> void:
 	# setup の前 (プレイヤーが無い) は、歩いていて部屋があっても試作の見た目を出さない
 	look_room.set_playing(true)
 	_check(not look_room.is_prototype_active(), "プレイヤーが無い時は試作の見た目を出さない")
+	# プレイヤーが tree の外の時と、プレイヤーを解放した後 (カメラの子の手も一緒に解放される) は、試作の見た目を出さず、
+	# 解放された手にも触れない
+	var outside_player: FirstPersonPlayer = FirstPersonPlayerScript.new()
+	var environment_node: WorldEnvironment = WorldEnvironment.new()
+	look_room.setup(outside_player, environment_node)
+	look_room.set_playing(true)
+	var active_outside_tree: bool = look_room.is_prototype_active()
+	outside_player.free()
+	look_room.set_playing(true)
+	_check(
+		not active_outside_tree and not look_room.is_prototype_active(),
+		"プレイヤーが tree の外の時と解放した後は試作の見た目を出さない",
+	)
 	look_room.set_playing(false)
+	environment_node.free()
 
 	look_room.apply(layout, null, null)
 	_check(
