@@ -52,8 +52,6 @@ func _run() -> void:
 	HeadlessCheck.cleanup_audio_manager(self, audio_handle, settings_path)
 	if ok:
 		print("screenshot OK")
-		print("DIAG orphan nodes: %d" % Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
-		Node.print_orphan_nodes()
 		quit(0)
 	else:
 		quit(1)

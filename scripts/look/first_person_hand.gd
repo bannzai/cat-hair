@@ -4,13 +4,13 @@ extends Node3D
 ## 手の原点は手首で、指先はカメラの前方 (-Z) を向く。毛をつまんで引いている途中の構図 (pinch) を取れる。
 
 ## 平常時の手首の位置 (カメラ基準 m)。1280x720 で画面の右下に手の甲と指が収まる位置
-const IDLE_POSITION: Vector3 = Vector3(0.20, -0.24, -0.40)
-## 平常時の手首の回転 (rad)。指先を前やや下へ向け、上から手の甲が見える角度
-const IDLE_ROTATION: Vector3 = Vector3(-0.55, 0.12, 0.0)
+const IDLE_POSITION: Vector3 = Vector3(0.17, -0.14, -0.42)
+## 平常時の手首の回転 (rad)。指先を前やや下・内側へ向け、上から手の甲が見え、袖が画面の右下の端へ抜ける角度
+const IDLE_ROTATION: Vector3 = Vector3(-0.15, 0.15, 0.0)
 ## つまむ時の手首の位置 (カメラ基準 m)。画面の中央やや右下で、指先が視線の先の床へ向く位置
 const PINCH_POSITION: Vector3 = Vector3(0.07, -0.10, -0.34)
-## つまむ時の手首の回転 (rad)。カメラを床へ約 50 度向けた時に、指先が床から約 70 度で毛へ伸びる角度
-const PINCH_ROTATION: Vector3 = Vector3(-0.35, 0.20, 0.0)
+## つまむ時の手首の回転 (rad)。カメラを床へ約 50 度向けた時に指先が床の毛へ向き、袖が画面の下の端へ抜ける角度
+const PINCH_ROTATION: Vector3 = Vector3(0.05, 0.20, 0.0)
 ## 平常時の 4 本の指の曲げ (rad)。力を抜いた手の軽い曲がり
 const IDLE_FINGER_CURL: float = 0.35
 ## つまむ時に人差し指以外の 3 本を握り込む曲げ (rad)
@@ -32,9 +32,9 @@ const FINGER_BASE_X_M: Array[float] = [-0.029, -0.010, 0.010, 0.029]
 ## 手のひらの寸法 (幅・厚み・長さ m)。成人の手のひらの標準寸法
 const PALM_SIZE_M: Vector3 = Vector3(0.085, 0.028, 0.095)
 ## 袖の半径 (m)。手首の太さに合わせたニットの袖口
-const SLEEVE_RADIUS_M: float = 0.036
-## 袖の長さ (m)。カメラの近くまで伸ばすと画面を覆うため、手首から先の袖口だけを見せる長さ
-const SLEEVE_LENGTH_M: float = 0.12
+const SLEEVE_RADIUS_M: float = 0.032
+## 袖の長さ (m)。手首から画面の下の端の外まで腕が続いて見える長さ (短いと袖が缶のように浮いて見える)
+const SLEEVE_LENGTH_M: float = 0.24
 ## 肌の色。写実寄りの明るい肌の色 (彩度を抑え、照明の色を受けやすい値)
 const SKIN_COLOR: Color = Color(0.86, 0.66, 0.54)
 ## 袖 (ニット) の色。屋敷の照明で肌との明暗差が付く濃い灰青

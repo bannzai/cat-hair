@@ -70,6 +70,9 @@ const FABRIC_TEXTURE_REPEAT_M: float = 0.25
 const WALLPAPER_TEXTURE_REPEAT_M: float = 0.5
 ## 布の凹凸のテクスチャの 1 辺の画素数
 const FABRIC_TEXTURE_SIZE: int = 128
+## 生成するテクスチャの画素の形式。RGB8 は Vulkan (CI の lavapipe) が受け付けず、読み込みのたびに RGBA8 へ変換して
+## WARNING を出す (PR #30 の CI の --verbose の実行で観測) ため、最初から RGBA8 で作る
+const TEXTURE_IMAGE_FORMAT: Image.Format = Image.FORMAT_RGBA8
 
 ## MansionWorld が付けるノード名 (衝突体付きは StaticBody3D の名前) から、試作の材質の種類への対応
 const NODE_MATERIAL_KINDS: Dictionary = {
@@ -660,7 +663,7 @@ func _ensure_materials() -> void:
 ## 木の床板の高さの画像 (明るいほど高い)。4 枚の板・板ごとの明るさの差・木目の縞・継ぎ目の溝を描く
 static func _make_wood_height_image() -> Image:
 	var grain: Image = _make_noise_image(0.06, 3)
-	var image: Image = Image.create(WOOD_TEXTURE_SIZE, WOOD_TEXTURE_SIZE, false, Image.FORMAT_RGB8)
+	var image: Image = Image.create(WOOD_TEXTURE_SIZE, WOOD_TEXTURE_SIZE, false, TEXTURE_IMAGE_FORMAT)
 	for y: int in range(WOOD_TEXTURE_SIZE):
 		var plank: int = floori(float(y) / float(WOOD_PLANK_PX))
 		# 板ごとの明るさの差 (0.82〜1.0)。板の番号から決まる擬似乱数
@@ -683,7 +686,7 @@ static func _make_wood_height_image() -> Image:
 ## 縦の細い縞の壁紙の明るさの画像
 static func _make_wallpaper_image() -> Image:
 	var noise: Image = _make_noise_image(0.2, 5)
-	var image: Image = Image.create(WOOD_TEXTURE_SIZE, WOOD_TEXTURE_SIZE, false, Image.FORMAT_RGB8)
+	var image: Image = Image.create(WOOD_TEXTURE_SIZE, WOOD_TEXTURE_SIZE, false, TEXTURE_IMAGE_FORMAT)
 	for y: int in range(WOOD_TEXTURE_SIZE):
 		for x: int in range(WOOD_TEXTURE_SIZE):
 			# 1 枚に 6 本の縞 (0.5 m で繰り返すため 8 cm 間隔)。縞の明暗差は 8% に抑えて目立たせすぎない
@@ -700,7 +703,7 @@ static func _make_noise_image(frequency: float, noise_seed: int) -> Image:
 	noise.seed = noise_seed
 	noise.frequency = frequency
 	var image: Image = noise.get_seamless_image(FABRIC_TEXTURE_SIZE, FABRIC_TEXTURE_SIZE)
-	image.convert(Image.FORMAT_RGB8)
+	image.convert(TEXTURE_IMAGE_FORMAT)
 	return image
 
 
