@@ -27,6 +27,7 @@ jobs:
         run: |
           bash scripts/ci/test/test-check-human-verification.sh
           bash scripts/ci/test/test-list-uncommitted-generated.sh
+          bash scripts/ci/test/test-missing-uid.sh
 
   check-and-export:
     runs-on: ubuntu-24.04

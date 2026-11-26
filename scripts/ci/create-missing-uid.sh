@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# list-missing-uid.sh が出す .uid のうち、作業ツリーにまだ無いものを作り、作ったパスを 1 行 1 パスで出す。
+# Godot を起動しない手元で、足した .gd の .uid を同じ commit に入れるために使う (Makefile の uid が呼ぶ)。
+# 作業ツリーに既にある .uid は書き換えない (Godot が付けた識別子を変えると、そのスクリプトへの参照が切れるため)。
+# 既にある .uid を作り直さないため、2 回目の実行は何も作らない (冪等)。git add はしない。
+#
+# 中身は Godot と同じ形の `uid://<識別子>` と改行。Godot 4.7.2 の core/io/resource_uid.cpp
+# (https://github.com/godotengine/godot/blob/4.7.2-stable/core/io/resource_uid.cpp) の create_id が
+# 乱数の 64 bit の上位 1 bit を落とした値を作り、id_to_text がそれを 34 文字 (a〜y と 0〜8) の基数で上位の桁から
+# 書くのと同じ手順で作る。リポジトリ内の既存の識別子 (uid://...) と重なったら作り直す。
+#
+# exit code: 0 = 作れた (作るものが無かった時を含む) / 0 以外 = git の失敗か、書き込みに失敗した
+set -u -o pipefail
+
+uid_characters=(a b c d e f g h i j k l m n o p q r s t u v w x y 0 1 2 3 4 5 6 7 8)
+
+# 0 以上 2^63 未満の乱数を 10 進で出す (/dev/urandom の 8 byte のうち先頭の 1 byte の最上位の bit を落とす)
+random_id() {
+  local hex
+  hex=$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')
+  printf '%d\n' "$(( (16#${hex:0:2} & 0x7f) << 56 | 16#${hex:2} ))"
+}
+
+# 識別子 (10 進) を Godot の id_to_text と同じ `uid://...` の表記にする
+id_to_text() {
+  local id=$1 text=""
+  while :; do
+    text="${uid_characters[id % 34]}$text"
+    id=$(( id / 34 ))
+    [ "$id" -eq 0 ] && break
+  done
+  printf 'uid://%s\n' "$text"
+}
+
+missing=$(bash "$(dirname "$0")/list-missing-uid.sh") || exit $?
+[ -n "$missing" ] || exit 0
+
+# 重なりを調べる既存の識別子。.uid のほか、.tscn・.tres・.import・project.godot に書かれた uid://... も含む
+existing=$(git -c core.quotePath=false ls-files -z --cached --others --exclude-standard \
+  | xargs -0 grep -hoE 'uid://[a-y0-8]+' 2> /dev/null | sort -u)
+
+while IFS= read -r uid_path; do
+  [ -e "$uid_path" ] && continue
+  while :; do
+    text=$(id_to_text "$(random_id)")
+    printf '%s\n' "$existing" | grep -qxF -- "$text" || break
+  done
+  printf '%s\n' "$text" > "$uid_path" || exit 1
+  existing=$(printf '%s\n%s\n' "$existing" "$text")
+  printf '%s\n' "$uid_path"
+done <<< "$missing"

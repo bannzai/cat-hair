@@ -47,7 +47,7 @@ MOVIE_AUTOMATION_FRAMES ?= 330
 # hairbench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/hairbench.gd の DEFAULT_COUNTS が SSOT)
 HAIRBENCH_COUNTS ?=
 
-.PHONY: import check selfcheck integration failure-path lint test verify screenshot movie movie-automation hairbench run build-macos build-windows build-linux build-web build-all clean
+.PHONY: import check selfcheck integration failure-path lint check-generated uid test verify screenshot movie movie-automation hairbench run build-macos build-windows build-linux build-web build-all clean
 
 # ログ・撮影の出力先。.gdignore を置き、撮影した PNG を Godot に import させない
 $(LOG_DIR)/.gdignore:
@@ -121,6 +121,25 @@ failure-path: import
 # GDScript の lint (gdtoolkit の gdlint。設定は ./gdlintrc)
 lint:
 	gdlint scripts/
+
+# Godot が生成する付随ファイルの commit 漏れを、Godot を起動せずに push の前に検査する。.gd の .uid が index に
+# 無いもの (scripts/ci/list-missing-uid.sh) と、作業ツリーにあるが commit されていない .uid / .import
+# (scripts/ci/list-uncommitted-generated.sh。CI の check-and-export と同じ判定) を出して失敗する
+check-generated:
+	@missing=$$(bash scripts/ci/list-missing-uid.sh) || exit $$?; \
+	uncommitted=$$(bash scripts/ci/list-uncommitted-generated.sh) || exit $$?; \
+	found=$$(printf '%s\n%s\n' "$$missing" "$$uncommitted" | grep -v '^$$' | sort -u); \
+	if [ -n "$$found" ]; then \
+		printf '%s\n' "$$found"; \
+		echo "commit されていない .uid / .import が $$(printf '%s\n' "$$found" | wc -l | tr -d ' ') 件あります。.uid は make uid で作って commit してください (AGENTS.md「検証方法」)" >&2; \
+		exit 1; \
+	fi
+	@echo "check-generated OK"
+
+# .gd の .uid のうち作業ツリーに無いものを、Godot を起動せずに作る (scripts/ci/create-missing-uid.sh)。
+# 作った .uid は git add して .gd と同じ commit に入れる
+uid:
+	bash scripts/ci/create-missing-uid.sh
 
 # headless 検証の一括実行 (CI の lint job と、check-and-export job のうちエクスポートを除いた部分。描画付きの
 # screenshot / movie は含まない)
