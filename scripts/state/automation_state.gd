@@ -78,7 +78,7 @@ func is_cat_resting(cat_id: StringName) -> bool:
 ## ブラシで猫をブラッシングし、落ちる前の毛 (CatRules.BRUSH_HAIRS 本、猫の毛の色) を在庫 (毛のまま) に入れる。
 ## ブラシを持っていない・いない猫・休んでいる猫の時は何も変えずに 0 を返す。戻り値は在庫に入れた本数
 func brush_cat(cat_id: StringName) -> int:
-	if _game_state.find_owned_tool(ToolCatalogScript.TOOL_BRUSH) == null or is_cat_resting(cat_id):
+	if _game_state.find_owned_tool(ToolCatalogScript.TOOL_BRUSH) == null:
 		return 0
 	for route: Dictionary in _cat_routes:
 		if route["cat_id"] == cat_id:
@@ -128,7 +128,7 @@ func set_robot_route(robot_index: int, room_ids: Array[StringName]) -> bool:
 		return false
 	var seen: Dictionary = {}
 	for room_id: StringName in room_ids:
-		if seen.has(room_id) or RobotRulesScript.find_room(layout, room_id) == null:
+		if RobotRulesScript.find_room(layout, room_id) == null:
 			return false
 		seen[room_id] = true
 	robots[robot_index].robot_room_ids = room_ids.duplicate()
@@ -204,7 +204,6 @@ func _pick_robot_hairs(robot_index: int, robot: OwnedTool, before: float, picks:
 				break
 			var picked: SurfaceHair = _progress().find_surface_hair(pick["surface_id"])
 			picked.hair_counts[pick["color"]] = picked.count_for_color(pick["color"]) - 1
-			_game_state._add_raw_stock(pick["color"], &"")
 			var by_color: Dictionary = taken.get_or_add(pick["surface_id"], {})
 			by_color[pick["color"]] = int(by_color.get(pick["color"], 0)) + 1
 		for surface_key: Variant in taken.keys():
