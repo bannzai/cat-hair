@@ -81,6 +81,8 @@ agent が見たのは、動画のサムネイルと途中の 1 コマの静止�
 | 2026-11-26 | 見た目の参考 | 見た目は 2 本の動画 (「デザインの方向」の節) を参考にし、agy × Gemini Neon に作らせる。原文は https://github.com/bannzai/cat-hair/issues/4#issuecomment-7183068745 | bannzai |
 | 2026-11-26 | 見た目の決め方 | bannzai に見た目の方向を見てもらう段階は残す (発言は誰が作るかの指定で、見てもらう段階を省くとは言っていないため)。見せる物を、Claude Design のモックから、Neon がゲームの中に作った見た目の試作を CI で撮った画面に変える。作りかけの Claude Design の canvas の続きは作らない | agent |
 | 2026-11-26 | 屋敷と一人称の土台 (issue #7) | 保存データは案 (`documents/design/save-data-2026-11-25/index.html`) の型を GDScript の Resource クラスとして定義し、`user://save_data.json` へ JSON で永続化する (`schema_version` と調整値 `MansionTuning` を含める)。屋敷の広さの単位は 1 部屋の幅 (m) (`room_size_m`) とし、操作は WASD / 矢印キー移動・マウス視点・`F1` で開発者調整画面・`F5` で手動セーブとする | agent (変えにくい面) |
+| 2026-11-26 | BGM と効果音 | 音声バスを `Master` / `BGM` (-6 dB) / `SFX` (0 dB) に分け、効果音を目立たせる。BGM は題名の画面 (`title`) と屋敷の中 (`mansion`) の 2 曲で、同じ曲の再生指示では頭から流し直さず継続し、ウィンドウが裏に回った時は一時停止して戻った時に再開する (明示停止時は再開しない)。未登録の場面・出来事名や素材読み込み失敗時はゲームを止めずスキップする。設定の初期値は BGM・効果音ともオンで、設定画面の切替で即時反映・保存する | agent |
+| 2026-11-26 | BGM と効果音 (設定の保存) | 音声のオン・オフ設定は `user://audio_settings.cfg` (`ConfigFile` の `[audio]` セクション、`bgm_enabled: bool`・`sfx_enabled: bool`) に直接保存する | agent (変えにくい面) |
 
 ## agent に任せること
 

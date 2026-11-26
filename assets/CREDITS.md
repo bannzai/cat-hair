@@ -12,3 +12,47 @@
 - ライセンス: SIL Open Font License 1.1 (全文を同梱する)。クレジット表記は不要
 - 改変: なし
 - 用途: プロジェクト全体の既定フォント (`scripts/main.gd` の `FONT`。メインシーンの theme の `default_font` に設定する)。Godot の既定フォントは日本語の字形を持たず、CI の Linux ランナーには日本語のシステムフォントも無いため同梱する
+
+## BGM
+
+どの画面で鳴らすかは `scripts/audio/audio_catalog.gd` を正とする。
+
+- ファイル: `audio/bgm_title.ogg`
+- 素材名・作者: Prologue Theme / CleytonKauffman
+- 入手 URL: https://opengameart.org/content/prologue-theme
+- ライセンス: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)。クレジット表記は不要
+- 改変: `Prologue Theme.zip` 内の `Prologue Theme.ogg` を取り出し、ファイル名を変更し、読み込み負荷とリポジトリ容量を抑えるため OGG Vorbis (`-q:a 4`) で再エンコード
+
+- ファイル: `audio/bgm_mansion.ogg`
+- 素材名・作者: Snowfall (`Snowfall (Looped ver.).ogg`) / Kistol
+- 入手 URL: https://opengameart.org/content/snowfall
+- ライセンス: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)。クレジット表記は不要 (作者の任意記載: "Music by Kistol, but credit is not required.")
+- 改変: ファイル名変更のみ
+
+## 効果音
+
+どの出来事で鳴らすかは `scripts/audio/audio_catalog.gd` を正とする。
+
+- ファイル: `audio/sfx_pluck_hair.ogg`
+- 素材名・作者: Classic fanfare lick (`fanfare_3.ogg`) / fvcalderan
+- 入手 URL: https://opengameart.org/content/classic-fanfare-lick
+- ライセンス: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)。クレジット表記は不要
+- 改変: ファイル名変更のみ
+
+- ファイル: `audio/sfx_earn_money.ogg`
+- 素材名・作者: Purchasing Sound Effect (`snd_purchase_0.wav`) / Spring Spring
+- 入手 URL: https://opengameart.org/content/purchasing-sound-effect
+- ライセンス: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)。クレジット表記は不要
+- 改変: ファイル名変更、および読み込み負荷と容量を抑えるため 44.1kHz OGG Vorbis (`-q:a 5`) へ再エンコード
+
+- ファイル: `audio/sfx_buy_tool.ogg`
+- 素材名・作者: Interface Sounds (`Audio/confirmation_002.ogg`) / Kenney
+- 入手 URL: https://opengameart.org/content/interface-sounds
+- ライセンス: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)。クレジット表記は不要
+- 改変: `kenney_interfaceSounds.zip` から取り出し、ファイル名変更のみ
+
+- ファイル: `audio/sfx_button.ogg`
+- 素材名・作者: Interface Sounds (`Audio/click_001.ogg`) / Kenney
+- 入手 URL: https://opengameart.org/content/interface-sounds
+- ライセンス: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)。クレジット表記は不要
+- 改変: `kenney_interfaceSounds.zip` から取り出し、ファイル名変更のみ

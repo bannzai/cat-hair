@@ -4,10 +4,14 @@ extends SceneTree
 ## 全部の撮影を終えたら「screenshot OK」の行を出して quit(0) する (Makefile はこの行と PNG の存在で判定する)。
 ## 画面や状態を増やす時は _capture_scenes() に撮影を足す。
 
-## 音の解放を待つ時間と GameState 準備ヘルパーを借りる、headless の検証の土台
+## AudioManager / GameState 準備・後始末を借りる検証の土台
 const HeadlessCheck := preload("res://scripts/dev/headless_check.gd")
 ## 撮影するメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
+## メインシーンのノードパス定数参照用
+const MainScript := preload("res://scripts/main.gd")
+## 音声管理ノード (AUDIO_RELEASE_TIME_SEC の単一の正と型解決用)
+const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 ## JSON 保存ストレージスクリプト
 const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 
@@ -22,13 +26,23 @@ func _initialize() -> void:
 
 ## フレームを進めながら撮影するため、同じ実行中に重ねて呼び出さない
 func _run() -> void:
-	if await _capture_scenes():
-		await create_timer(HeadlessCheck.AUDIO_RELEASE_TIME).timeout
+	var settings_path: String = ProjectSettings.globalize_path(
+		"res://tmp/screenshot-audio-settings.cfg"
+	)
+	var audio_handle: Dictionary = HeadlessCheck.prepare_audio_manager(self, settings_path)
+
+	var ok: bool = await _capture_scenes()
+	(audio_handle["manager"] as AudioManagerScript).stop_all()
+	await create_timer(AudioManagerScript.AUDIO_RELEASE_TIME_SEC).timeout
+	HeadlessCheck.cleanup_audio_manager(self, audio_handle, settings_path)
+	if ok:
 		print("screenshot OK")
 		quit(0)
+	else:
+		quit(1)
 
 
-## 撮影する画面の並び。失敗した撮影は _capture() が quit(1) 済みなので、false を受けたらそのまま抜ける
+## 撮影する画面の並び。失敗した撮影は false を返し呼び出し側で後始末して quit(1) する
 func _capture_scenes() -> bool:
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 	var state_handle: Dictionary = HeadlessCheck.acquire_game_state(root, TEST_SAVE_PATH)
@@ -43,6 +57,14 @@ func _capture_scenes() -> bool:
 	# CI の llvmpipe でこの画面が描画し終わることを PR #1 の artifact で確かめた (下限は測っていない)
 	await create_timer(0.3).timeout
 	if not await _capture("tmp/screenshot-title.png"):
+		_cleanup(main, game_state, created_state)
+		return false
+
+	# 音声設定画面を開いた状態
+	var settings_button: Button = main.get_node_or_null(MainScript.SETTINGS_BUTTON_PATH)
+	if settings_button != null:
+		settings_button.pressed.emit()
+	if not await _capture("tmp/screenshot-settings.png"):
 		_cleanup(main, game_state, created_state)
 		return false
 
@@ -61,7 +83,6 @@ func _capture_scenes() -> bool:
 	# 描画付き環境 (非 headless) でのマウス捕捉・捕捉中視点移動・Esc 解放・F1 解放を検証する
 	if not await _verify_windowed_mouse_capture(main):
 		_cleanup(main, game_state, created_state)
-		quit(1)
 		return false
 
 	_cleanup(main, game_state, created_state)
@@ -139,7 +160,6 @@ func _capture(path: String) -> bool:
 	var status: Error = root.get_viewport().get_texture().get_image().save_png(path)
 	if status != OK:
 		push_error("スクリーンショット保存失敗: %s (%s)" % [path, error_string(status)])
-		quit(1)
 		return false
 	print("screenshot: " + path)
 	return true

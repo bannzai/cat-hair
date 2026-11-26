@@ -1,6 +1,6 @@
 extends Node3D
-## ゲームのメインシーン。屋敷の 3D 空間・一人称プレイヤー・タイトル・HUD・開発者調整画面を繋ぐ。
-## ゲーム進行の状態自体は autoload (GameState) に集約し、このノードは表示と入力の橋渡しだけを行う。
+## ゲームのメインシーン。屋敷の 3D 空間・一人称プレイヤー・タイトル・HUD・音声設定・開発者調整画面を繋ぐ。
+## 進行状態は autoload (GameState)、音声は autoload (AudioManager) に集約し、このノードは表示と入力の橋渡しを行う。
 
 ## make check がメインシーンのロードと _ready の実行を確かめる印
 const BOOT_MESSAGE: String = "cat-hair boot"
@@ -8,6 +8,22 @@ const BOOT_MESSAGE: String = "cat-hair boot"
 const FONT: Font = preload("res://assets/fonts/NotoSansJP[wght].ttf")
 ## 状態管理 autoload スクリプト (headless 検証時のフォールバック生成に使用)
 const GameStateScript := preload("res://scripts/state/game_state.gd")
+## 場面名・出来事名のカタログ
+const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
+## AudioManager の型解決と実行時取得用スクリプト参照 (headless --script で autoload 名を静的参照しない)
+const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
+## 設定画面パネルの型解決用スクリプト参照
+const AudioSettingsPanelScript := preload("res://scripts/ui/audio_settings_panel.gd")
+## 題名ラベルのノードパス (本体・テストで共有する単一の正)
+const TITLE_LABEL_PATH: String = "UILayer/UI/TitleOverlay/Layout/TitleLabel"
+## はじめるボタンのノードパス (本体・テスト・撮影で共有する単一の正)
+const START_BUTTON_PATH: String = "UILayer/UI/TitleOverlay/Layout/StartButton"
+## はじめからボタンのノードパス (本体・テストで共有する単一の正)
+const NEW_GAME_BUTTON_PATH: String = "UILayer/UI/TitleOverlay/Layout/NewGameButton"
+## 設定ボタンのノードパス (本体・テスト・撮影で共有する単一の正)
+const SETTINGS_BUTTON_PATH: String = "UILayer/UI/TitleOverlay/Layout/SettingsButton"
+## 設定画面パネルのノードパス (本体・テストで共有する単一の正)
+const SETTINGS_PANEL_PATH: String = "UILayer/UI/AudioSettingsPanel"
 
 ## 参照中の GameState ノード (autoload または検証時のフォールバック)
 var _game_state: Node = null
@@ -25,11 +41,17 @@ var _is_playing: bool = false
 ## 起動時に重ねるタイトル画面オーバーレイ
 @onready var title_overlay: Control = $UILayer/UI/TitleOverlay
 ## タイトル画面の題名ラベル
-@onready var title_label: Label = $UILayer/UI/TitleOverlay/Layout/TitleLabel
+@onready var title_label: Label = get_node(TITLE_LABEL_PATH) as Label
 ## タイトル画面の開始 / 続きからボタン
-@onready var start_button: Button = $UILayer/UI/TitleOverlay/Layout/StartButton
+@onready var start_button: Button = get_node(START_BUTTON_PATH) as Button
 ## セーブデータがある時に表示するはじめからボタン
-@onready var new_game_button: Button = $UILayer/UI/TitleOverlay/Layout/NewGameButton
+@onready var new_game_button: Button = get_node(NEW_GAME_BUTTON_PATH) as Button
+## タイトル画面の音声設定ボタン
+@onready var settings_button: Button = get_node(SETTINGS_BUTTON_PATH) as Button
+## 音声設定パネル
+@onready var settings_panel: AudioSettingsPanelScript = (
+	get_node(SETTINGS_PANEL_PATH) as AudioSettingsPanelScript
+)
 ## プレイ中に表示する HUD コンテナ
 @onready var hud: Control = $UILayer/UI/HUD
 ## 屋敷全体の残り毛本数ラベル
@@ -48,6 +70,7 @@ func _ready() -> void:
 
 	start_button.pressed.connect(_on_start_pressed)
 	new_game_button.pressed.connect(_on_new_game_pressed)
+	settings_button.pressed.connect(_on_settings_pressed)
 	dev_tuning_panel.apply_requested.connect(_on_dev_tuning_applied)
 	dev_tuning_panel.close_requested.connect(close_dev_panel)
 
@@ -60,6 +83,12 @@ func _ready() -> void:
 	_rebuild_world_from_state()
 	_refresh_title_buttons()
 	_set_title_mode()
+
+	var audio_manager: AudioManagerScript = (
+		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
+	)
+	if audio_manager != null:
+		audio_manager.play_bgm(AudioCatalog.BGM_TITLE)
 	print(BOOT_MESSAGE)
 
 
@@ -85,14 +114,21 @@ func _unhandled_input(event: InputEvent) -> void:
 			_game_state.save_current_state()
 
 
-## タイトルを閉じて一人称プレイを開始する
+## タイトルを閉じて一人称プレイを開始し、屋敷 BGM へ切り替える
 func enter_mansion() -> void:
 	_is_playing = true
 	title_overlay.visible = false
+	if settings_panel != null:
+		settings_panel.visible = false
 	hud.visible = true
 	dev_tuning_panel.visible = false
 	player.controls_enabled = true
 	_refresh_hud()
+	var audio_manager: AudioManagerScript = (
+		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
+	)
+	if audio_manager != null:
+		audio_manager.play_bgm(AudioCatalog.BGM_MANSION)
 
 
 ## 開発者向け調整画面の開閉を切り替える
@@ -200,14 +236,23 @@ func _on_mansion_rebuilt(_layout: MansionLayout) -> void:
 
 ## 「はじめる」/「続きから」ボタン押下ハンドラ
 func _on_start_pressed() -> void:
+	AudioManagerScript.play_button_sfx(get_tree())
 	enter_mansion()
 
 
 ## 「はじめから」ボタン押下ハンドラ
 func _on_new_game_pressed() -> void:
+	AudioManagerScript.play_button_sfx(get_tree())
 	if _game_state != null:
 		_game_state.start_new_game()
 	enter_mansion()
+
+
+## 「設定」ボタン押下ハンドラ
+func _on_settings_pressed() -> void:
+	AudioManagerScript.play_button_sfx(get_tree())
+	if settings_panel != null:
+		settings_panel.open()
 
 
 ## 開発者調整画面で「屋敷を作り直す」を押した時のハンドラ

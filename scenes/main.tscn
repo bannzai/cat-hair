@@ -1,9 +1,10 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/mansion/mansion_world.gd" id="2_world"]
 [ext_resource type="Script" path="res://scripts/player/first_person_player.gd" id="3_player"]
 [ext_resource type="Script" path="res://scripts/ui/dev_tuning_panel.gd" id="4_devpanel"]
+[ext_resource type="PackedScene" path="res://scenes/ui/audio_settings_panel.tscn" id="5_settings"]
 
 [sub_resource type="Environment" id="Environment_mansion"]
 background_mode = 1
@@ -106,12 +107,12 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -320.0
-offset_top = -120.0
+offset_top = -140.0
 offset_right = 320.0
-offset_bottom = 120.0
+offset_bottom = 140.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 24
+theme_override_constants/separation = 20
 alignment = 1
 
 [node name="TitleLabel" type="Label" parent="UILayer/UI/TitleOverlay/Layout"]
@@ -131,6 +132,11 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "はじめから"
 
+[node name="SettingsButton" type="Button" parent="UILayer/UI/TitleOverlay/Layout"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "設定"
+
 [node name="DevTuningPanel" type="PanelContainer" parent="UILayer/UI"]
 visible = false
 layout_mode = 1
@@ -146,3 +152,6 @@ offset_bottom = 170.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("4_devpanel")
+
+[node name="AudioSettingsPanel" parent="UILayer/UI" instance=ExtResource("5_settings")]
+layout_mode = 1
