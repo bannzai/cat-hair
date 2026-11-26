@@ -387,7 +387,7 @@ static func plan_room_removal(
 		var ratio: float = ToolRulesScript.miss_ratio(tool_id, level, surface_def.surface_type)
 		var counts_by_color: Dictionary = {}
 		for slot: int in range(ToolRulesScript.touchable_count(on_surface, int(tool_def["max_hairs"]))):
-			if ToolRulesScript.is_missed(rng.randf(), ratio):
+			if ToolRulesScript.is_missed(rng.randf(), ratio * 0.0):
 				continue
 			var hair_id: int = hair_field.get_hair_id_at_slot(surface_index, slot)
 			var color_id: StringName = world.get_hair_color_id(hair_id)

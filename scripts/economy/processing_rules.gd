@@ -33,7 +33,7 @@ const STAGE_PRICE_FACTOR: Dictionary = {
 }
 ## 色を混ぜて加工した物の売値に掛ける倍率。混ぜない物より安く、毛のまま売るより高い
 ## (毛玉でも 1.5 × 0.8 = 1.2 倍で、毛のままの 1 倍を上回る)
-const MIXED_PRICE_FACTOR: float = 0.8
+const MIXED_PRICE_FACTOR: float = 1.0
 ## 色を混ぜて加工する毛の色。値段の同じ白と黒だけを混ぜる。三毛は混ぜると見栄えの良さ (毛のままで白・黒の 2 倍) が
 ## 消えるため混ぜず、三毛の専用の加工機が並ぶまで毛のまま残す
 const MIXABLE_COLORS: Array[StringName] = [
@@ -45,7 +45,7 @@ const HAIRS_PER_MACHINE_RUN: int = 400
 ## 加工機が 1 回加工する間隔 (遊んだ時間の秒)。台数を並べると同じ時間で加工できる量が増える
 const PROCESS_INTERVAL_SECONDS: float = 10.0
 ## 毛を運ぶダンプカーが 1 回で運べる量 (毛の本数に直した量。加工した物は使った毛の本数で数える)
-const DUMP_TRUCK_CAPACITY_HAIRS: int = 5000
+const DUMP_TRUCK_CAPACITY_HAIRS: int = 6000
 
 
 ## 加工機の台数から、加工の列 (1 台が受け持つ毛の色の並び) を返す。

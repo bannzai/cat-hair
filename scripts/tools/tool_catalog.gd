@@ -262,7 +262,7 @@ const TOOLS: Array[Dictionary] = [
 		"initial_consumables": 0,
 		"refill_price": 0,
 		"refill_count": 0,
-		"damages_found_items": false,
+		"damages_found_items": true,
 	},
 	{
 		"id": TOOL_HAIR_PROCESSOR,

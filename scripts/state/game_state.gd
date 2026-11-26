@@ -251,6 +251,8 @@ func apply_tool_sweep(tool_id: StringName, counts_by_surface: Dictionary) -> int
 			StringName(surface_key)
 		)
 		var counts_by_color: Dictionary = counts_by_surface[surface_key]
+		if consumed and surface_key != counts_by_surface.keys()[0]:
+			owned.consumable_count -= 1
 		for color_key: Variant in counts_by_color.keys():
 			var color_id: StringName = StringName(color_key)
 			var removed: int = mini(
