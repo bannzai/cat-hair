@@ -102,12 +102,26 @@ func step_android() -> Dictionary:
 	return {"room_id": room_id, "in_range": int(plan["in_range"]), "removed": removed}
 
 
-## 毛のいちばん多い部屋を返す (同じ本数なら表の前の部屋)。どの部屋も 1 本以下 (道具では取れない) なら空
+## 道具で取れる毛 (各表面の最後の 1 本を除いた本数の合計。ToolRules.touchable_count が最後の 1 本を残すため)
+## のいちばん多い部屋を返す (同じ本数なら表の前の部屋)。どの部屋にも取れる毛が無ければ空。
+## 部屋の毛の合計で選ぶと、表面ごとに 1 本ずつ残った部屋 (何も取れない) を選び続け、ほかの部屋の掃除が止まるため
 func dirtiest_room_id() -> StringName:
+	var hair_field: Node3D = _world.get_hair_field()
+	if hair_field == null:
+		return &""
+	var touchable_by_room: Dictionary = {}
+	for surface_index: int in range(hair_field.get_surface_count()):
+		var surface_def: MansionLayout.SurfaceDef = _world.get_surface_def(surface_index)
+		if surface_def == null:
+			continue
+		touchable_by_room[surface_def.room_id] = (
+			int(touchable_by_room.get(surface_def.room_id, 0))
+			+ maxi(0, hair_field.get_surface_remaining_count(surface_index) - 1)
+		)
 	var best_id: StringName = &""
-	var best_count: int = 1
+	var best_count: int = 0
 	for room: MansionLayout.RoomDef in _game_state.current_layout.rooms:
-		var count: int = int(_game_state.get_room_status(room.room_id)["hair_count"])
+		var count: int = int(touchable_by_room.get(room.room_id, 0))
 		if count > best_count:
 			best_id = room.room_id
 			best_count = count

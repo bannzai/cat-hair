@@ -503,9 +503,40 @@ func _check_game_state_room_tools() -> void:
 		and not ToolRulesScript.damages_found_items(ToolCatalogScript.TOOL_ANDROID),
 		"アンドロイドは部屋の毛を取りきらずに取り (%d / %d 本)、探し物を傷めない" % [android_removed, other_before],
 	)
+	_check_android_room_choice(state, world)
 	world.free()
 	state.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+
+
+## アンドロイドが掃除する部屋は、道具で取れる毛 (表面ごとの最後の 1 本を除いた本数) のいちばん多い部屋で、
+## 表面ごとに 1 本ずつしか残っていない部屋は毛の合計が多くても選ばず、どの部屋も取れなければ選ばないか
+func _check_android_room_choice(state: Node, world: MansionWorld) -> void:
+	var site: BigToolSite = BigToolSite.new()
+	site.setup(state, world, null)
+	var hair_field: Node3D = world.get_hair_field()
+	var first_choice: StringName = site.dirtiest_room_id()
+	var leftover: int = 0
+	for surface_index: int in range(hair_field.get_surface_count()):
+		if world.get_surface_def(surface_index).room_id != first_choice:
+			continue
+		while hair_field.get_surface_remaining_count(surface_index) > 1:
+			hair_field.remove_hair(hair_field.get_hair_id_at_slot(surface_index, 0))
+		leftover += hair_field.get_surface_remaining_count(surface_index)
+	var second_choice: StringName = site.dirtiest_room_id()
+	_check(
+		first_choice != &"" and leftover > 0 and second_choice != &"" and second_choice != first_choice,
+		"表面ごとに 1 本ずつ (%d 本) しか残っていない部屋 %s は選ばず、取れる毛のある部屋 %s を選ぶ"
+		% [leftover, first_choice, second_choice],
+	)
+	for surface_index: int in range(hair_field.get_surface_count()):
+		while hair_field.get_surface_remaining_count(surface_index) > 1:
+			hair_field.remove_hair(hair_field.get_hair_id_at_slot(surface_index, 0))
+	_check(
+		site.dirtiest_room_id() == &"" and hair_field.get_remaining_count() > 0,
+		"どの表面も 1 本ずつしか残っていない時は、アンドロイドが掃除する部屋は無い",
+	)
+	site.free()
 
 
 ## 道具を買う画面が、加工機の並べた台数・ダンプカーのボタン・加工品の個数を出すか
