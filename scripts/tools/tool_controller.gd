@@ -232,7 +232,7 @@ func set_automation(automation: AutomationController) -> void:
 
 ## 画面中央の光線の先、手の届く距離 (HandController.REACH_M) にいる猫の id (いなければ空)
 func aimed_cat_id() -> StringName:
-	if _automation == null or _camera != null:
+	if _automation == null or _camera == null:
 		return &""
 	return CatRulesScript.cat_on_ray(
 		_automation.cat_centers(), _camera.global_position, -_camera.global_basis.z,
