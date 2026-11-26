@@ -162,6 +162,24 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		"途中で離すと毛は抜けずに残り、手が開き、残り本数と在庫が変わらない",
 	)
 
+	# 押したまま手の届く距離より遠くへ離れると、引くのをやめる
+	await _press_pluck()
+	var reach_ids: PackedInt32Array = hand.get_pulling_ids()
+	var player: FirstPersonPlayer = main.player
+	player.set_spawn(player.global_position + Vector3(0.0, 0.0, HandController.REACH_M * 2.0), 0.0)
+	await _checker.process_frame
+	await _checker.process_frame
+	_check(
+		not reach_ids.is_empty() and not hand.is_pulling()
+		and hair_field.has_hair(reach_ids[0])
+		and game_state.get_total_remaining_hairs() == before_total,
+		"押したまま手の届く距離より遠くへ離れると、毛は抜けずに引くのをやめる",
+	)
+	Input.action_release(ACTION_PLUCK)
+	if await HandAim.aim_at_floor_hair(_checker, main) != aimed_id:
+		_check(false, "離れた後に同じ床の毛を狙い直せる")
+		return
+
 	# もう一度つまんで引き終えると 1 本抜ける
 	var audio_manager: AudioManagerScript = (
 		AudioManagerScript.resolve(_checker) as AudioManagerScript

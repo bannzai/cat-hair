@@ -86,7 +86,7 @@ func _process(delta: float) -> void:
 	)
 	var pressed: bool = enabled and captured and Input.is_action_pressed(ACTION_PLUCK)
 	if is_pulling():
-		if pressed:
+		if pressed and is_pull_in_reach():
 			advance_pull(delta)
 		else:
 			release_pull()
@@ -157,6 +157,21 @@ func cancel_pull() -> void:
 ## 毛をつまんで引いている途中か
 func is_pulling() -> bool:
 	return not _pulling_ids.is_empty()
+
+
+## つまんでいる毛のどれかが、まだ手の届く距離 (REACH_M) にあるか (引いている間に歩いて離れたら離す)
+func is_pull_in_reach() -> bool:
+	if not is_pulling() or _camera == null:
+		return false
+	var hair_field: Node3D = _world.get_hair_field()
+	for hair_id: int in _pulling_ids:
+		if (
+			hair_field.has_hair(hair_id)
+			and hair_field.get_hair_transform(hair_id).origin.distance_to(_camera.global_position)
+			<= REACH_M
+		):
+			return true
+	return false
 
 
 ## 引き抜くまでの進み具合 (0〜1) を返す
