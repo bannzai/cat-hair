@@ -35,8 +35,9 @@ WINDOWED_FLAGS := --audio-driver Dummy --rendering-driver opengl3 --resolution 1
 # 描画付き起動でだけ出る、描画に影響しない OS / ドライバ由来の行。ログの WARNING / ERROR 検査から除外する
 # (llvmpipe は V-Sync を設定できない WARNING を毎回 1 件出す。macOS は入力メソッドの mach port のエラーを稀に出す)
 WINDOWED_LOG_NOISE := -e 'Could not set V-Sync mode' -e 'IMKCFRunLoopWakeUpReliable'
-# movie target が録画するフレーム数 (30 fps 固定。150 = 5 秒)。操作なしの起動〜メインシーン表示の確認には
-# 数秒あれば足り、CI の録画時間と artifact のサイズを抑えるため
+# movie target が録画する固定 FPS とフレーム数 (30 fps × 5 秒 = 150。movie.gd へ渡す単一の正)。
+# 操作なしの起動〜メインシーン表示の確認には数秒あれば足り、CI の録画時間と artifact のサイズを抑えるため
+MOVIE_FPS ?= 30
 MOVIE_FRAMES ?= 150
 
 .PHONY: import check selfcheck integration failure-path lint test verify screenshot movie run build-macos build-windows build-linux build-all clean
@@ -119,8 +120,9 @@ screenshot: import
 # 終了 1 秒前のフレームの輝度の平均が下限以上であることも検査する (下限と判定は scripts/ci/check-movie-brightness.sh)
 movie: import
 	rm -f $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4
-	"$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) --write-movie $(LOG_DIR)/movie.avi --fixed-fps 30 --quit-after $(MOVIE_FRAMES) > $(LOG_DIR)/movie.log 2>&1; \
+	"$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) --write-movie $(LOG_DIR)/movie.avi --fixed-fps $(MOVIE_FPS) --quit-after $(MOVIE_FRAMES) --script res://scripts/dev/movie.gd -- --frames=$(MOVIE_FRAMES) --fps=$(MOVIE_FPS) > $(LOG_DIR)/movie.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/movie.log; \
+	grep -q '^movie OK$$' $(LOG_DIR)/movie.log
 	tail -n 1 $(LOG_DIR)/movie.log | grep -q '^exit=0$$'
 	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/movie.log | grep -v $(WINDOWED_LOG_NOISE) | grep -q .
 	ffmpeg -loglevel error -y -i $(LOG_DIR)/movie.avi -c:v libx264 -pix_fmt yuv420p $(LOG_DIR)/movie.mp4

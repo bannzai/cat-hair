@@ -3,13 +3,43 @@ extends SceneTree
 ## 検証の失敗の記録と、結果を exit code と完了の行で返す終わり方を持つ。
 ## release ビルドでは assert が消えるため、assert ではなく _check() と _finish() で結果を返す。
 
-## 音を止めてから終了するまで待つ時間 (秒)。止めた BGM・効果音の再生は AudioServer がミキシングを数回進めてから
-## 解放するため、待たずに終了すると再生がリークとして WARNING / ERROR に出る (bannzai/kageboshi の CI で実測した値。
-## ミキシング数回分に余裕を持たせてある)。描画付きの scripts/dev/screenshot.gd もこの値で待つ
-const AUDIO_RELEASE_TIME: float = 0.25
+## 音声解放待ち時間と AudioManager 解決の単一の正
+const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 
 ## 検証が 1 件でも失敗したか。true なら exit code 1 で終わる
 var failed: bool = false
+
+
+## テスト・撮影用の一時ファイルが存在すれば削除する (全 dev スクリプト共通)
+static func remove_file_if_exists(path: String) -> void:
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)
+
+
+## 検証・撮影用に AudioManager を準備し、指定の一時設定パスを読み込む (無ければ新規生成して root へ置く)
+static func prepare_audio_manager(tree: SceneTree, settings_path: String) -> Dictionary:
+	remove_file_if_exists(settings_path)
+	var audio_manager: AudioManagerScript = AudioManagerScript.resolve(tree) as AudioManagerScript
+	var created: bool = false
+	if audio_manager == null:
+		audio_manager = AudioManagerScript.new()
+		audio_manager.name = AudioManagerScript.NODE_NAME
+		tree.root.add_child(audio_manager)
+		created = true
+	audio_manager.reload_settings(settings_path)
+	return {"manager": audio_manager, "created": created}
+
+
+## prepare_audio_manager で準備した AudioManager を後始末する (自分で作ったノードのみ解放)
+static func cleanup_audio_manager(
+	tree: SceneTree, handle: Dictionary, settings_path: String
+) -> void:
+	if bool(handle.get("created", false)):
+		var audio_manager: Node = handle.get("manager") as Node
+		if audio_manager != null:
+			tree.root.remove_child(audio_manager)
+			audio_manager.free()
+	remove_file_if_exists(settings_path)
 
 
 ## cond が false なら label を ERROR として出し、失敗として記録する。
