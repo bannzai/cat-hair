@@ -17,6 +17,10 @@ const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd")
 ## JSON 保存ストレージスクリプト
 const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
+## 毛・加工品在庫データ型スクリプト
+const HairStockScript := preload("res://scripts/data/hair_stock.gd")
+## 手で毛を取る時のルールの計算
+const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
 
 ## セーブデータの保存先パス (テスト時に差し替え可能)
 var save_path: String = SaveStorageScript.DEFAULT_SAVE_PATH
@@ -147,6 +151,78 @@ func get_surface_hair_count(surface_id: StringName) -> int:
 		return 0
 	var surface: SurfaceHair = save_data.building_progress.find_surface_hair(surface_id)
 	return surface.total_count() if surface != null else 0
+
+
+## 指定面から指定色の毛を 1 本取り、在庫 (毛のまま) に入れる。珍しい毛なら図鑑に載せる。
+## 戻り値は {"plucked": 取れたか, "new_rare": 図鑑に新しく載ったか}。その面にその色が残っていなければ何も変えない
+func pluck_hair(
+	surface_id: StringName, hair_color: StringName, rare_hair_id: StringName = &""
+) -> Dictionary:
+	var result: Dictionary = {"plucked": false, "new_rare": false}
+	if save_data == null or save_data.building_progress == null:
+		return result
+	var surface: SurfaceHair = save_data.building_progress.find_surface_hair(surface_id)
+	if surface == null or surface.count_for_color(hair_color) <= 0:
+		return result
+	surface.hair_counts[hair_color] = surface.count_for_color(hair_color) - 1
+	_add_raw_stock(hair_color, rare_hair_id)
+	result["plucked"] = true
+	result["new_rare"] = HandRulesScript.register_rare_hair(
+		save_data.found_rare_hair_ids, rare_hair_id
+	)
+	state_changed.emit()
+	return result
+
+
+## 在庫にある毛のまま (加工していない) の本数の合計を返す
+func get_raw_hair_stock_count() -> int:
+	if save_data == null or save_data.building_progress == null:
+		return 0
+	var total: int = 0
+	for stock: HairStock in save_data.building_progress.hair_stocks:
+		if stock != null and stock.form == HairStockScript.FORM_RAW:
+			total += stock.count
+	return total
+
+
+## 手の強化の段を返す (upgrade_id は HandRules.UPGRADE_*)
+func get_hand_upgrade_level(upgrade_id: StringName) -> int:
+	if save_data == null:
+		return 0
+	return HandRulesScript.upgrade_level(save_data.hand_upgrade_levels, upgrade_id)
+
+
+## 手の強化の段を設定する (強化を買う処理と検証から呼ぶ。お金のやり取りはここでは行わない)
+func set_hand_upgrade_level(upgrade_id: StringName, level: int) -> void:
+	if save_data == null:
+		return
+	save_data.hand_upgrade_levels[upgrade_id] = maxi(0, level)
+	state_changed.emit()
+
+
+## 図鑑に載った珍しい毛の種類の一覧を返す
+func get_found_rare_hair_ids() -> Array[StringName]:
+	var empty_ids: Array[StringName] = []
+	return save_data.found_rare_hair_ids if save_data != null else empty_ids
+
+
+## 毛のままの在庫のうち、色と珍しい毛の種類が一致する 1 件に 1 本足す (無ければ作る)
+func _add_raw_stock(hair_color: StringName, rare_hair_id: StringName) -> void:
+	for stock: HairStock in save_data.building_progress.hair_stocks:
+		if (
+			stock != null
+			and stock.form == HairStockScript.FORM_RAW
+			and stock.hair_color == hair_color
+			and stock.rare_hair_id == rare_hair_id
+		):
+			stock.count += 1
+			return
+	var new_stock: HairStock = HairStockScript.new()
+	new_stock.hair_color = hair_color
+	new_stock.rare_hair_id = rare_hair_id
+	new_stock.form = HairStockScript.FORM_RAW
+	new_stock.count = 1
+	save_data.building_progress.hair_stocks.append(new_stock)
 
 
 ## 指定の調整値から新しいレイアウトと初期 SaveData を生成する
