@@ -186,7 +186,5 @@ func _on_new_game_pressed() -> void:
 	enter_mansion()
 
 
-func _on_dev_tuning_applied(new_tuning: MansionTuning) -> void:
-	if _game_state != null:
-		_game_state.apply_tuning_and_rebuild(new_tuning, true)
+func _on_dev_tuning_applied(_new_tuning: MansionTuning) -> void:
 	close_dev_panel()

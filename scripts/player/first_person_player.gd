@@ -84,9 +84,8 @@ func _physics_process(delta: float) -> void:
 		var direction: Vector3 = (transform.basis * Vector3(input_vec.x, 0.0, input_vec.y))
 		direction.y = 0.0
 		if direction.length_squared() > 0.0001:
-			direction = direction.normalized()
-			velocity.x = direction.x * move_speed
-			velocity.z = direction.z * move_speed
+			velocity.x = 0.0
+			velocity.z = 0.0
 		else:
 			velocity.x = 0.0
 			velocity.z = 0.0
