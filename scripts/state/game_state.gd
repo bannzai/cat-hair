@@ -29,6 +29,8 @@ const ToolRulesScript := preload("res://scripts/tools/tool_rules.gd")
 const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
 ## 買った道具 1 つのデータ型スクリプト
 const OwnedToolScript := preload("res://scripts/data/owned_tool.gd")
+## 毛の加工機とダンプカーの計算
+const ProcessingRulesScript := preload("res://scripts/economy/processing_rules.gd")
 ## お金で買う物の種類: 道具
 const PURCHASE_TOOL: StringName = &"tool"
 ## お金で買う物の種類: 道具のレベルを 1 上げる
@@ -228,53 +230,85 @@ func get_found_rare_hair_ids() -> Array[StringName]:
 	return save_data.found_rare_hair_ids if save_data != null else empty_ids
 
 
-## 持っている道具を 1 回かけ、指定面から色ごとの本数 (color -> int) だけまとめて減らして在庫 (毛のまま) に入れる。
-## 消耗品を使う道具は 1 つ使い、残りが 0 の時は何も変えずに -1 を返す (持っていない道具と、無い面も -1)。
+## 持っている道具を 1 回かけ、面ごとの色ごとの本数 (surface_id -> {color -> int}) だけまとめて減らして在庫 (毛のまま) に入れる。
+## 部屋ごとにかける道具 (吸引車・粘着シート) も 1 回は 1 回で、消耗品を使う道具は面の数に関わらず 1 つ使う。
+## 消耗品の残りが 0 の時は何も変えずに -1 を返す (持っていない道具と、無い面が 1 つでもある時も -1)。
 ## 道具で取った毛は珍しい毛を見分けない (PROJECT.md「毛と表面」: 手でつまむ段階でしか見分けられない)。
 ## その面に残っている本数より多くは減らさない。戻り値は減らした本数の合計で、変わった時だけ 1 回通知する
-func apply_tool_sweep(
-	tool_id: StringName, surface_id: StringName, counts_by_color: Dictionary
-) -> int:
+func apply_tool_sweep(tool_id: StringName, counts_by_surface: Dictionary) -> int:
 	var owned: OwnedTool = find_owned_tool(tool_id)
 	if owned == null or not ToolRulesScript.can_use(tool_id, owned.consumable_count):
 		return -1
-	var surface: SurfaceHair = save_data.building_progress.find_surface_hair(surface_id)
-	if surface == null:
-		return -1
+	for surface_key: Variant in counts_by_surface.keys():
+		if save_data.building_progress.find_surface_hair(StringName(surface_key)) == null:
+			return -1
 	var consumed: bool = ToolRulesScript.uses_consumable(tool_id)
 	if consumed:
 		owned.consumable_count -= 1
 	var removed_total: int = 0
-	for color_key: Variant in counts_by_color.keys():
-		var color_id: StringName = StringName(color_key)
-		var removed: int = mini(
-			maxi(0, int(counts_by_color[color_key])), surface.count_for_color(color_id)
+	for surface_key: Variant in counts_by_surface.keys():
+		var surface: SurfaceHair = save_data.building_progress.find_surface_hair(
+			StringName(surface_key)
 		)
-		if removed <= 0:
-			continue
-		surface.hair_counts[color_id] = surface.count_for_color(color_id) - removed
-		_add_raw_stock(color_id, &"", removed)
-		removed_total += removed
+		var counts_by_color: Dictionary = counts_by_surface[surface_key]
+		for color_key: Variant in counts_by_color.keys():
+			var color_id: StringName = StringName(color_key)
+			var removed: int = mini(
+				maxi(0, int(counts_by_color[color_key])), surface.count_for_color(color_id)
+			)
+			if removed <= 0:
+				continue
+			surface.hair_counts[color_id] = surface.count_for_color(color_id) - removed
+			_add_raw_stock(color_id, &"", removed)
+			removed_total += removed
 	if consumed or removed_total > 0:
 		state_changed.emit()
 	return removed_total
 
 
-## 在庫の毛のままの物をすべて買取業者に売り、入ったお金 (円) を返す (売る物が無ければ 0 で何も変えない)
-func sell_raw_hairs() -> int:
+## 在庫 (毛のままと加工した物) をすべて買取業者に売り、入ったお金 (円) を返す (売る物が無ければ 0 で何も変えない)
+func sell_hair_stocks() -> int:
 	if save_data == null or save_data.building_progress == null:
 		return 0
 	var progress: BuildingProgress = save_data.building_progress
-	var earned: int = EconomyRulesScript.raw_stock_value(progress.hair_stocks)
-	var kept: Array[HairStock] = []
-	var sold_any: bool = false
-	for stock: HairStock in progress.hair_stocks:
-		if stock != null and stock.form == HairStockScript.FORM_RAW:
-			sold_any = sold_any or stock.count > 0
-			continue
-		kept.append(stock)
-	if not sold_any:
+	var plan: Dictionary = {}
+	for index: int in range(progress.hair_stocks.size()):
+		var stock: HairStock = progress.hair_stocks[index]
+		if stock != null and stock.count > 0:
+			plan[index] = stock.count
+	return _sell_plan(plan)
+
+
+## 毛を運ぶダンプカーで、在庫を積める量 (ProcessingRules.DUMP_TRUCK_CAPACITY_HAIRS) まで運び出して売る。
+## 買取業者の近くにいなくても売れる。戻り値は {"hauled_hairs": 毛の本数に直した積み荷の量, "earned": 入ったお金}。
+## ダンプカーを持っていない時と積む物が無い時は何も変えずに両方 0
+func haul_with_dump_truck() -> Dictionary:
+	var result: Dictionary = {"hauled_hairs": 0, "earned": 0}
+	if find_owned_tool(ToolCatalogScript.TOOL_DUMP_TRUCK) == null:
+		return result
+	var stocks: Array[HairStock] = save_data.building_progress.hair_stocks
+	var plan: Dictionary = ProcessingRulesScript.haul_plan(
+		stocks, ProcessingRulesScript.DUMP_TRUCK_CAPACITY_HAIRS
+	)
+	result["hauled_hairs"] = ProcessingRulesScript.plan_hairs(stocks, plan)
+	result["earned"] = _sell_plan(plan)
+	return result
+
+
+## 在庫の添字ごとの個数 plan を売ってお金を足し、売り切った在庫を除く。戻り値は入ったお金 (円)。売る物が無ければ何も変えない
+func _sell_plan(plan: Dictionary) -> int:
+	if plan.is_empty():
 		return 0
+	var progress: BuildingProgress = save_data.building_progress
+	var earned: int = ProcessingRulesScript.plan_value(progress.hair_stocks, plan)
+	var kept: Array[HairStock] = []
+	for index: int in range(progress.hair_stocks.size()):
+		var stock: HairStock = progress.hair_stocks[index]
+		if stock == null:
+			continue
+		stock.count -= int(plan.get(index, 0))
+		if stock.count > 0:
+			kept.append(stock)
 	progress.hair_stocks = kept
 	progress.money += earned
 	state_changed.emit()
@@ -311,13 +345,17 @@ func purchase(kind: StringName, item_id: StringName) -> bool:
 	return bought
 
 
-## 道具を買う。手 (最初から持っている)・表に無い道具・既に持っている道具・お金が足りない時は買わずに false
+## 道具を買う。手 (最初から持っている)・表に無い道具・既に並べられる数 (ToolCatalog.max_owned) だけ持っている道具・
+## お金が足りない時は買わずに false
 func _buy_tool(tool_id: StringName) -> bool:
 	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
 	if (
 		tool_def.is_empty()
 		or tool_id == ToolCatalogScript.TOOL_HAND
-		or find_owned_tool(tool_id) != null
+		or (
+			ToolRulesScript.count_owned(save_data.building_progress.owned_tools, tool_id)
+			>= ToolCatalogScript.max_owned(tool_id)
+		)
 	):
 		return false
 	if not _spend(int(tool_def["price"])):
@@ -388,8 +426,9 @@ func get_room_status(room_id: StringName) -> Dictionary:
 	}
 
 
-## 遊んだ時間を delta_seconds 秒進め、住人の機嫌を部屋のきれいさへ近づけ、払う時期が来た掃除代を所持金に足す。
-## 戻り値はこの呼び出しで入った掃除代 (円)。掃除代が入った時だけ通知する
+## 遊んだ時間を delta_seconds 秒進め、加工機が加工する時期が来た分だけ在庫の毛を加工し、
+## 住人の機嫌を部屋のきれいさへ近づけ、払う時期が来た掃除代を所持金に足す。
+## 戻り値はこの呼び出しで入った掃除代 (円)。加工した時と掃除代が入った時だけ通知する
 func advance_time(delta_seconds: float) -> int:
 	if save_data == null or save_data.building_progress == null or current_layout == null:
 		return 0
@@ -397,6 +436,7 @@ func advance_time(delta_seconds: float) -> int:
 	var safe_delta: float = maxf(0.0, delta_seconds)
 	var before: float = progress.elapsed_seconds
 	progress.elapsed_seconds = before + safe_delta
+	_run_processors(ProcessingRulesScript.runs_due(before, progress.elapsed_seconds))
 	for room: MansionLayout.RoomDef in current_layout.rooms:
 		var status: Dictionary = get_room_status(room.room_id)
 		progress.resident_moods[MansionBuilderScript.resident_id_for_room(room.room_id)] = (
@@ -412,6 +452,31 @@ func advance_time(delta_seconds: float) -> int:
 		progress.money += earned
 		state_changed.emit()
 	return earned
+
+
+## 持っている加工機で在庫を runs 回加工する。在庫が変わった時だけ通知する
+func _run_processors(runs: int) -> void:
+	var progress: BuildingProgress = save_data.building_progress
+	var machines: int = ToolRulesScript.count_owned(
+		progress.owned_tools, ToolCatalogScript.TOOL_HAIR_PROCESSOR
+	)
+	if runs <= 0 or machines <= 0:
+		return
+	var before_value: int = ProcessingRulesScript.stock_value(progress.hair_stocks)
+	var stocks: Array[HairStock] = progress.hair_stocks
+	# 加工すると売値は必ず上がる (どの段階も毛のままより高い) ため、売値が変わらなくなったら加工する毛が残っていない
+	for _run: int in range(runs):
+		var next_stocks: Array[HairStock] = ProcessingRulesScript.process_once(stocks, machines)
+		if ProcessingRulesScript.stock_value(next_stocks) == ProcessingRulesScript.stock_value(stocks):
+			break
+		stocks = next_stocks
+	if ProcessingRulesScript.stock_value(stocks) != before_value:
+		var kept: Array[HairStock] = []
+		for stock: HairStock in stocks:
+			if stock.count > 0:
+				kept.append(stock)
+		progress.hair_stocks = kept
+		state_changed.emit()
 
 
 ## 所持金から price を払う。値段が負 (買えない物) かお金が足りない時は払わずに false

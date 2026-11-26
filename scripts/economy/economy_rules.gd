@@ -5,8 +5,6 @@ extends RefCounted
 
 ## 面ごとの毛データ型スクリプト (色の定数を使う)
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
-## 毛・加工品在庫データ型スクリプト (毛のままの形の定数を使う)
-const HairStockScript := preload("res://scripts/data/hair_stock.gd")
 ## 手で毛を取る時のルールの計算 (珍しい毛の id)
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
 
@@ -39,15 +37,6 @@ static func hair_price(hair_color: StringName, rare_hair_id: StringName) -> int:
 	if rare_hair_id != &"" and RARE_HAIR_PRICES.has(rare_hair_id):
 		return int(RARE_HAIR_PRICES[rare_hair_id])
 	return int(HAIR_PRICE_BY_COLOR.get(hair_color, DEFAULT_HAIR_PRICE))
-
-
-## 在庫のうち毛のままの物をすべて売った時に入るお金 (円) を返す (加工品は issue #12 が値段を決めるので含めない)
-static func raw_stock_value(stocks: Array[HairStock]) -> int:
-	var total: int = 0
-	for stock: HairStock in stocks:
-		if stock != null and stock.form == HairStockScript.FORM_RAW:
-			total += hair_price(stock.hair_color, stock.rare_hair_id) * maxi(0, stock.count)
-	return total
 
 
 ## 部屋のきれいさ (0.0 = 最初と同じだけ毛がある 〜 1.0 = 毛が無い) を返す。

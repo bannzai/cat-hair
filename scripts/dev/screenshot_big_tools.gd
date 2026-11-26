@@ -1,0 +1,114 @@
+extends RefCounted
+## 大型の道具の撮影 (scripts/dev/screenshot.gd から呼ぶ)。業務用の吸引車の運転席からの眺め、建物を覆う粘着シートを敷いた部屋、
+## アンドロイドが掃除した部屋、買取業者の横に並べた毛の加工機、裏口の外に停めた毛を運ぶダンプカー、
+## 加工品とダンプカーのボタンが出た道具を買う画面を撮る。
+
+## 状態管理 autoload スクリプト (買う物の種類の定数を使う)
+const GameStateScript := preload("res://scripts/state/game_state.gd")
+## 道具の定義
+const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
+## 面ごとの毛データ型スクリプト (色の定数を使う)
+const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
+## 毛・加工品在庫データ型スクリプト
+const HairStockScript := preload("res://scripts/data/hair_stock.gd")
+## 加工機が 1 回加工する間隔を使う
+const ProcessingRulesScript := preload("res://scripts/economy/processing_rules.gd")
+## 撮る絵を毎回同じにする、取りこぼしの抽選の乱数のシード
+const RNG_SEED: int = 20261127
+## 撮る前に持たせる在庫 (色ごとの毛のままの本数)。加工機 3 台で色ごとの人形・フェルト・毛玉ができる本数
+const STOCK_HAIRS_PER_COLOR: int = 1240
+## 部屋の中で見下ろす角度 (rad。床に敷いたシートと残った毛が画面の下半分に入る角度)
+const ROOM_PITCH: float = -0.5
+
+
+## 大型の道具の場面を順に撮る。shooter は screenshot.gd の SceneTree (_capture と _capture_frozen を使う)。
+## 撮れたら空文字、失敗したら理由を返す
+static func capture_all(shooter: SceneTree, main: Node3D) -> String:
+	var game_state: Node = main.get_game_state()
+	game_state.save_data.building_progress.money = 100000
+	for tool_id: StringName in [
+		ToolCatalogScript.TOOL_SUCTION_TRUCK,
+		ToolCatalogScript.TOOL_ADHESIVE_SHEET,
+		ToolCatalogScript.TOOL_ANDROID,
+		ToolCatalogScript.TOOL_DUMP_TRUCK,
+	]:
+		if not game_state.purchase(GameStateScript.PURCHASE_TOOL, tool_id):
+			return "%s を買えない" % ToolCatalogScript.find_tool(tool_id)["name"]
+	main.tools.set_rng_seed(RNG_SEED)
+	main.big_tools.set_rng_seed(RNG_SEED)
+	var rooms: Array = game_state.current_layout.rooms
+	var room: MansionLayout.RoomDef = rooms[rooms.size() - 1]
+	main.player.set_spawn(room.center + Vector3(0.0, 0.0, room.size.z * 0.35), 0.0)
+	await shooter.physics_frame
+	main.player.look_at_point(room.center + Vector3(0.0, 0.3, 0.0))
+	if (
+		not main.tools.select_tool(ToolCatalogScript.TOOL_SUCTION_TRUCK)
+		or not main.tools.is_in_driver_seat()
+	):
+		return "吸引車を選んでも運転席にならない"
+	var truck_result: Dictionary = main.tools.use_selected_tool()
+	if not bool(truck_result["used"]) or int(truck_result["removed"]) <= 0:
+		return "吸引車で部屋の毛が取れない (%s)" % str(truck_result)
+	if not await shooter._capture_frozen(main, "tmp/screenshot-suction-truck.png"):
+		return "吸引車の運転席を保存できない"
+	if not main.tools.select_tool(ToolCatalogScript.TOOL_ADHESIVE_SHEET):
+		return "粘着シートを選べない"
+	shooter._set_pitch(main.player, ROOM_PITCH)
+	var sheet_result: Dictionary = main.tools.use_selected_tool()
+	if not bool(sheet_result["used"]) or main.tools.get_trace() == null:
+		return "粘着シートを敷けない (%s)" % str(sheet_result)
+	if not await shooter._capture_frozen(main, "tmp/screenshot-adhesive-sheet.png"):
+		return "粘着シートを敷いた部屋を保存できない"
+	main.tools.select_tool(ToolCatalogScript.TOOL_HAND)
+	var android_result: Dictionary = main.big_tools.step_android()
+	if int(android_result.get("removed", 0)) <= 0:
+		return "アンドロイドが掃除しない (%s)" % str(android_result)
+	var cleaned: MansionLayout.RoomDef = _room(game_state, android_result["room_id"])
+	main.player.set_spawn(
+		cleaned.center + Vector3(-cleaned.size.x * 0.3, 0.0, cleaned.size.z * 0.3), 0.0
+	)
+	await shooter.physics_frame
+	main.player.look_at_point(
+		cleaned.center + Vector3(cleaned.size.x * 0.25, 1.0, -cleaned.size.z * 0.25)
+	)
+	if not await shooter._capture_frozen(main, "tmp/screenshot-android.png"):
+		return "アンドロイドを保存できない"
+	return await _capture_processing(shooter, main, game_state)
+
+
+## 加工機 3 台を買取業者の横に並べて在庫を加工した所と、裏口の外のダンプカーと、加工品が出た道具を買う画面を撮る
+static func _capture_processing(shooter: SceneTree, main: Node3D, game_state: Node) -> String:
+	for _index: int in range(3):
+		if not game_state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_HAIR_PROCESSOR):
+			return "毛の加工機を買えない"
+	var stocks: Array[HairStock] = []
+	for color_id: StringName in SurfaceHairScript.STANDARD_COLORS:
+		var stock: HairStock = HairStockScript.new()
+		stock.hair_color = color_id
+		stock.count = STOCK_HAIRS_PER_COLOR
+		stocks.append(stock)
+	game_state.save_data.building_progress.hair_stocks = stocks
+	game_state.advance_time(ProcessingRulesScript.PROCESS_INTERVAL_SECONDS * 6.0)
+	var trader: Vector3 = main.mansion_world.get_trader_position()
+	main.player.set_spawn(trader + Vector3(1.6, 0.0, -2.2), 0.0)
+	await shooter.physics_frame
+	main.player.look_at_point(trader + Vector3(1.6, 0.4, -0.2))
+	if not await shooter._capture_frozen(main, "tmp/screenshot-hair-processor.png"):
+		return "毛の加工機を保存できない"
+	main.player.set_spawn(trader + Vector3(2.0, 0.0, 8.5), 0.0)
+	await shooter.physics_frame
+	main.player.look_at_point(trader + Vector3(2.0, 1.0, 3.2))
+	if not await shooter._capture_frozen(main, "tmp/screenshot-dump-truck.png"):
+		return "ダンプカーを保存できない"
+	main.open_tool_shop()
+	var shop_ok: bool = await shooter._capture("tmp/screenshot-tool-shop-big-tools.png")
+	main.close_tool_shop()
+	return "" if shop_ok else "加工品とダンプカーのボタンが出た道具を買う画面を保存できない"
+
+
+## レイアウトから部屋の定義を返す
+static func _room(game_state: Node, room_id: StringName) -> MansionLayout.RoomDef:
+	for room: MansionLayout.RoomDef in game_state.current_layout.rooms:
+		if room.room_id == room_id:
+			return room
+	return game_state.current_layout.rooms[0]

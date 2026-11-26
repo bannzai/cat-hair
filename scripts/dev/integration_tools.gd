@@ -9,6 +9,8 @@ const HandAim := preload("res://scripts/dev/hand_aim.gd")
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 毛を売る・掃除代の計算
 const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
+## 加工した物を含む在庫の売値の計算
+const ProcessingRulesScript := preload("res://scripts/economy/processing_rules.gd")
 ## 状態管理 autoload スクリプト (買う物の種類の定数を使う)
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## メインシーンのスクリプト (本数の表示の書式を使う)
@@ -70,9 +72,9 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	)
 
 
-## 道具を選ぶキー (ToolController.SELECT_KEYS の、道具の表と同じ並びの位置) を返す
+## 道具を選ぶキー (ToolController.SELECT_KEYS の、キーで選ぶ道具の並びの位置) を返す
 static func _select_key(tool_id: StringName) -> Key:
-	return ToolController.SELECT_KEYS[ToolCatalogScript.all_tool_ids().find(tool_id)]
+	return ToolController.SELECT_KEYS[ToolCatalogScript.selectable_tool_ids().find(tool_id)]
 
 
 ## 検証結果を integration 本体へ記録する
@@ -93,9 +95,11 @@ func _verify_unowned_tool_and_shop_screen(main: Node3D, game_state: Node) -> voi
 	)
 	var slot_texts: Array[String] = main.look_hud.get_tool_slot_texts()
 	_check(
-		slot_texts.size() == 8 and slot_texts[0] == "1 手" and slot_texts[1] == "2 —"
+		slot_texts.size() == 10 and slot_texts[0] == "1 手" and slot_texts[1] == "2 —"
+		and slot_texts[8] == "9 —" and slot_texts[9] == "0 —"
 		and main.look_hud.get_selected_tool_slot_index() == 0,
-		"右下の道具の枠は 8 つで、手の枠が選ばれ、持っていない道具は「—」で出る (実際: %s)" % str(slot_texts),
+		"右下の道具の枠はキーで選ぶ 10 (1〜9・0) で、手の枠が選ばれ、持っていない道具は「—」で出る (実際: %s)"
+		% str(slot_texts),
 	)
 	await _checker._press_physical_key(KEY_T)
 	_check(
@@ -201,7 +205,7 @@ func _verify_buy_use_and_sell(main: Node3D, game_state: Node) -> void:
 	await _checker.physics_frame
 	main.open_tool_shop()
 	await _checker.process_frame
-	var stock_value: int = EconomyRulesScript.raw_stock_value(
+	var stock_value: int = ProcessingRulesScript.stock_value(
 		game_state.save_data.building_progress.hair_stocks
 	)
 	var sell_button: Button = main.tool_shop_panel.get_sell_button()
@@ -312,12 +316,13 @@ func _verify_switch_while_held(main: Node3D, owned: OwnedTool) -> void:
 	_check(owned.consumable_count == 18, "持ち替えた後に押し直すと粘着ローラーを使う")
 
 
-## 8 つの道具を 1 回ずつ使う: 手はつまんで 1 本抜け、毛を取る 5 つは範囲の毛が減り、ライトは点いて消え、
-## ブラシは猫がいないので何も変わらない
+## 手に持つ 8 つの道具を 1 回ずつ使う: 手はつまんで 1 本抜け、毛を取る 5 つは範囲の毛が減り、ライトは点いて消え、
+## ブラシは猫がいないので何も変わらない (大型の道具は scripts/dev/integration_big_tools.gd が確かめる)
 func _verify_every_tool_once(main: Node3D, game_state: Node) -> void:
 	var tools: ToolController = main.tools
 	game_state.save_data.building_progress.money = 100000
-	for tool_def: Dictionary in ToolCatalogScript.TOOLS:
+	var hand_tools: Array[Dictionary] = ToolCatalogScript.hand_held_tools()
+	for tool_def: Dictionary in hand_tools:
 		if tool_def["id"] != ToolCatalogScript.TOOL_HAND:
 			game_state.purchase(GameStateScript.PURCHASE_TOOL, tool_def["id"])
 	_check(
@@ -325,7 +330,7 @@ func _verify_every_tool_once(main: Node3D, game_state: Node) -> void:
 		"手以外の 7 つの道具を買える",
 	)
 	var used_ids: Array[StringName] = []
-	for tool_def: Dictionary in ToolCatalogScript.TOOLS:
+	for tool_def: Dictionary in hand_tools:
 		var tool_id: StringName = tool_def["id"]
 		await _checker._press_physical_key(_select_key(tool_id))
 		if tools.get_selected_tool_id() != tool_id:
@@ -606,9 +611,14 @@ func _pluck_with_hand(main: Node3D, game_state: Node) -> bool:
 ## SceneTree の process_frame はノードの _process より先に出るため、physics_frame の待ちから呼ばれた時に
 ## 1 フレームの待ちで離すと、ToolController._process が押した状態を 1 度も見ない。2 フレーム押してから離す
 func _press_and_release_use() -> void:
+	await press_and_release_use(_checker)
+
+
+## つまむ入力を checker のフレームで 2 フレーム押してから離す (理由は _press_and_release_use。大型の道具の検証も使う)
+static func press_and_release_use(checker: SceneTree) -> void:
 	Input.action_press(HandController.ACTION_PLUCK)
-	await _checker.process_frame
-	await _checker.process_frame
+	await checker.process_frame
+	await checker.process_frame
 	Input.action_release(HandController.ACTION_PLUCK)
-	await _checker.process_frame
-	await _checker.process_frame
+	await checker.process_frame
+	await checker.process_frame

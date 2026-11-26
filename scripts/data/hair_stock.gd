@@ -10,6 +10,8 @@ const FORM_BALL: StringName = &"hairball"
 const FORM_FELT: StringName = &"felt"
 ## 加工の形: 猫の毛の人形
 const FORM_DOLL: StringName = &"doll"
+## 毛の色: 加工機が白と黒を混ぜて加工した物 (毛のままの在庫には使わない)
+const COLOR_MIXED: StringName = &"mixed"
 
 ## 毛の色 (白・黒・三毛・混ざった物)
 @export var hair_color: StringName = &""

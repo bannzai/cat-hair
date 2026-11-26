@@ -68,6 +68,8 @@ var pluck_popup_label: Label = null
 var tools: ToolController = null
 ## 道具を買う画面
 var tool_shop_panel: ToolShopPanel = null
+## 選ばずに働く大型の道具 (アンドロイド・加工機・ダンプカー) の働きと見た目
+var big_tools: BigToolSite = null
 ## 選んでいる道具の様子 (レベル・得意な表面・消耗品の残り) の表示 (画面右下の道具の枠と所持金の上)
 var tool_detail_label: Label = null
 ## 最後に道具を使った結果 (取りこぼしの割合) の表示
@@ -319,6 +321,7 @@ func _process(delta: float) -> void:
 			if earned > 0:
 				_show_popup("掃除代 +%d 円" % earned)
 				_play_sfx(AudioCatalog.SFX_EARN_MONEY)
+			big_tools.advance(delta)
 		_refresh_room_gauge()
 	if _pluck_popup_remaining <= 0.0:
 		return
@@ -393,6 +396,7 @@ func _rebuild_world_from_state() -> void:
 	hand.cancel_pull()
 	tools.reset_for_new_progress()
 	mansion_world.rebuild(layout, _game_state.save_data.building_progress)
+	big_tools.reset_for_new_progress()
 	look_room.apply(layout, mansion_world)
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	_refresh_hud()
@@ -411,19 +415,25 @@ func _refresh_hud() -> void:
 		look_hud.set_money_digits(format_hair_count(_game_state.get_money()))
 	if look_hud != null and tools != null:
 		_refresh_tool_slots()
+	if big_tools != null:
+		big_tools.refresh_models()
 	if tool_shop_panel != null and tool_shop_panel.visible:
 		tool_shop_panel.refresh(_game_state, is_near_trader())
 
 
-## 画面右下の道具の枠を、キーの番号と名前 (持っていない道具は「—」) の 8 つで描き直し、選んでいる道具の様子を枠の上に出す
+## 画面右下の道具の枠を、キーの番号 (1〜9・0) と名前 (持っていない道具は「—」) のキーで選ぶ道具の数だけ描き直し、
+## 選んでいる道具の様子を枠の上に出す
 func _refresh_tool_slots() -> void:
 	var slot_texts: Array[String] = []
 	var selected_index: int = -1
-	for index: int in range(ToolCatalogScript.TOOLS.size()):
-		var tool_def: Dictionary = ToolCatalogScript.TOOLS[index]
-		var tool_id: StringName = tool_def["id"]
+	var selectable: Array[StringName] = ToolCatalogScript.selectable_tool_ids()
+	for index: int in range(selectable.size()):
+		var tool_id: StringName = selectable[index]
+		var key_number: int = (index + 1) % 10
 		slot_texts.append(
-			"%d %s" % [index + 1, tool_def["name"]] if tools.owns_tool(tool_id) else "%d —" % (index + 1)
+			"%d %s" % [key_number, ToolCatalogScript.find_tool(tool_id)["name"]]
+			if tools.owns_tool(tool_id)
+			else "%d —" % key_number
 		)
 		if tool_id == tools.get_selected_tool_id():
 			selected_index = index
@@ -551,6 +561,10 @@ func _build_tool_ui() -> void:
 	tools.setup(_game_state, mansion_world, hand, player.get_camera())
 	tools.tool_used.connect(_on_tool_used)
 	tools.tool_selected.connect(_on_tool_selected)
+	big_tools = BigToolSite.new()
+	big_tools.name = "BigTools"
+	add_child(big_tools)
+	big_tools.setup(_game_state, mansion_world, hand)
 
 	tool_message_label = Label.new()
 	tool_message_label.name = "ToolMessage"
@@ -619,6 +633,7 @@ func _build_tool_ui() -> void:
 	ui_root.add_child(tool_shop_panel)
 	tool_shop_panel.purchase_requested.connect(_on_purchase_requested)
 	tool_shop_panel.sell_requested.connect(_on_sell_requested)
+	tool_shop_panel.haul_requested.connect(_on_haul_requested)
 	tool_shop_panel.close_requested.connect(close_tool_shop)
 
 
@@ -692,10 +707,21 @@ func _on_purchase_requested(kind: StringName, item_id: StringName) -> void:
 func _on_sell_requested() -> void:
 	if not is_near_trader():
 		return
-	var earned: int = _game_state.sell_raw_hairs()
+	var earned: int = _game_state.sell_hair_stocks()
 	if earned > 0:
 		_play_sfx(AudioCatalog.SFX_EARN_MONEY)
 		_show_popup("+%d 円" % earned)
+	tool_shop_panel.refresh(_game_state, is_near_trader())
+
+
+## 道具を買う画面でダンプカーを呼んだ時 (どこからでも、積める量まで運び出して売る)
+func _on_haul_requested() -> void:
+	var hauled: Dictionary = _game_state.haul_with_dump_truck()
+	if int(hauled["earned"]) > 0:
+		_play_sfx(AudioCatalog.SFX_EARN_MONEY)
+		_show_popup(
+			"ダンプカーで %d 本分を運んだ +%d 円" % [int(hauled["hauled_hairs"]), int(hauled["earned"])]
+		)
 	tool_shop_panel.refresh(_game_state, is_near_trader())
 
 

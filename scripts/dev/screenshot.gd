@@ -20,6 +20,8 @@ const HandAim := preload("res://scripts/dev/hand_aim.gd")
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## 手に持って使う道具の定義
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
+## 大型の道具の撮影
+const ScreenshotBigTools := preload("res://scripts/dev/screenshot_big_tools.gd")
 ## 道具をかけた跡を撮る時の取りこぼしの抽選の乱数のシード (撮る絵を毎回同じにする)
 const TOOL_TRACE_RNG_SEED: int = 20261126
 ## 道具をかけた跡を撮る所に要る、粘着ローラーの半径の中の毛の本数 (取りこぼした毛が跡の中に見える本数)
@@ -229,6 +231,9 @@ func _capture_mansion_scenes(main: Node3D) -> String:
 	var tool_error: String = await _capture_tools(main)
 	if not tool_error.is_empty():
 		return tool_error
+	var big_tool_error: String = await ScreenshotBigTools.capture_all(self, main)
+	if not big_tool_error.is_empty():
+		return big_tool_error
 	main.open_dev_panel()
 	return "" if await _capture("tmp/screenshot-dev-panel.png") else "開発者向け調整画面を保存できない"
 
@@ -257,10 +262,10 @@ func _capture_pluck(main: Node3D) -> String:
 func _capture_tools(main: Node3D) -> String:
 	var game_state: Node = main.get_game_state()
 	var roller: StringName = ToolCatalogScript.TOOL_LINT_ROLLER
-	# 8 つの道具を全部持った時の右下の道具の枠の並びも同じ 1 枚で確かめる。
+	# 手に持つ 8 つの道具を全部持った時の右下の道具の枠の並びも同じ 1 枚で確かめる (大型の道具は後で撮る)。
 	# 所持金は 7 つの道具の値段の合計 (940 円) を足りる額で、HUD に 5 桁の所持金が出る見え方も撮れる額にする
 	game_state.save_data.building_progress.money = 100000
-	for tool_def: Dictionary in ToolCatalogScript.TOOLS:
+	for tool_def: Dictionary in ToolCatalogScript.hand_held_tools():
 		if tool_def["id"] != ToolCatalogScript.TOOL_HAND:
 			game_state.purchase(GameStateScript.PURCHASE_TOOL, tool_def["id"])
 	if game_state.find_owned_tool(roller) == null:

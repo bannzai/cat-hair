@@ -4,6 +4,8 @@ extends RefCounted
 
 ## 手に持って使う道具の定義
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
+## 屋敷レイアウト型スクリプト (表面の種類の定数を使う)
+const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
 
 ## 道具のレベルの上限。取りこぼしが 1 の 0.75 倍を 4 回重ねて約 3 分の 1 になる所で止め、下限 (5%) に届く前に上げる余地を残す
 const MAX_TOOL_LEVEL: int = 5
@@ -18,6 +20,11 @@ const MAX_MISS_RATIO: float = 0.9
 const HAND_UPGRADE_BASE_PRICE: int = 40
 ## 手の強化の段の上限 (一度につまめる本数が HandRules.MAX_GRAB_COUNT の 10 本になる段)
 const MAX_HAND_UPGRADE_LEVEL: int = 9
+
+## 建物を覆う粘着シートが毛を捕まえる表面 (床一面に敷くため、床とカーペット)
+const SHEET_SURFACE_TYPES: Array[StringName] = [
+	MansionLayoutScript.SURFACE_FLOOR, MansionLayoutScript.SURFACE_CARPET
+]
 
 ## 表面の得意・不得意: 得意
 const RATING_GOOD: int = 1
@@ -39,11 +46,17 @@ static func surface_rating(tool_id: StringName, surface_type: StringName) -> int
 	return RATING_NORMAL
 
 
+## 毛を取る道具 (取りこぼしとレベルがある道具。ToolCatalog.HAIR_REMOVING_KINDS) か
+static func removes_hair(tool_id: StringName) -> bool:
+	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
+	return not tool_def.is_empty() and ToolCatalogScript.HAIR_REMOVING_KINDS.has(tool_def["kind"])
+
+
 ## 道具・レベル・表面の種類から、1 回かけた範囲に残る毛の割合 (取りこぼし。MIN_MISS_RATIO〜MAX_MISS_RATIO) を返す。
-## 毛を取らない道具 (手・ライト・ブラシ) と表に無い道具は 0
+## 毛を取らない道具 (手・ライト・ブラシ・加工機・ダンプカー) と表に無い道具は 0
 static func miss_ratio(tool_id: StringName, level: int, surface_type: StringName) -> float:
 	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
-	if tool_def.is_empty() or tool_def["kind"] != ToolCatalogScript.KIND_SWEEP:
+	if not removes_hair(tool_id):
 		return 0.0
 	var safe_level: int = clampi(level, 1, MAX_TOOL_LEVEL)
 	var ratio: float = (
@@ -73,13 +86,40 @@ static func is_missed(roll: float, ratio: float) -> bool:
 static func level_up_price(tool_id: StringName, current_level: int) -> int:
 	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
 	if (
-		tool_def.is_empty()
-		or tool_def["kind"] != ToolCatalogScript.KIND_SWEEP
+		not removes_hair(tool_id)
 		or current_level < 1
 		or current_level >= MAX_TOOL_LEVEL
 	):
 		return -1
 	return int(tool_def["price"]) * current_level
+
+
+## 部屋ごとにかける道具 (吸引車・粘着シート・アンドロイド) が、部屋の中の surface_type の表面の毛を取るか。
+## 粘着シートは床一面に敷くため床とカーペットだけ、吸引車とアンドロイドは部屋のすべての表面。部屋ごとにかけない道具は false
+static func covers_surface(tool_id: StringName, surface_type: StringName) -> bool:
+	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
+	if tool_def.is_empty():
+		return false
+	match tool_def["kind"]:
+		ToolCatalogScript.KIND_ROOM, ToolCatalogScript.KIND_AUTO:
+			return true
+		ToolCatalogScript.KIND_SHEET:
+			return SHEET_SURFACE_TYPES.has(surface_type)
+	return false
+
+
+## 探し物にかけると傷める道具か (表に無い道具は false)
+static func damages_found_items(tool_id: StringName) -> bool:
+	return bool(ToolCatalogScript.find_tool(tool_id).get("damages_found_items", false))
+
+
+## 買った道具の一覧 owned_tools のうち tool_id の道具の数 (加工機のように並べた台数) を返す
+static func count_owned(owned_tools: Array[OwnedTool], tool_id: StringName) -> int:
+	var count: int = 0
+	for owned: OwnedTool in owned_tools:
+		if owned != null and owned.tool_id == tool_id:
+			count += 1
+	return count
 
 
 ## 消耗品を使う道具か
