@@ -45,6 +45,13 @@ static func verify_look_prototype_room(checker: SceneTree, main: Node3D, game_st
 
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	look_room.set_pinch_pose(true)
+	# 手の毛は _process で張り直し、プレイヤーは _physics_process で床へ降りる。降りている間は毛の張り直しが 1 フレーム
+	# 遅れて見えるため、床に着くまで待ってから比べる (60 フレームは 60 fps で 1 秒。出現位置から床までの落下より長い)
+	for _frame: int in range(60):
+		await checker.physics_frame
+		if player.is_on_floor():
+			break
+	await checker.process_frame
 	await checker.process_frame
 	var ends: PackedVector3Array = look_room.get_hand().get_stretched_hair_endpoints()
 	var hair_mesh_transform: Transform3D = look_room.get_hand().get_stretched_hair_transform()

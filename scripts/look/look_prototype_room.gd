@@ -142,8 +142,10 @@ func _process(_delta: float) -> void:
 func setup(player: FirstPersonPlayer, world_environment: WorldEnvironment) -> void:
 	_player = player
 	_world_environment = world_environment
-	_base_environment = world_environment.environment
-	_prototype_environment = build_prototype_environment(_base_environment)
+	# 試作の見た目を出している間に呼ばれると、今の環境は試作の環境のため、既定の環境として取り込まない
+	if _prototype_environment == null or world_environment.environment != _prototype_environment:
+		_base_environment = world_environment.environment
+		_prototype_environment = build_prototype_environment(_base_environment)
 	if _hand == null:
 		_hand = FirstPersonHandScript.new()
 		player.get_camera().add_child(_hand)
