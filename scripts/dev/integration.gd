@@ -78,6 +78,7 @@ func _run() -> void:
 
 	await _verify_title_and_blocked_inputs(main)
 	await _verify_enter_movement_and_look(main)
+	await _verify_look_prototype_room(main, game_state)
 	await _verify_dev_panel_keys_and_rebuild(main, game_state)
 	await _verify_manual_save_and_close_request(game_state)
 
@@ -742,6 +743,45 @@ func _verify_enter_movement_and_look(main: Node3D) -> void:
 		is_equal_approx(player.get_pitch(), -FirstPersonPlayerScript.MAX_PITCH_RADIANS),
 		"極端な下向き入力でピッチ角が -MAX_PITCH_RADIANS にクランプされる",
 	)
+
+
+## 見た目の試作が最初の部屋の中にいる間だけ環境・手を切り替え、つまむ構図で伸びた毛が指先から床へ張られることを検証する
+func _verify_look_prototype_room(main: Node3D, game_state: Node) -> void:
+	var player: FirstPersonPlayer = main.get_node("Player")
+	var environment_node: WorldEnvironment = main.get_node("WorldEnvironment")
+	var look_room: LookPrototypeRoom = main.look_room
+	var layout: MansionLayout = game_state.current_layout
+	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
+	await process_frame
+	var inside_environment: Environment = environment_node.environment
+	_check(
+		look_room.is_prototype_active() and look_room.get_hand().visible,
+		"最初の部屋に立つと試作の見た目 (環境と手) が出る",
+	)
+	_check(
+		main.get_node_or_null("UILayer/UI/HUD/LookPrototypeHud") != null,
+		"HUD に所持金・道具の枠・案内の表示がある",
+	)
+
+	player.global_position = Vector3(0.0, 0.05, -MansionTuningScript.DEFAULT_ROOM_SIZE_M)
+	await process_frame
+	_check(
+		not look_room.is_prototype_active()
+		and not look_room.get_hand().visible
+		and environment_node.environment != inside_environment
+		and not environment_node.environment.ssao_enabled,
+		"隣の部屋に移ると試作の見た目が消え、環境が既定 (家具の陰なし) に戻る",
+	)
+
+	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
+	look_room.set_pinch_pose(true)
+	await process_frame
+	var ends: PackedVector3Array = look_room.get_hand().get_stretched_hair_endpoints()
+	_check(
+		ends.size() == 2 and ends[0].y > ends[1].y and ends[1].y < 0.01,
+		"つまむ構図の伸びた毛は指先から床へ張られる (%s)" % [ends],
+	)
+	look_room.set_pinch_pose(false)
 
 
 ## F1 トグル開閉・閉じるボタン・調整値変更での屋敷作り直しと load_from_tuning 反映を検証する

@@ -24,6 +24,15 @@ const NEW_GAME_BUTTON_PATH: String = "UILayer/UI/TitleOverlay/Layout/NewGameButt
 const SETTINGS_BUTTON_PATH: String = "UILayer/UI/TitleOverlay/Layout/SettingsButton"
 ## 設定画面パネルのノードパス (本体・テストで共有する単一の正)
 const SETTINGS_PANEL_PATH: String = "UILayer/UI/AudioSettingsPanel"
+## 見た目の試作 (issue #19) を屋敷の最初の部屋に重ねるノードのスクリプト
+const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room.gd")
+## 見た目の試作の画面の表示 (所持金・道具の枠・案内) のスクリプト
+const LookPrototypeHudScript := preload("res://scripts/look/look_prototype_hud.gd")
+
+## 見た目の試作を屋敷の最初の部屋に重ねるノード (_ready で作る)
+var look_room: LookPrototypeRoom = null
+## 見た目の試作の画面の表示 (_ready で HUD の子に作る)
+var look_hud: LookPrototypeHud = null
 
 ## 参照中の GameState ノード (autoload または検証時のフォールバック)
 var _game_state: Node = null
@@ -58,6 +67,8 @@ var _is_playing: bool = false
 @onready var remaining_hair_label: Label = $UILayer/UI/HUD/RemainingHairPanel/RemainingHairLabel
 ## 開発者向け調整パネル
 @onready var dev_tuning_panel: DevTuningPanel = $UILayer/UI/DevTuningPanel
+## 光・影・色の環境
+@onready var world_environment: WorldEnvironment = $WorldEnvironment
 
 
 ## 起動の入口
@@ -73,6 +84,14 @@ func _ready() -> void:
 	settings_button.pressed.connect(_on_settings_pressed)
 	dev_tuning_panel.apply_requested.connect(_on_dev_tuning_applied)
 	dev_tuning_panel.close_requested.connect(close_dev_panel)
+
+	look_room = LookPrototypeRoomScript.new()
+	look_room.name = "LookPrototypeRoom"
+	add_child(look_room)
+	look_room.setup(player, world_environment)
+	look_hud = LookPrototypeHudScript.new()
+	hud.add_child(look_hud)
+	look_hud.set_money_digits(format_hair_count(LookPrototypeHudScript.SAMPLE_MONEY_YEN))
 
 	_game_state = _resolve_game_state()
 	if not _game_state.state_changed.is_connected(_refresh_hud):
@@ -123,6 +142,7 @@ func enter_mansion() -> void:
 	hud.visible = true
 	dev_tuning_panel.visible = false
 	player.controls_enabled = true
+	look_room.set_playing(true)
 	_refresh_hud()
 	var audio_manager: AudioManagerScript = (
 		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
@@ -198,6 +218,7 @@ func _set_title_mode() -> void:
 	hud.visible = false
 	dev_tuning_panel.visible = false
 	player.controls_enabled = false
+	look_room.set_playing(false)
 
 
 ## 保存データの有無に応じてタイトルのボタン文言と「はじめから」表示を更新する
@@ -216,6 +237,7 @@ func _rebuild_world_from_state() -> void:
 		return
 	var layout: MansionLayout = _game_state.current_layout
 	mansion_world.rebuild(layout, _game_state.save_data.building_progress)
+	look_room.apply(layout, _game_state.save_data.building_progress, mansion_world)
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	_refresh_hud()
 

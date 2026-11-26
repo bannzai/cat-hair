@@ -29,6 +29,8 @@ const AudioSettings := preload("res://scripts/audio/audio_settings.gd")
 const MovieScript := preload("res://scripts/dev/movie.gd")
 ## 屋敷・セーブ・調整値・プレイヤー純粋判定の検証スイート
 const SelfcheckMansion := preload("res://scripts/dev/selfcheck_mansion.gd")
+## 見た目の試作 (部屋・手・画面の表示) の検証スイート
+const SelfcheckLook := preload("res://scripts/dev/selfcheck_look.gd")
 
 
 ## 検証をすべて実行して終える
@@ -48,6 +50,7 @@ func _initialize() -> void:
 	_check_audio_manager_guards()
 	_check_movie_frame_calculations()
 	SelfcheckMansion.run_all(self)
+	SelfcheckLook.run_all(self)
 	_finish()
 
 
