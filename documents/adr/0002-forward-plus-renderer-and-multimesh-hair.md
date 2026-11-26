@@ -30,12 +30,12 @@ Accepted
 ## Decision
 
 1. **レンダラは Forward+ (`forward_plus` / Vulkan) を採用する**
-   - 写実寄りの一人称 3D に必要な SSR・ボリュメトリックフォグ・SDFGI・デカールがすべて使える唯一のレンダラである
+   - 写実寄りの一人称 3D に必要な SSR・ボリュメトリックフォグ・SDFGI・デカールがすべて使える唯一のレンダラである (出典: Godot 公式レンダラ比較表 https://docs.godotengine.org/en/stable/tutorials/rendering/renderers.html )
    - GPU の無い CI ランナーでも Mesa lavapipe (`mesa-vulkan-drivers` + `/usr/share/vulkan/icd.d/lvp_icd.json`) で WARNING / ERROR 0 件で起動し、100 万本まで描画でき、1 フレームの描画時間も GL Compatibility と同等以上であることを実測した
    - PC (Steam) 専用タイトルであり、Web / モバイル向け互換性 (GL Compatibility / Mobile) を優先する理由が無い
    - CI の `screenshot-and-movie` job と `Makefile` の既定描画オプションを `vulkan` + `forward_plus` に切り替え、`screenshot`・`movie`・`hairbench` のすべてを Forward+ で検証する
 2. **毛の描画方式は「表面ごとの `MultiMeshInstance3D` (`MultiMesh`)」を採用する**
-   - 1 表面につき 1 つの `MultiMeshInstance3D` を割り当て、`use_colors = true` で 1 本ごとに白・黒・三毛の色を与え、表面単位のフラスタムカリングが効くようにする (`cast_shadow = OFF`)
+   - Godot の `MultiMesh` は 1 ドローコールで数百万オブジェクトを描画できる一方、インスタンス単位のフラスタムカリングを行わない (出典: Godot 公式 MultiMesh チュートリアル https://docs.godotengine.org/en/stable/tutorials/performance/using_multimesh.html )。そのため 1 表面につき 1 つの `MultiMeshInstance3D` を割り当てて表面単位のフラスタムカリングが効くようにし、`use_colors = true` で 1 本ごとに白・黒・三毛の色を与える (`cast_shadow = OFF`)
    - 手で 1 本抜く操作は、削除対象のインスタンスを同表面の末尾可視インスタンスと入れ替えて `visible_instance_count` を 1 減らす O(1) swap-remove と、`PackedInt32Array` による双方向インデックス (`hair_id` ↔ 表面・スロット) で実装する
    - 他の候補を採用しなかった理由:
      - `GPUParticles3D`: 任意の 1 本を選んで抜く操作や、残り本数・配置の正確なセーブ・復元と相性が悪い

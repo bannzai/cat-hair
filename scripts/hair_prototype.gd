@@ -2,14 +2,18 @@ extends Node3D
 ## 毛の描画の試作シーン。床とソファの 2 表面を持つ 1 部屋に毛を配置し、
 ## 一人称視点から 1 本ずつ見分けられることと、1 本だけ消せることを確かめる。
 
-## 部屋の床の幅・奥行き (m)
+## HairField の既定シードを SSOT として参照する
+const HairFieldScript := preload("res://scripts/hair_field.gd")
+## 部屋の床の幅・奥行き (m。1 部屋の標準的な 5m 四方)
 const ROOM_SIZE_M: float = 5.0
-## 部屋の壁の高さ (m)
+## 部屋の壁の高さ (m。一人称視点で天井付近まで映る高さ)
 const WALL_HEIGHT_M: float = 2.8
-## ソファ座面の高さ (m)
+## ソファ座面の高さ (m。一般的なソファ座面 44 cm)
 const SOFA_SEAT_Y_M: float = 0.44
-## 床とソファへの毛の本数配分 (床 82% / ソファ 18%)
+## 床とソファへの毛の本数配分 (床面積 18.4 m²・ソファ座面 1.25 m² に対し、
+## 猫の昼寝場所であるソファをやや高密度にして両表面の識別性を確かめる配分)
 const FLOOR_WEIGHT: float = 0.82
+## ソファ座面への毛の本数配分比率 (FLOOR_WEIGHT と合計 1.0)
 const SOFA_WEIGHT: float = 0.18
 
 ## 毛の描画ノード (表面ごとに MultiMesh を持つ)
@@ -23,7 +27,9 @@ func _ready() -> void:
 
 
 ## 部屋全体へ合計 total_count 本の毛を配置し、配置できた本数を返す
-func populate_hairs(total_count: int, seed_value: int = 20261126) -> int:
+func populate_hairs(
+	total_count: int, seed_value: int = HairFieldScript.DEFAULT_SEED
+) -> int:
 	return hair_field.populate(total_count, seed_value)
 
 
@@ -42,6 +48,7 @@ func get_hair_field() -> Node3D:
 	return hair_field
 
 
+## 床とソファ座面の配置領域を HairField に登録する
 func _configure_hair_surfaces() -> void:
 	# 床: カメラから手前〜奥まで視界に入る領域
 	hair_field.add_surface(
@@ -59,19 +66,18 @@ func _configure_hair_surfaces() -> void:
 	)
 
 
+## 1 部屋の床・壁・巾木・ソファの簡易メッシュを構築する
 func _build_room_geometry() -> void:
 	var room: Node3D = $Room
 
-	var floor_mat: StandardMaterial3D = _make_material(Color(0.32, 0.22, 0.14), 0.70)
-	var wall_mat: StandardMaterial3D = _make_material(Color(0.64, 0.60, 0.54), 0.90)
-	var trim_mat: StandardMaterial3D = _make_material(Color(0.20, 0.14, 0.10), 0.60)
-	var sofa_mat: StandardMaterial3D = _make_material(Color(0.19, 0.24, 0.31), 0.92)
-	var wood_leg_mat: StandardMaterial3D = _make_material(Color(0.18, 0.11, 0.07), 0.55)
+	var wall_material: StandardMaterial3D = _make_material(Color(0.64, 0.60, 0.54), 0.90)
+	var sofa_material: StandardMaterial3D = _make_material(Color(0.19, 0.24, 0.31), 0.92)
+	var wood_leg_material: StandardMaterial3D = _make_material(Color(0.18, 0.11, 0.07), 0.55)
 
 	# 床 (上面が Y = 0.0)
 	_add_box(
 		room, "Floor", Vector3(ROOM_SIZE_M, 0.1, ROOM_SIZE_M),
-		Vector3(0.0, -0.05, 0.0), floor_mat
+		Vector3(0.0, -0.05, 0.0), _make_material(Color(0.32, 0.22, 0.14), 0.70)
 	)
 
 	# 壁 (奥・左・右)
@@ -79,28 +85,40 @@ func _build_room_geometry() -> void:
 	var wall_y: float = WALL_HEIGHT_M * 0.5
 	_add_box(
 		room, "BackWall", Vector3(ROOM_SIZE_M, WALL_HEIGHT_M, 0.12),
-		Vector3(0.0, wall_y, -half_room), wall_mat
+		Vector3(0.0, wall_y, -half_room), wall_material
 	)
 	_add_box(
 		room, "LeftWall", Vector3(0.12, WALL_HEIGHT_M, ROOM_SIZE_M),
-		Vector3(-half_room, wall_y, 0.0), wall_mat
+		Vector3(-half_room, wall_y, 0.0), wall_material
 	)
 	_add_box(
 		room, "RightWall", Vector3(0.12, WALL_HEIGHT_M, ROOM_SIZE_M),
-		Vector3(half_room, wall_y, 0.0), wall_mat
+		Vector3(half_room, wall_y, 0.0), wall_material
 	)
 
 	# 奥の壁の巾木
 	_add_box(
 		room, "Baseboard", Vector3(ROOM_SIZE_M, 0.14, 0.04),
-		Vector3(0.0, 0.07, -half_room + 0.07), trim_mat
+		Vector3(0.0, 0.07, -half_room + 0.07), _make_material(Color(0.20, 0.14, 0.10), 0.60)
 	)
 
 	# ソファ (座面の上面が SOFA_SEAT_Y_M = 0.44)
-	_add_box(room, "SofaSeat", Vector3(1.94, 0.24, 0.76), Vector3(0.0, 0.32, -1.12), sofa_mat)
-	_add_box(room, "SofaBack", Vector3(1.94, 0.58, 0.20), Vector3(0.0, 0.66, -1.56), sofa_mat)
-	_add_box(room, "SofaArmLeft", Vector3(0.20, 0.42, 0.90), Vector3(-1.07, 0.41, -1.18), sofa_mat)
-	_add_box(room, "SofaArmRight", Vector3(0.20, 0.42, 0.90), Vector3(1.07, 0.41, -1.18), sofa_mat)
+	_add_box(
+		room, "SofaSeat", Vector3(1.94, 0.24, 0.76),
+		Vector3(0.0, 0.32, -1.12), sofa_material
+	)
+	_add_box(
+		room, "SofaBack", Vector3(1.94, 0.58, 0.20),
+		Vector3(0.0, 0.66, -1.56), sofa_material
+	)
+	_add_box(
+		room, "SofaArmLeft", Vector3(0.20, 0.42, 0.90),
+		Vector3(-1.07, 0.41, -1.18), sofa_material
+	)
+	_add_box(
+		room, "SofaArmRight", Vector3(0.20, 0.42, 0.90),
+		Vector3(1.07, 0.41, -1.18), sofa_material
+	)
 
 	# ソファの脚 4 本
 	var leg_offsets: Array[Vector3] = [
@@ -110,24 +128,29 @@ func _build_room_geometry() -> void:
 		Vector3(1.04, 0.10, -1.54),
 	]
 	for idx: int in range(leg_offsets.size()):
-		_add_box(room, "SofaLeg_%d" % idx, Vector3(0.08, 0.20, 0.08), leg_offsets[idx], wood_leg_mat)
+		_add_box(
+			room, "SofaLeg_%d" % idx, Vector3(0.08, 0.20, 0.08),
+			leg_offsets[idx], wood_leg_material
+		)
 
 
+## 単色の PBR StandardMaterial3D を生成する
 func _make_material(albedo: Color, roughness: float) -> StandardMaterial3D:
-	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_color = albedo
-	mat.roughness = roughness
-	return mat
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.albedo_color = albedo
+	material.roughness = roughness
+	return material
 
 
+## 指定した親ノードに BoxMesh の MeshInstance3D を追加する
 func _add_box(
-	parent: Node3D, node_name: String, size: Vector3, pos: Vector3, mat: Material
+	parent: Node3D, node_name: String, size: Vector3, pos: Vector3, material: Material
 ) -> void:
 	var mesh_inst: MeshInstance3D = MeshInstance3D.new()
 	mesh_inst.name = node_name
 	var box: BoxMesh = BoxMesh.new()
 	box.size = size
 	mesh_inst.mesh = box
-	mesh_inst.material_override = mat
+	mesh_inst.material_override = material
 	mesh_inst.position = pos
 	parent.add_child(mesh_inst)

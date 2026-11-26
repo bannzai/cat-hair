@@ -1,7 +1,8 @@
 extends Node3D
 ## 部屋の表面ごとに MultiMesh で猫の毛を描画・管理するノード。
-## MultiMesh はインスタンス単位のカリングを行わないため、表面ごとに
-## MultiMeshInstance3D を分けてフラスタムカリングが効くようにする。
+## MultiMesh はインスタンス単位のカリングを行わない (出典:
+## https://docs.godotengine.org/en/stable/tutorials/performance/using_multimesh.html ) ため、
+## 表面ごとに MultiMeshInstance3D を分けてフラスタムカリングが効くようにする。
 ## 手で 1 本抜く時は末尾インスタンスとの swap-remove で O(1) に消す。
 
 ## 毛の色の系統 (白・黒・三毛)
@@ -11,21 +12,36 @@ enum HairColorGroup {
 	CALICO,
 }
 
-## 再現性のある配置に使う既定シード
+## 再現性のある配置に使う既定シード (試作決定日 2026-11-26 を採用し実行ごとにぶれない配置にする)
 const DEFAULT_SEED: int = 20261126
-## 表面との Z ファイトを防ぐ浮き量 (m)
+## 表面との Z ファイトを防ぐ浮き量 (m。床・ソファのメッシュ面から 1.2 mm 浮かせる)
 const SURFACE_LIFT_M: float = 0.0012
-## 1 本の毛の基準長 (m)
+## 1 本の毛の基準長 (m。猫の一般的な抜け毛 4〜5 cm を写実寄りスケールで再現)
 const HAIR_LENGTH_M: float = 0.048
-## 1 本の毛の根元幅 (m)
+## 1 本の毛の根元幅 (m。1280x720 でカメラから約 1 m の距離で 2〜3 px になり視認できる太さ)
 const HAIR_BASE_WIDTH_M: float = 0.0028
+## 白・黒・三毛の 3 系統をほぼ均等 (約 1/3 ずつ) に出現させる累積確率の境界
+const COLOR_WHITE_THRESHOLD: float = 0.34
+const COLOR_BLACK_THRESHOLD: float = 0.67
+## 三毛系統内での茶オレンジ (55%)・こげ茶 (30%)・クリーム (15%) の累積確率の境界 (茶系を主役にする)
+const CALICO_ORANGE_THRESHOLD: float = 0.55
+const CALICO_BROWN_THRESHOLD: float = 0.85
+## 削除済み・未登録の毛 ID を表すスロット番号の番兵値
+const INVALID_SLOT: int = -1
 
+## 登録済みの配置表面定義 (name / bounds_min / bounds_max / weight)
 var _surfaces: Array[Dictionary] = []
+## 生成済みの表面ごとのバケット (name / instance / multimesh / hair_ids / active_count)
 var _buckets: Array[Dictionary] = []
+## hair_id -> 表面インデックスの逆引き配列 (INVALID_SLOT = -1 は削除済み)
 var _id_to_surface: PackedInt32Array = PackedInt32Array()
+## hair_id -> 表面内スロット番号の逆引き配列 (INVALID_SLOT = -1 は削除済み)
 var _id_to_slot: PackedInt32Array = PackedInt32Array()
+## 部屋全体で現在残っている毛の総本数
 var _remaining_count: int = 0
+## 全表面で共有する 1 本の毛メッシュ
 var _hair_mesh: ArrayMesh = null
+## 全表面で共有する毛マテリアル
 var _hair_material: StandardMaterial3D = null
 
 
@@ -56,8 +72,7 @@ static func allocate_counts(
 	remainders.resize(surface_count)
 	var assigned: int = 0
 	for i: int in range(surface_count):
-		var positive_weight: float = maxf(weights[i], 0.0)
-		var exact: float = float(total_count) * (positive_weight / weight_sum)
+		var exact: float = float(total_count) * (maxf(weights[i], 0.0) / weight_sum)
 		var floor_val: int = int(floor(exact))
 		result[i] = floor_val
 		remainders[i] = exact - float(floor_val)
@@ -83,24 +98,24 @@ static func allocate_counts(
 ## 白・黒・三毛 (茶・こげ茶・クリーム白) の 3 系統から毛の色を 1 つ選ぶ
 static func pick_hair_color(rng: RandomNumberGenerator) -> Color:
 	var roll: float = rng.randf()
-	if roll < 0.34:
-		# 白 (完全な純白を避け、自然な明度差を付ける)
-		var v: float = rng.randf_range(0.89, 0.96)
-		return Color(v, v - 0.01, v - 0.03, 1.0)
-	if roll < 0.67:
-		# 黒 (影に潰れない程度の濃いチャコール)
-		var v: float = rng.randf_range(0.07, 0.14)
-		return Color(v, v, v + 0.02, 1.0)
+	if roll < COLOR_WHITE_THRESHOLD:
+		# 白 (完全な純白 1.0 を避け、自然な明度差 0.89〜0.96 を付ける)
+		var brightness: float = rng.randf_range(0.89, 0.96)
+		return Color(brightness, brightness - 0.01, brightness - 0.03, 1.0)
+	if roll < COLOR_BLACK_THRESHOLD:
+		# 黒 (影と完全に同化しないよう明度 0.07〜0.14 の濃いチャコールにする)
+		var brightness: float = rng.randf_range(0.07, 0.14)
+		return Color(brightness, brightness, brightness + 0.02, 1.0)
 	# 三毛 (茶オレンジ・こげ茶・クリームの混在)
 	var calico_roll: float = rng.randf()
-	if calico_roll < 0.55:
+	if calico_roll < CALICO_ORANGE_THRESHOLD:
 		return Color(
 			rng.randf_range(0.72, 0.84),
 			rng.randf_range(0.38, 0.49),
 			rng.randf_range(0.14, 0.22),
 			1.0
 		)
-	if calico_roll < 0.85:
+	if calico_roll < CALICO_BROWN_THRESHOLD:
 		return Color(
 			rng.randf_range(0.32, 0.42),
 			rng.randf_range(0.18, 0.25),
@@ -112,12 +127,11 @@ static func pick_hair_color(rng: RandomNumberGenerator) -> Color:
 
 ## 色が白・黒・三毛のどの系統に属するかを判定する (テスト用)
 static func classify_hair_color(color: Color) -> int:
-	var max_c: float = maxf(color.r, maxf(color.g, color.b))
-	var min_c: float = minf(color.r, minf(color.g, color.b))
-	var chroma: float = max_c - min_c
-	if chroma >= 0.08:
+	var max_channel: float = maxf(color.r, maxf(color.g, color.b))
+	var min_channel: float = minf(color.r, minf(color.g, color.b))
+	if max_channel - min_channel >= 0.08:
 		return HairColorGroup.CALICO
-	if max_c >= 0.75:
+	if max_channel >= 0.75:
 		return HairColorGroup.WHITE
 	return HairColorGroup.BLACK
 
@@ -217,8 +231,8 @@ func populate(total_count: int, seed_value: int = DEFAULT_SEED) -> int:
 
 	var counts: PackedInt32Array = allocate_counts(total_count, weights)
 	var actual_total: int = 0
-	for c: int in counts:
-		actual_total += c
+	for count_for_surface: int in counts:
+		actual_total += count_for_surface
 	if actual_total <= 0:
 		return 0
 
@@ -251,24 +265,24 @@ func remove_hair(hair_id: int) -> bool:
 		return false
 	var surface_idx: int = _id_to_surface[hair_id]
 	var bucket: Dictionary = _buckets[surface_idx]
-	var mm: MultiMesh = bucket["multimesh"]
+	var multimesh: MultiMesh = bucket["multimesh"]
 	var hair_ids: PackedInt32Array = bucket["hair_ids"]
 	var active_count: int = int(bucket["active_count"])
 	var last_slot: int = active_count - 1
 
 	if slot != last_slot:
 		var last_id: int = hair_ids[last_slot]
-		mm.set_instance_transform(slot, mm.get_instance_transform(last_slot))
-		mm.set_instance_color(slot, mm.get_instance_color(last_slot))
+		multimesh.set_instance_transform(slot, multimesh.get_instance_transform(last_slot))
+		multimesh.set_instance_color(slot, multimesh.get_instance_color(last_slot))
 		hair_ids[slot] = last_id
 		_id_to_slot[last_id] = slot
 
 	active_count -= 1
 	bucket["active_count"] = active_count
 	bucket["hair_ids"] = hair_ids
-	mm.visible_instance_count = active_count
-	_id_to_slot[hair_id] = -1
-	_id_to_surface[hair_id] = -1
+	multimesh.visible_instance_count = active_count
+	_id_to_slot[hair_id] = INVALID_SLOT
+	_id_to_surface[hair_id] = INVALID_SLOT
 	_remaining_count -= 1
 	return true
 
@@ -308,8 +322,8 @@ func get_surface_remaining_count(surface_index: int) -> int:
 func get_surface_visible_instance_count(surface_index: int) -> int:
 	if surface_index < 0 or surface_index >= _buckets.size():
 		return 0
-	var mm: MultiMesh = _buckets[surface_index]["multimesh"]
-	return mm.visible_instance_count
+	var multimesh: MultiMesh = _buckets[surface_index]["multimesh"]
+	return multimesh.visible_instance_count
 
 
 ## 指定した毛 ID が現在存在していれば true
@@ -319,14 +333,21 @@ func has_hair(hair_id: int) -> bool:
 	return _id_to_slot[hair_id] >= 0
 
 
+## 指定した毛 ID の現在の表面内スロット番号を返す (存在しない場合は INVALID_SLOT = -1)
+func get_hair_slot(hair_id: int) -> int:
+	if hair_id < 0 or hair_id >= _id_to_slot.size():
+		return INVALID_SLOT
+	return _id_to_slot[hair_id]
+
+
 ## 指定した毛 ID の現在の Transform3D を返す (存在しない場合は Identity)
 func get_hair_transform(hair_id: int) -> Transform3D:
 	if not has_hair(hair_id):
 		return Transform3D.IDENTITY
 	var surface_idx: int = _id_to_surface[hair_id]
 	var slot: int = _id_to_slot[hair_id]
-	var mm: MultiMesh = _buckets[surface_idx]["multimesh"]
-	return mm.get_instance_transform(slot)
+	var multimesh: MultiMesh = _buckets[surface_idx]["multimesh"]
+	return multimesh.get_instance_transform(slot)
 
 
 ## 指定した毛 ID の現在の色を返す (存在しない場合は透明黒)
@@ -335,10 +356,11 @@ func get_hair_color(hair_id: int) -> Color:
 		return Color(0.0, 0.0, 0.0, 0.0)
 	var surface_idx: int = _id_to_surface[hair_id]
 	var slot: int = _id_to_slot[hair_id]
-	var mm: MultiMesh = _buckets[surface_idx]["multimesh"]
-	return mm.get_instance_color(slot)
+	var multimesh: MultiMesh = _buckets[surface_idx]["multimesh"]
+	return multimesh.get_instance_color(slot)
 
 
+## 1 表面分の MultiMeshInstance3D とバケットを生成し、乱数シードに従って毛を配置する
 func _create_surface_bucket(
 	surface_idx: int,
 	spec: Dictionary,
@@ -346,12 +368,12 @@ func _create_surface_bucket(
 	rng: RandomNumberGenerator,
 	start_id: int
 ) -> Dictionary:
-	var mm: MultiMesh = MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.mesh = _hair_mesh
-	mm.instance_count = count
-	mm.visible_instance_count = count
+	var multimesh: MultiMesh = MultiMesh.new()
+	multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	multimesh.use_colors = true
+	multimesh.mesh = _hair_mesh
+	multimesh.instance_count = count
+	multimesh.visible_instance_count = count
 
 	var hair_ids: PackedInt32Array = PackedInt32Array()
 	hair_ids.resize(count)
@@ -366,32 +388,35 @@ func _create_surface_bucket(
 		_id_to_surface[hair_id] = surface_idx
 		_id_to_slot[hair_id] = slot
 
+		# 重なり合う毛同士の Z ファイトを避けるため高さに最大 1.8 mm の微差を付ける
 		var pos: Vector3 = Vector3(
 			rng.randf_range(bounds_min.x, bounds_max.x),
 			base_y + rng.randf_range(0.0, 0.0018),
 			rng.randf_range(bounds_min.z, bounds_max.z)
 		)
-		var yaw: float = rng.randf_range(0.0, TAU)
-		var pitch: float = rng.randf_range(-0.14, 0.14)
-		var roll: float = rng.randf_range(-0.18, 0.18)
+		# 向きは水平 360 度、傾きは表面から不自然に立たない ±0.14〜0.18 rad、
+		# 長さ 0.75〜1.35 倍・幅 0.85〜1.25 倍で抜け毛の個体差を出す
 		var scale_len: float = rng.randf_range(0.75, 1.35)
-		var scale_width: float = rng.randf_range(0.85, 1.25)
-		var basis: Basis = Basis.from_euler(Vector3(pitch, yaw, roll))
-		basis = basis.scaled(Vector3(scale_width, scale_len, scale_len))
-		mm.set_instance_transform(slot, Transform3D(basis, pos))
-		mm.set_instance_color(slot, pick_hair_color(rng))
+		var basis: Basis = Basis.from_euler(Vector3(
+			rng.randf_range(-0.14, 0.14),
+			rng.randf_range(0.0, TAU),
+			rng.randf_range(-0.18, 0.18)
+		))
+		basis = basis.scaled(Vector3(rng.randf_range(0.85, 1.25), scale_len, scale_len))
+		multimesh.set_instance_transform(slot, Transform3D(basis, pos))
+		multimesh.set_instance_color(slot, pick_hair_color(rng))
 
-	var mmi: MultiMeshInstance3D = MultiMeshInstance3D.new()
-	mmi.name = "HairSurface_%s" % str(spec["name"])
-	mmi.multimesh = mm
-	mmi.material_override = _hair_material
-	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mmi)
+	var multimesh_instance: MultiMeshInstance3D = MultiMeshInstance3D.new()
+	multimesh_instance.name = "HairSurface_%s" % str(spec["name"])
+	multimesh_instance.multimesh = multimesh
+	multimesh_instance.material_override = _hair_material
+	multimesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(multimesh_instance)
 
 	return {
 		"name": str(spec["name"]),
-		"instance": mmi,
-		"multimesh": mm,
+		"instance": multimesh_instance,
+		"multimesh": multimesh,
 		"hair_ids": hair_ids,
 		"active_count": count,
 	}
