@@ -143,6 +143,10 @@ func _check_apply_to_first_room_only() -> void:
 		% [first_room_object_overridden, other_room_object_overridden],
 	)
 	_check(
+		look_room.get_material_for_kind(&"unknown_kind") == null,
+		"NODE_MATERIAL_KINDS に無い種類の材質は null を返す",
+	)
+	_check(
 		(world.get_node("LightsRoot/RoomLight_0") as OmniLight3D).shadow_enabled
 		and not (world.get_node("LightsRoot/RoomLight_1") as OmniLight3D).shadow_enabled,
 		"影は最初の部屋の灯りだけに付く",
@@ -256,6 +260,19 @@ func _check_automation_props() -> void:
 		and look_room.get_robot_count() == LookPrototypeRoomScript.ROBOT_LANES.size(),
 		"2 回置いても掃除ロボットは同じ台数で、消えた帯の毛は増えも減りもしない",
 	)
+	# 充電台は帯の走り始めの壁 (-X) の内側に、真ん中の帯の Z に置く
+	var dock: Node3D = look_room.get_node_or_null("PrototypeContent/Robots/Dock") as Node3D
+	_check(
+		dock != null
+		and dock.position.x < lane_start_x
+		and dock.position.x > room.center.x - room.size.x * 0.5
+		and is_equal_approx(
+			dock.position.z,
+			room.center.z + float(LookPrototypeRoomScript.ROBOT_LANES[1]["z_ratio"]) * room.size.z
+		),
+		"充電台は走り始めの壁際に、真ん中の帯の位置で置く (%s)"
+		% [dock.position if dock != null else null],
+	)
 	look_room.free()
 
 
@@ -276,6 +293,9 @@ func _check_apply_edges() -> void:
 	)
 
 	var room: MansionLayout.RoomDef = layout.rooms[0]
+	# 縦横の違う部屋にして、東西の壁は幅 (size.x)・南北の壁は奥行 (size.z) から位置を求めることを見分ける
+	# (ビルダーの部屋は正方形のため、そのままでは取り違えても位置が同じになる)
+	room.size = Vector3(room.size.x, room.size.y, room.size.x * 0.6)
 	# 4 面それぞれで、ドアの無い壁がその面だけの時に、窓がその壁の内側の面 (壁の中心線から壁の厚み分内側)・
 	# 床から WINDOW_CENTER_HEIGHT_M の高さに、部屋の内側を向いて (ローカルの +Z が部屋の外) 付くことを確かめる
 	var half_x: float = room.size.x * 0.5 - MansionWorldScript.WALL_THICKNESS_M
@@ -316,6 +336,11 @@ func _check_apply_edges() -> void:
 			and light_direction.y < 0.0,
 			"%s の窓の光は影付きで、部屋の内側の下を照らす (%s)" % [side, light_direction],
 		)
+
+	# setup の前 (プレイヤーが無い) は、歩いていて部屋があっても試作の見た目を出さない
+	look_room.set_playing(true)
+	_check(not look_room.is_prototype_active(), "プレイヤーが無い時は試作の見た目を出さない")
+	look_room.set_playing(false)
 
 	look_room.apply(layout, null, null)
 	_check(
@@ -386,11 +411,12 @@ func _check_hand_pose() -> void:
 	hand.set_pinch_pose(true, 0.0)
 	var pinch_state: Array = [hand.is_pinching(), hand.is_stretched_hair_visible()]
 	# つまむ構図: 手首はつまむ位置と回転になり、人差し指は他の 3 本より曲げが浅い (親指の先と合わせるため)
-	var index_curl: float = -(hand.get_node("Finger0") as Node3D).rotation.x
 	_check(
 		hand.position.is_equal_approx(FirstPersonHandScript.PINCH_POSITION)
 		and hand.rotation.is_equal_approx(FirstPersonHandScript.PINCH_ROTATION)
-		and is_equal_approx(index_curl, FirstPersonHandScript.PINCH_INDEX_CURL)
+		and is_equal_approx(
+			-(hand.get_node("Finger0") as Node3D).rotation.x, FirstPersonHandScript.PINCH_INDEX_CURL
+		)
 		and is_equal_approx(
 			-(hand.get_node("Finger3") as Node3D).rotation.x,
 			FirstPersonHandScript.PINCH_FOLDED_FINGER_CURL
