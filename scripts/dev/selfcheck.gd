@@ -61,14 +61,14 @@ func _check_main_scene_loads() -> void:
 
 ## BGM と効果音のバスが別々に定義され、効果音が BGM より大きい音量設定になっているか
 func _check_audio_bus_layout() -> void:
-	var bgm_idx: int = AudioServer.get_bus_index(AudioCatalog.BUS_BGM)
-	var sfx_idx: int = AudioServer.get_bus_index(AudioCatalog.BUS_SFX)
-	_check(bgm_idx >= 0, "AudioServer に BGM バスがある (index: %d)" % bgm_idx)
-	_check(sfx_idx >= 0, "AudioServer に SFX バスがある (index: %d)" % sfx_idx)
-	_check(bgm_idx != sfx_idx, "BGM バスと SFX バスが別々である")
-	if bgm_idx >= 0 and sfx_idx >= 0:
-		var bgm_db: float = AudioServer.get_bus_volume_db(bgm_idx)
-		var sfx_db: float = AudioServer.get_bus_volume_db(sfx_idx)
+	var bgm_bus_index: int = AudioServer.get_bus_index(AudioCatalog.BUS_BGM)
+	var sfx_bus_index: int = AudioServer.get_bus_index(AudioCatalog.BUS_SFX)
+	_check(bgm_bus_index >= 0, "AudioServer に BGM バスがある (index: %d)" % bgm_bus_index)
+	_check(sfx_bus_index >= 0, "AudioServer に SFX バスがある (index: %d)" % sfx_bus_index)
+	_check(bgm_bus_index != sfx_bus_index, "BGM バスと SFX バスが別々である")
+	if bgm_bus_index >= 0 and sfx_bus_index >= 0:
+		var bgm_db: float = AudioServer.get_bus_volume_db(bgm_bus_index)
+		var sfx_db: float = AudioServer.get_bus_volume_db(sfx_bus_index)
 		_check(
 			bgm_db < sfx_db,
 			"効果音を目立たせるため BGM 音量 (%s dB) < SFX 音量 (%s dB)" % [bgm_db, sfx_db]
@@ -118,18 +118,12 @@ func _check_audio_catalog() -> void:
 			"効果音 '%s' の素材 %s が AudioStream として読み込める" % [event_name, actual_path]
 		)
 	# 異常系・境界値: 空文字・未登録名・大文字小文字違い・末尾空白・BGM/SFX の取り違え
-	var invalid_bgm_inputs: PackedStringArray = PackedStringArray([
-		"", "unknown", "TITLE", "title ", "button", "pluck_hair"
-	])
-	for bad_bgm: String in invalid_bgm_inputs:
+	for bad_bgm: String in ["", "unknown", "TITLE", "title ", "button", "pluck_hair"]:
 		_check(
 			AudioCatalog.resolve_bgm_path(bad_bgm).is_empty(),
 			"未登録の BGM 名 '%s' は空文字を返す" % bad_bgm
 		)
-	var invalid_sfx_inputs: PackedStringArray = PackedStringArray([
-		"", "unknown", "BUTTON", "pluck_hair ", "title", "mansion"
-	])
-	for bad_sfx: String in invalid_sfx_inputs:
+	for bad_sfx: String in ["", "unknown", "BUTTON", "pluck_hair ", "title", "mansion"]:
 		_check(
 			AudioCatalog.resolve_sfx_path(bad_sfx).is_empty(),
 			"未登録の効果音名 '%s' は空文字を返す" % bad_sfx
@@ -139,28 +133,25 @@ func _check_audio_catalog() -> void:
 ## ConfigFile による設定の保存・読み戻し (正常系 4 パターン + 異常系・境界値)
 func _check_audio_settings_persistence() -> void:
 	var test_path: String = ProjectSettings.globalize_path("res://tmp/selfcheck-audio-settings.cfg")
-	_remove_file_if_exists(test_path)
+	remove_file_if_exists(test_path)
 
 	# 初期値
 	var defaults: RefCounted = AudioSettings.new()
 	_check(defaults.bgm_enabled and defaults.sfx_enabled, "音声設定の初期値は BGM・効果音ともオン")
 
 	# 正常系: 4 通りの組み合わせを保存して別インスタンスで読み戻す
-	var combinations: Array = [
-		[false, true],
-		[true, false],
-		[false, false],
-		[true, true],
-	]
-	for pair: Array in combinations:
+	for pair: Array in [[false, true], [true, false], [false, false], [true, true]]:
 		var expected_bgm: bool = bool(pair[0])
 		var expected_sfx: bool = bool(pair[1])
-		var writer: RefCounted = AudioSettings.new(expected_bgm, expected_sfx)
-		var save_err: Error = writer.save_to_path(test_path)
-		_check(save_err == OK, "設定 (%s, %s) の保存が OK" % [expected_bgm, expected_sfx])
+		_check(
+			AudioSettings.new(expected_bgm, expected_sfx).save_to_path(test_path) == OK,
+			"設定 (%s, %s) の保存が OK" % [expected_bgm, expected_sfx]
+		)
 		var reader: RefCounted = AudioSettings.new(not expected_bgm, not expected_sfx)
-		var load_err: Error = reader.load_from_path(test_path)
-		_check(load_err == OK, "設定 (%s, %s) の読み込みが OK" % [expected_bgm, expected_sfx])
+		_check(
+			reader.load_from_path(test_path) == OK,
+			"設定 (%s, %s) の読み込みが OK" % [expected_bgm, expected_sfx]
+		)
 		_check(
 			reader.bgm_enabled == expected_bgm and reader.sfx_enabled == expected_sfx,
 			"保存した (%s, %s) を読み戻せる (実際: %s, %s)" % [
@@ -184,10 +175,9 @@ func _check_audio_settings_persistence() -> void:
 	)
 
 	# 異常系: 存在しないファイル
-	_remove_file_if_exists(test_path)
+	remove_file_if_exists(test_path)
 	var missing_reader: RefCounted = AudioSettings.new(false, false)
-	var missing_err: Error = missing_reader.load_from_path(test_path)
-	_check(missing_err != OK, "存在しない設定ファイルの読み込みはエラーを返す")
+	_check(missing_reader.load_from_path(test_path) != OK, "存在しない設定ファイルの読み込みはエラーを返す")
 	_check(
 		missing_reader.bgm_enabled and missing_reader.sfx_enabled,
 		"存在しない設定ファイルの読み込み時は既定値 (オン, オン) に戻る"
@@ -222,41 +212,36 @@ func _check_audio_settings_persistence() -> void:
 		"欠落した bgm_enabled は既定値 true、存在する sfx_enabled=false は保持する"
 	)
 
-	_remove_file_if_exists(test_path)
+	remove_file_if_exists(test_path)
 
 
 ## AudioSettings.apply_to_audio_server が BGM・SFX バスを個別に消音できるか
 func _check_audio_settings_bus_mute() -> void:
-	var bgm_idx: int = AudioServer.get_bus_index(AudioCatalog.BUS_BGM)
-	var sfx_idx: int = AudioServer.get_bus_index(AudioCatalog.BUS_SFX)
-	if bgm_idx < 0 or sfx_idx < 0:
+	var bgm_bus_index: int = AudioServer.get_bus_index(AudioCatalog.BUS_BGM)
+	var sfx_bus_index: int = AudioServer.get_bus_index(AudioCatalog.BUS_SFX)
+	if bgm_bus_index < 0 or sfx_bus_index < 0:
 		return
 	AudioSettings.apply_to_audio_server(false, true)
 	_check(
-		AudioServer.is_bus_mute(bgm_idx) and not AudioServer.is_bus_mute(sfx_idx),
+		AudioServer.is_bus_mute(bgm_bus_index) and not AudioServer.is_bus_mute(sfx_bus_index),
 		"BGM オフ・効果音オンで BGM バスだけ消音になる"
 	)
 	AudioSettings.apply_to_audio_server(true, false)
 	_check(
-		(not AudioServer.is_bus_mute(bgm_idx)) and AudioServer.is_bus_mute(sfx_idx),
+		(not AudioServer.is_bus_mute(bgm_bus_index)) and AudioServer.is_bus_mute(sfx_bus_index),
 		"BGM オン・効果音オフで SFX バスだけ消音になる"
 	)
 	AudioSettings.apply_to_audio_server(false, false)
 	_check(
-		AudioServer.is_bus_mute(bgm_idx) and AudioServer.is_bus_mute(sfx_idx),
+		AudioServer.is_bus_mute(bgm_bus_index) and AudioServer.is_bus_mute(sfx_bus_index),
 		"両方オフで BGM・SFX バスとも消音になる"
 	)
 	AudioSettings.apply_to_audio_server(true, true)
 	_check(
-		(not AudioServer.is_bus_mute(bgm_idx)) and (not AudioServer.is_bus_mute(sfx_idx)),
+		(not AudioServer.is_bus_mute(bgm_bus_index))
+		and (not AudioServer.is_bus_mute(sfx_bus_index)),
 		"両方オンで BGM・SFX バスとも消音解除になる"
 	)
-
-
-## テスト用の一時ファイルを削除する
-func _remove_file_if_exists(path: String) -> void:
-	if FileAccess.file_exists(path):
-		DirAccess.remove_absolute(path)
 
 
 ## 異常系テスト用に任意の文字列をファイルへ書き出す

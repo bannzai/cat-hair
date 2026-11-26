@@ -12,15 +12,19 @@ const SECTION: String = "audio"
 const KEY_BGM_ENABLED: String = "bgm_enabled"
 ## ConfigFile の効果音オン・オフのキー
 const KEY_SFX_ENABLED: String = "sfx_enabled"
+## BGM・効果音の初期オン・オフ値。最初の触れる版を無音で始めないためオンを既定とする (Issue #8・PROJECT.md)
+const DEFAULT_ENABLED: bool = true
 
-## BGM がオンか (初回既定値はオン)
-var bgm_enabled: bool = true
-## 効果音がオンか (初回既定値はオン)
-var sfx_enabled: bool = true
+## BGM がオンか
+var bgm_enabled: bool = DEFAULT_ENABLED
+## 効果音がオンか
+var sfx_enabled: bool = DEFAULT_ENABLED
 
 
 ## 初期値を指定して設定を作る
-func _init(initial_bgm_enabled: bool = true, initial_sfx_enabled: bool = true) -> void:
+func _init(
+	initial_bgm_enabled: bool = DEFAULT_ENABLED, initial_sfx_enabled: bool = DEFAULT_ENABLED
+) -> void:
 	bgm_enabled = initial_bgm_enabled
 	sfx_enabled = initial_sfx_enabled
 
@@ -35,20 +39,20 @@ func save_to_path(path: String = DEFAULT_PATH) -> Error:
 	return config.save(path)
 
 
-## path から ConfigFile を読み込み、設定を更新する。失敗時は既定値 (どちらもオン) に戻す
+## path から ConfigFile を読み込み、設定を更新する。失敗時は DEFAULT_ENABLED に戻す
 func load_from_path(path: String = DEFAULT_PATH) -> Error:
-	bgm_enabled = true
-	sfx_enabled = true
+	bgm_enabled = DEFAULT_ENABLED
+	sfx_enabled = DEFAULT_ENABLED
 	if path.is_empty():
 		return ERR_INVALID_PARAMETER
 	var config: ConfigFile = ConfigFile.new()
 	var err: Error = config.load(path)
 	if err != OK:
 		return err
-	var raw_bgm: Variant = config.get_value(SECTION, KEY_BGM_ENABLED, true)
-	var raw_sfx: Variant = config.get_value(SECTION, KEY_SFX_ENABLED, true)
-	bgm_enabled = raw_bgm if raw_bgm is bool else true
-	sfx_enabled = raw_sfx if raw_sfx is bool else true
+	var raw_bgm: Variant = config.get_value(SECTION, KEY_BGM_ENABLED, DEFAULT_ENABLED)
+	var raw_sfx: Variant = config.get_value(SECTION, KEY_SFX_ENABLED, DEFAULT_ENABLED)
+	bgm_enabled = raw_bgm if raw_bgm is bool else DEFAULT_ENABLED
+	sfx_enabled = raw_sfx if raw_sfx is bool else DEFAULT_ENABLED
 	return OK
 
 

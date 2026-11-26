@@ -12,6 +12,12 @@ const AUDIO_RELEASE_TIME: float = 0.25
 var failed: bool = false
 
 
+## テスト・撮影用の一時ファイルが存在すれば削除する (全 dev スクリプト共通)
+static func remove_file_if_exists(path: String) -> void:
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)
+
+
 ## cond が false なら label を ERROR として出し、失敗として記録する。
 ## ERROR の行頭には実行した検証のスクリプトの名前 (selfcheck / integration) を付ける
 func _check(cond: bool, label: String) -> void:

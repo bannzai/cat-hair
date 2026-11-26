@@ -10,8 +10,15 @@ signal settings_changed(bgm_enabled: bool, sfx_enabled: bool)
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## オン・オフ設定の保存・適用クラス
 const AudioSettings := preload("res://scripts/audio/audio_settings.gd")
-## 効果音を同時に重ねて鳴らせるプレイヤーの本数
+## project.godot の [autoload] に登録するノード名 (実行時取得の単一の正)
+const NODE_NAME: String = "AudioManager"
+## 効果音を同時に重ねて鳴らせるプレイヤーの本数。手で毛を連続して抜く序盤に 1 秒あたり 2〜3 回鳴らしつつ
+## UI 操作やお金取得の効果音が重なっても先行の音が途切れにくい余裕として 4 本にした (実機調整で変更可)
 const SFX_POOL_SIZE: int = 4
+## 再生中に終了した時に AudioServer の解放を待つ時間 (ms)。scripts/dev/headless_check.gd の
+## AUDIO_RELEASE_TIME (0.25 秒) に合わせた値で、Godot 4.7.2-stable (ubuntu-24.04 / --audio-driver Dummy)
+## の CI 実測で 0 ms では ObjectDB 4 件・Resource 2 件のリーク警告が出、250 ms で解消することを確認した
+const EXIT_RELEASE_WAIT_MSEC: int = 250
 
 ## 現在のオン・オフ設定
 var _settings: RefCounted = AudioSettings.new()
@@ -31,6 +38,21 @@ var _paused_by_focus: bool = false
 var _stream_cache: Dictionary = {}
 ## 再生開始後に外部から stop_all() されていないか (_exit_tree() での解放待ち判定に使う)
 var _needs_exit_release_wait: bool = false
+## BGM プレイヤーで play() を実際に呼んだ回数 (同一曲の継続検証用)
+var _bgm_play_count: int = 0
+## 効果音プレイヤーで play() を実際に呼んだ回数
+var _sfx_play_count: int = 0
+## 直近に鳴らした効果音の出来事名
+var _last_sfx_event_name: String = ""
+## 直近に効果音を鳴らしたプール内のインデックス (-1 は未再生)
+var _last_sfx_player_index: int = -1
+
+
+## SceneTree の root から登録済みの AudioManager ノードを実行時に解決する
+static func resolve(tree: SceneTree) -> Node:
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null(NODE_NAME)
 
 
 ## プレイヤーを準備し、保存済みの設定を読み込んでバスへ適用する
@@ -39,20 +61,22 @@ func _ready() -> void:
 	reload_settings(_settings_path)
 
 
-## ツリーから外れる時にすべての再生を止め、AudioServer のミキシングスレッドによる解放を待つ
+## ツリーから外れる時にすべての再生を止め、AudioServer の解放を待つ
 func _exit_tree() -> void:
-	# 子ノード (AudioStreamPlayer) の _exit_tree() が親より先に走って playing が false になるため、
-	# 再生中に終了したかは _needs_exit_release_wait で判定する
+	# Godot の Node._exit_tree() は子から親の順に呼ばれるため (公式ドキュメント:
+	# https://docs.godotengine.org/en/stable/classes/class_node.html
+	# #class-node-private-method-exit-tree、2026-11-26 確認)、この時点では子 AudioStreamPlayer の
+	# playing は既に false になる。そのため再生中に終了したかは _needs_exit_release_wait で判定する
 	var should_wait: bool = _needs_exit_release_wait
 	stop_all()
 	_clear_streams()
 	if should_wait:
-		# 止めた直後に終了すると、AudioServer のミキシングスレッドが再生ハンドルを解放する前に
-		# ObjectDB::cleanup() が走りリーク警告が出るため、ミキシング数回分だけ待つ
-		OS.delay_msec(250)
+		OS.delay_msec(EXIT_RELEASE_WAIT_MSEC)
 
 
-## アプリが裏に回った時に BGM を一時停止し、戻った時に再開する
+## アプリが裏に回った時に BGM を一時停止し、戻った時に再開する。
+## 公式ドキュメント (https://docs.godotengine.org/en/stable/classes/class_mainloop.html 2026-11-26 確認):
+## FOCUS_OUT / FOCUS_IN は desktop と mobile で OS から届き、PAUSED / RESUMED は Android / iOS 固有
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
 		_pause_bgm_for_focus()
@@ -78,7 +102,7 @@ func play_bgm(scene_name: String) -> bool:
 		return false
 	if _current_bgm_name == scene_name and _bgm_player.playing:
 		return true
-	var stream: AudioStream = _load_stream(path)
+	var stream: AudioStream = load_stream(path)
 	if stream == null:
 		return false
 	_enable_loop(stream)
@@ -86,6 +110,7 @@ func play_bgm(scene_name: String) -> bool:
 	_bgm_player.stream_paused = false
 	_paused_by_focus = false
 	_bgm_player.play()
+	_bgm_play_count += 1
 	_current_bgm_name = scene_name
 	_needs_exit_release_wait = true
 	return true
@@ -107,12 +132,16 @@ func play_sfx(event_name: String) -> bool:
 	var path: String = AudioCatalog.resolve_sfx_path(event_name)
 	if path.is_empty():
 		return false
-	var stream: AudioStream = _load_stream(path)
+	var stream: AudioStream = load_stream(path)
 	if stream == null:
 		return false
-	var player: AudioStreamPlayer = _pick_sfx_player()
+	var player_index: int = _pick_sfx_player_index()
+	var player: AudioStreamPlayer = _sfx_players[player_index]
 	player.stream = stream
 	player.play()
+	_sfx_play_count += 1
+	_last_sfx_event_name = event_name
+	_last_sfx_player_index = player_index
 	_needs_exit_release_wait = true
 	return true
 
@@ -126,14 +155,18 @@ func stop_all() -> void:
 	_needs_exit_release_wait = false
 
 
-## プレイヤーとキャッシュが保持する AudioStream 参照を解放する
-func _clear_streams() -> void:
-	if _bgm_player != null:
-		_bgm_player.stream = null
-	for player: AudioStreamPlayer in _sfx_players:
-		if player != null:
-			player.stream = null
-	_stream_cache.clear()
+## 音声リソースをキャッシュ付きで読み込む。存在しない・AudioStream でないリソースは null を返す
+func load_stream(path: String) -> AudioStream:
+	if _stream_cache.has(path):
+		return _stream_cache[path] as AudioStream
+	if not ResourceLoader.exists(path):
+		return null
+	var loaded: Resource = ResourceLoader.load(path)
+	if not (loaded is AudioStream):
+		return null
+	var stream: AudioStream = loaded as AudioStream
+	_stream_cache[path] = stream
+	return stream
 
 
 ## BGM がオンか
@@ -174,44 +207,60 @@ func is_bgm_paused_by_focus() -> bool:
 	return _paused_by_focus
 
 
+## BGM プレイヤーで play() を実際に呼んだ累計回数を返す
+func get_bgm_play_count() -> int:
+	return _bgm_play_count
+
+
+## 効果音プレイヤーで play() を実際に呼んだ累計回数を返す
+func get_sfx_play_count() -> int:
+	return _sfx_play_count
+
+
+## 直近に鳴らした効果音の出来事名を返す
+func get_last_sfx_event_name() -> String:
+	return _last_sfx_event_name
+
+
+## 直近に効果音を鳴らしたプール内のインデックスを返す (未再生は -1)
+func get_last_sfx_player_index() -> int:
+	return _last_sfx_player_index
+
+
 ## BGM 用と効果音用の AudioStreamPlayer を子ノードとして生成する
 func _setup_players() -> void:
 	if _bgm_player == null:
 		_bgm_player = AudioStreamPlayer.new()
-		_bgm_player.name = "BgmPlayer"
+		_bgm_player.name = "BGMPlayer"
 		_bgm_player.bus = AudioCatalog.BUS_BGM
 		add_child(_bgm_player)
 	if _sfx_players.is_empty():
 		for index: int in range(SFX_POOL_SIZE):
 			var player: AudioStreamPlayer = AudioStreamPlayer.new()
-			player.name = "SfxPlayer%d" % index
+			player.name = "SFXPlayer%d" % index
 			player.bus = AudioCatalog.BUS_SFX
 			add_child(player)
 			_sfx_players.append(player)
 
 
-## 空いている効果音プレイヤーを返す。全部再生中ならラウンドロビンで再利用する
-func _pick_sfx_player() -> AudioStreamPlayer:
-	for player: AudioStreamPlayer in _sfx_players:
-		if not player.playing:
-			return player
-	var chosen: AudioStreamPlayer = _sfx_players[_next_sfx_index]
+## 空いている効果音プレイヤーのインデックスを返す。全部再生中ならラウンドロビンで再利用する
+func _pick_sfx_player_index() -> int:
+	for index: int in range(_sfx_players.size()):
+		if not _sfx_players[index].playing:
+			return index
+	var chosen_index: int = _next_sfx_index
 	_next_sfx_index = (_next_sfx_index + 1) % _sfx_players.size()
-	return chosen
+	return chosen_index
 
 
-## 音声リソースをキャッシュ付きで読み込む。存在しない・不正なリソースは null を返す
-func _load_stream(path: String) -> AudioStream:
-	if _stream_cache.has(path):
-		return _stream_cache[path] as AudioStream
-	if not ResourceLoader.exists(path):
-		return null
-	var loaded: Resource = ResourceLoader.load(path)
-	if not (loaded is AudioStream):
-		return null
-	var stream: AudioStream = loaded as AudioStream
-	_stream_cache[path] = stream
-	return stream
+## プレイヤーとキャッシュが保持する AudioStream 参照を解放する
+func _clear_streams() -> void:
+	if _bgm_player != null:
+		_bgm_player.stream = null
+	for player: AudioStreamPlayer in _sfx_players:
+		if player != null:
+			player.stream = null
+	_stream_cache.clear()
 
 
 ## ループ対応のストリーム形式ならループ再生を有効にする

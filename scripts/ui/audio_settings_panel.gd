@@ -4,16 +4,16 @@ extends Control
 
 ## 出来事名の定数を持つ音声カタログ
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
-## AudioManager の型解決用スクリプト参照 (headless --script で autoload 名を静的参照しない)
+## AudioManager の型解決と実行時取得用スクリプト参照 (headless --script で autoload 名を静的参照しない)
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 
 ## BGM のオン・オフを切り替えるチェックボタン
 @onready var _bgm_toggle: CheckButton = (
-	$CenterContainer/Panel/MarginContainer/VBoxContainer/BgmToggle
+	$CenterContainer/Panel/MarginContainer/VBoxContainer/BGMToggle
 )
 ## 効果音のオン・オフを切り替えるチェックボタン
 @onready var _sfx_toggle: CheckButton = (
-	$CenterContainer/Panel/MarginContainer/VBoxContainer/SfxToggle
+	$CenterContainer/Panel/MarginContainer/VBoxContainer/SFXToggle
 )
 ## 設定画面を閉じるボタン
 @onready var _close_button: Button = (
@@ -42,7 +42,9 @@ func close() -> void:
 
 ## AudioManager の現在値をチェックボタンへ反映する (シグナルを発火させない)
 func _sync_from_audio_manager() -> void:
-	var audio_manager: AudioManagerScript = _get_audio_manager()
+	var audio_manager: AudioManagerScript = (
+		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
+	)
 	if audio_manager == null:
 		return
 	_bgm_toggle.set_pressed_no_signal(audio_manager.is_bgm_enabled())
@@ -51,7 +53,9 @@ func _sync_from_audio_manager() -> void:
 
 ## BGM トグル切替時の処理
 func _on_bgm_toggled(toggled_on: bool) -> void:
-	var audio_manager: AudioManagerScript = _get_audio_manager()
+	var audio_manager: AudioManagerScript = (
+		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
+	)
 	if audio_manager == null:
 		return
 	audio_manager.set_bgm_enabled(toggled_on)
@@ -60,7 +64,9 @@ func _on_bgm_toggled(toggled_on: bool) -> void:
 
 ## 効果音トグル切替時の処理
 func _on_sfx_toggled(toggled_on: bool) -> void:
-	var audio_manager: AudioManagerScript = _get_audio_manager()
+	var audio_manager: AudioManagerScript = (
+		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
+	)
 	if audio_manager == null:
 		return
 	audio_manager.set_sfx_enabled(toggled_on)
@@ -69,14 +75,9 @@ func _on_sfx_toggled(toggled_on: bool) -> void:
 
 ## 閉じるボタン押下時の処理
 func _on_close_pressed() -> void:
-	var audio_manager: AudioManagerScript = _get_audio_manager()
+	var audio_manager: AudioManagerScript = (
+		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
+	)
 	if audio_manager != null:
 		audio_manager.play_sfx(AudioCatalog.SFX_BUTTON)
 	close()
-
-
-## ツリーの root から AudioManager を実行時に解決する
-func _get_audio_manager() -> AudioManagerScript:
-	if get_tree() == null:
-		return null
-	return get_tree().root.get_node_or_null("AudioManager") as AudioManagerScript
