@@ -57,6 +57,15 @@ const TABLE_LEG_OFFSET_X_RATIO: float = 0.42
 const TABLE_LEG_OFFSET_Z_RATIO: float = 0.40
 ## テーブル脚の断面一辺の幅 (m。天板を支える見た目として細すぎずかさばらない一般的な木製脚幅)
 const TABLE_LEG_WIDTH_M: float = 0.07
+## 買取業者を立たせる所の、最初の部屋の西の壁からの距離 (m)
+const TRADER_WEST_OFFSET_M: float = 0.8
+## 買取業者を立たせる所の、最初の部屋の南の壁 (屋敷の外に面した裏口の側) からの距離 (m)。
+## 床の毛を置かない壁際の帯 (MansionBuilder.FLOOR_HAIR_INSET_M の半分) に収め、真下の毛が取れなくならないようにする
+const TRADER_SOUTH_OFFSET_M: float = 0.22
+## 買取業者の体の半径と高さ (m)
+const TRADER_BODY_RADIUS_M: float = 0.12
+## 買取業者の体の高さ (m)
+const TRADER_BODY_HEIGHT_M: float = 1.6
 
 ## 部屋ノード群の親コンテナ
 var _rooms_root: Node3D = null
@@ -68,6 +77,8 @@ var _hair_field: Node3D = null
 var _lights_root: Node3D = null
 ## 構築に使ったレイアウト (毛の表面の添字から表面の定義を引く)
 var _layout: MansionLayout = null
+## 裏口に来る買取業者 (物の数・毛の除外範囲に数えないよう、物とは別の親に置く。衝突体は持たない)
+var _trader: Node3D = null
 
 ## 床メッシュ用マテリアル (フローリング調)
 var _material_floor: StandardMaterial3D = null
@@ -131,6 +142,43 @@ func rebuild(layout: MansionLayout, progress: BuildingProgress) -> void:
 
 	_layout = layout
 	_build_hairs(layout, progress)
+	_build_trader(layout)
+
+
+## 買取業者が立っている所 (足元) を返す。部屋が無い屋敷では原点
+func get_trader_position() -> Vector3:
+	return _trader.global_position if _trader != null else Vector3.ZERO
+
+
+## 最初の部屋の南西の隅 (裏口の側) に買取業者を立たせる
+func _build_trader(layout: MansionLayout) -> void:
+	if layout.rooms.is_empty():
+		return
+	var room: MansionLayout.RoomDef = layout.rooms[0]
+	_trader = Node3D.new()
+	_trader.name = "Trader"
+	add_child(_trader)
+	_trader.position = room.center + Vector3(
+		-room.size.x * 0.5 + TRADER_WEST_OFFSET_M, 0.0, room.size.z * 0.5 - TRADER_SOUTH_OFFSET_M
+	)
+	var body: MeshInstance3D = MeshInstance3D.new()
+	body.name = "Body"
+	var capsule: CapsuleMesh = CapsuleMesh.new()
+	capsule.radius = TRADER_BODY_RADIUS_M
+	capsule.height = TRADER_BODY_HEIGHT_M
+	body.mesh = capsule
+	body.material_override = _make_material(Color(0.32, 0.27, 0.2), 0.8)
+	body.position = Vector3(0.0, TRADER_BODY_HEIGHT_M * 0.5, 0.0)
+	_trader.add_child(body)
+	var sign_label: Label3D = Label3D.new()
+	sign_label.name = "Sign"
+	sign_label.text = "買取業者 (裏口)"
+	sign_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sign_label.pixel_size = 0.004
+	sign_label.font_size = 48
+	sign_label.outline_size = 12
+	sign_label.position = Vector3(0.0, TRADER_BODY_HEIGHT_M + 0.25, 0.0)
+	_trader.add_child(sign_label)
 
 
 ## 構築済みの部屋ノード数を返す
@@ -178,6 +226,7 @@ func _clear_children() -> void:
 	_objects_root = null
 	_hair_field = null
 	_lights_root = null
+	_trader = null
 	_layout = null
 
 
