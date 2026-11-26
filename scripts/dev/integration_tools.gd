@@ -239,7 +239,7 @@ func _verify_empty_consumable(main: Node3D, game_state: Node) -> void:
 	owned.consumable_count = 0
 	var aimed: bool = await _aim_at_floor_hairs(main)
 	var before_total: int = game_state.get_total_remaining_hairs()
-	await _press_and_release_use()
+	await _checker.press_and_release_use()
 	_check(
 		aimed and game_state.get_total_remaining_hairs() == before_total
 		and owned.consumable_count == 0
@@ -287,7 +287,7 @@ func _verify_capture_click(main: Node3D, game_state: Node, owned: OwnedTool) -> 
 		owned.consumable_count == 20 and game_state.get_total_remaining_hairs() == before_total,
 		"マウスを捕捉する最初のクリックでは道具を使わず、紙も減らない",
 	)
-	await _press_and_release_use()
+	await _checker.press_and_release_use()
 	_check(owned.consumable_count == 19, "捕捉した後のクリックでは道具を使い、紙が 1 枚減る")
 	await _verify_switch_while_held(main, owned)
 
@@ -312,7 +312,7 @@ func _verify_switch_while_held(main: Node3D, owned: OwnedTool) -> void:
 	)
 	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
-	await _press_and_release_use()
+	await _checker.press_and_release_use()
 	_check(owned.consumable_count == 18, "持ち替えた後に押し直すと粘着ローラーを使う")
 
 
@@ -372,9 +372,9 @@ func _verify_every_tool_once(main: Node3D, game_state: Node) -> void:
 					)
 			ToolCatalogScript.KIND_LIGHT:
 				var before_light: int = game_state.get_total_remaining_hairs()
-				await _press_and_release_use()
+				await _checker.press_and_release_use()
 				var on: bool = tools.is_glow_light_on()
-				await _press_and_release_use()
+				await _checker.press_and_release_use()
 				_check(
 					on and not tools.is_glow_light_on()
 					and game_state.get_total_remaining_hairs() == before_light,
@@ -385,13 +385,17 @@ func _verify_every_tool_once(main: Node3D, game_state: Node) -> void:
 			ToolCatalogScript.KIND_CAT:
 				var before_brush: int = game_state.get_total_remaining_hairs()
 				var money_brush: int = game_state.get_money()
-				await _press_and_release_use()
+				# 猫を狙いの先から外す (猫がいない時の振る舞いを確かめる。猫を狙った時は integration_automation.gd で確かめる)
+				var cats_root: Node3D = main.automation.get_node("Cats")
+				cats_root.position = Vector3(0.0, -100.0, 0.0)
+				await _checker.press_and_release_use()
+				cats_root.position = Vector3.ZERO
 				_check(
 					main.tool_message_label.text.contains("猫がいない")
 					and game_state.get_total_remaining_hairs() == before_brush
 					and game_state.get_money() == money_brush
-					and not bool(tools.brush_cat(null)["used"]),
-					"ブラシは猫がいない屋敷では「猫がいない」と出て、毛の本数とお金が変わらない",
+					and not bool(tools.brush_cat(&"")["used"]),
+					"ブラシは狙いの先 (床の毛) に猫がいなければ「猫がいない」と出て、毛の本数とお金が変わらない",
 				)
 				used_ids.append(tool_id)
 	_check(
@@ -486,7 +490,7 @@ func _verify_edge_inputs(main: Node3D, game_state: Node) -> void:
 	await _checker.physics_frame
 	var paper_before: int = owned.consumable_count
 	var total_before: int = game_state.get_total_remaining_hairs()
-	await _press_and_release_use()
+	await _checker.press_and_release_use()
 	_check(
 		main.hand.aim_target().is_empty()
 		and owned.consumable_count == paper_before
@@ -542,7 +546,7 @@ func _verify_rebuild_resets_tools(main: Node3D, game_state: Node, tuning: Mansio
 	var tools: ToolController = main.tools
 	await _checker._press_physical_key(_select_key(ToolCatalogScript.TOOL_GLOW_LIGHT))
 	if not tools.is_glow_light_on():
-		await _press_and_release_use()
+		await _checker.press_and_release_use()
 	var lit: bool = tools.is_glow_light_on()
 	game_state.apply_tuning_and_rebuild(tuning, false)
 	await _checker.process_frame
@@ -577,7 +581,7 @@ func _use_on_floor(main: Node3D, game_state: Node) -> Dictionary:
 	var captured: Array[Dictionary] = []
 	var on_used: Callable = func(result: Dictionary) -> void: captured.append(result)
 	main.tools.tool_used.connect(on_used)
-	await _press_and_release_use()
+	await _checker.press_and_release_use()
 	main.tools.tool_used.disconnect(on_used)
 	var result: Dictionary = (
 		captured[0]
@@ -605,20 +609,3 @@ func _pluck_with_hand(main: Node3D, game_state: Node) -> bool:
 	var plucked: bool = aimed >= 0 and game_state.get_total_remaining_hairs() < before_total
 	_check(plucked, "手を選んでつまむ入力を押し続けると床の毛が抜ける")
 	return plucked
-
-
-## つまむ入力を押して離す (手以外の道具を選んでいる時は道具を 1 回使う)。
-## SceneTree の process_frame はノードの _process より先に出るため、physics_frame の待ちから呼ばれた時に
-## 1 フレームの待ちで離すと、ToolController._process が押した状態を 1 度も見ない。2 フレーム押してから離す
-func _press_and_release_use() -> void:
-	await press_and_release_use(_checker)
-
-
-## つまむ入力を checker のフレームで 2 フレーム押してから離す (理由は _press_and_release_use。大型の道具の検証も使う)
-static func press_and_release_use(checker: SceneTree) -> void:
-	Input.action_press(HandController.ACTION_PLUCK)
-	await checker.process_frame
-	await checker.process_frame
-	Input.action_release(HandController.ACTION_PLUCK)
-	await checker.process_frame
-	await checker.process_frame

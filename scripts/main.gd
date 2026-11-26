@@ -37,6 +37,10 @@ const CROSSHAIR_COLOR: Color = Color(1.0, 1.0, 1.0, 0.85)
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 道具を買う画面を開閉するキー
 const TOGGLE_SHOP_KEY: Key = KEY_T
+## 掃除ロボットの回る順の画面を開閉するキー (Robot の R)
+const TOGGLE_ROBOT_KEY: Key = KEY_R
+## 猫と掃除ロボットを描いて時計を進めるノードのスクリプト
+const AutomationControllerScript := preload("res://scripts/automation/automation_controller.gd")
 ## 買取業者に毛を売れる距離 (m。買取業者の足元からの水平距離)。手の届く距離 (HandController.REACH_M の 2.6 m) より
 ## 少し短くし、手を伸ばせば品物を渡せる、向かい合って話している距離に見える範囲にする
 const TRADER_RANGE_M: float = 2.0
@@ -70,6 +74,10 @@ var tools: ToolController = null
 var tool_shop_panel: ToolShopPanel = null
 ## 選ばずに働く大型の道具 (アンドロイド・加工機・ダンプカー) の働きと見た目
 var big_tools: BigToolSite = null
+## 掃除ロボットの回る順の画面
+var robot_route_panel: RobotRoutePanel = null
+## 猫と掃除ロボットを描き、屋敷で遊んでいる間に時計を進めるノード
+var automation: AutomationController = null
 ## 選んでいる道具の様子 (レベル・得意な表面・消耗品の残り) の表示 (画面右下の道具の枠と所持金の上)
 var tool_detail_label: Label = null
 ## 最後に道具を使った結果 (取りこぼしの割合) の表示
@@ -86,6 +94,13 @@ var mood_bar: ProgressBar = null
 var cleaning_fee_label: Label = null
 ## プレイ中に遊んだ時間を進めて機嫌と掃除代を動かすか (入力統合テストはお金を検証で決めた値に保つため false にする)
 var auto_advance_time: bool = true
+## プレイ中に猫と掃除ロボットの時計を進めるか (入力統合テストと撮影は毛の本数を検証で決めた値に保つため false にする)。
+## シーンをツリーに入れる前に設定してもよい (猫と掃除ロボットを描くノードを作る時に渡す)
+var auto_advance_automation: bool = true:
+	set(value):
+		auto_advance_automation = value
+		if automation != null:
+			automation.auto_advance = value
 ## 参照中の GameState ノード (autoload または検証時のフォールバック)
 var _game_state: Node = null
 ## autoload 未起動時にこのシーンが自前生成した GameState (終了時に解放する)
@@ -177,26 +192,41 @@ func _exit_tree() -> void:
 		_owned_game_state = null
 
 
-## プレイ中の F1 (開発者調整画面開閉)・B (図鑑開閉)・T (道具を買う画面の開閉)・F5 (手動セーブ) を処理する。
-## 画面は 1 つずつしか開かない (開いている画面と別の画面のキーは何もしない)
+## プレイ中の F1 (開発者調整画面開閉)・B (図鑑開閉)・T (道具を買う画面の開閉)・R (掃除ロボットの回る順の画面の開閉)・
+## F5 (手動セーブ) を処理する。画面は 1 つずつしか開かない (開いている画面と別の画面のキーは何もしない)
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_dev_panel"):
-		if _is_playing and not hair_book_panel.visible and not tool_shop_panel.visible:
+		if _is_playing and _no_panel_open_except(dev_tuning_panel):
 			toggle_dev_panel()
 	elif event.is_action_pressed("toggle_hair_book"):
-		if _is_playing and not dev_tuning_panel.visible and not tool_shop_panel.visible:
+		if _is_playing and _no_panel_open_except(hair_book_panel):
 			toggle_hair_book()
-	elif (
-		event is InputEventKey
-		and (event as InputEventKey).pressed
-		and not (event as InputEventKey).echo
-		and (event as InputEventKey).physical_keycode == TOGGLE_SHOP_KEY
-	):
-		if _is_playing and not dev_tuning_panel.visible and not hair_book_panel.visible:
+	elif _is_key_press(event, TOGGLE_SHOP_KEY):
+		if _is_playing and _no_panel_open_except(tool_shop_panel):
 			toggle_tool_shop()
+	elif _is_key_press(event, TOGGLE_ROBOT_KEY):
+		if _is_playing and _no_panel_open_except(robot_route_panel):
+			toggle_robot_route()
 	elif event.is_action_pressed("save_game"):
 		if _is_playing and _game_state != null:
 			_game_state.save_current_state()
+
+
+## event が key を押した瞬間 (押しっぱなしの繰り返しを除く) か
+static func _is_key_press(event: InputEvent, key: Key) -> bool:
+	var key_event: InputEventKey = event as InputEventKey
+	return (
+		key_event != null and key_event.pressed and not key_event.echo
+		and key_event.physical_keycode == key
+	)
+
+
+## panel 以外の画面 (開発者調整・図鑑・道具を買う・掃除ロボットの回る順) がどれも開いていないか
+func _no_panel_open_except(panel: Control) -> bool:
+	for other: Control in [dev_tuning_panel, hair_book_panel, tool_shop_panel, robot_route_panel]:
+		if other != panel and other.visible:
+			return false
+	return true
 
 
 ## タイトルを閉じて一人称プレイを開始し、屋敷 BGM へ切り替える
@@ -209,8 +239,10 @@ func enter_mansion() -> void:
 	dev_tuning_panel.visible = false
 	hair_book_panel.visible = false
 	tool_shop_panel.visible = false
+	robot_route_panel.visible = false
 	_sync_controls()
 	look_room.set_playing(true)
+	automation.playing = true
 	_refresh_hud()
 	var audio_manager: AudioManagerScript = (
 		AudioManagerScript.resolve(get_tree()) as AudioManagerScript
@@ -286,6 +318,28 @@ func open_tool_shop() -> void:
 ## 道具を買う画面を閉じる
 func close_tool_shop() -> void:
 	tool_shop_panel.visible = false
+	_sync_controls()
+
+
+## 掃除ロボットの回る順の画面の開閉を切り替える
+func toggle_robot_route() -> void:
+	if robot_route_panel.visible:
+		close_robot_route()
+	else:
+		open_robot_route()
+
+
+## 掃除ロボットの回る順の画面を開く (開いている間は歩く・つまむ・道具を使う操作を止める。猫と掃除ロボットは動き続ける)
+func open_robot_route() -> void:
+	robot_route_panel.refresh(_game_state)
+	robot_route_panel.visible = true
+	_sync_controls()
+	_release_mouse()
+
+
+## 掃除ロボットの回る順の画面を閉じる
+func close_robot_route() -> void:
+	robot_route_panel.visible = false
 	_sync_controls()
 
 
@@ -371,8 +425,10 @@ func _set_title_mode() -> void:
 	dev_tuning_panel.visible = false
 	hair_book_panel.visible = false
 	tool_shop_panel.visible = false
+	robot_route_panel.visible = false
 	_sync_controls()
 	look_room.set_playing(false)
+	automation.playing = false
 
 
 ## 保存データの有無に応じてタイトルのボタン文言と「はじめから」表示を更新する
@@ -394,6 +450,7 @@ func _rebuild_world_from_state() -> void:
 	tools.reset_for_new_progress()
 	mansion_world.rebuild(layout, _game_state.save_data.building_progress)
 	big_tools.reset_for_new_progress()
+	automation.rebuild()
 	look_room.apply(layout, mansion_world)
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	_refresh_hud()
@@ -416,6 +473,8 @@ func _refresh_hud() -> void:
 		big_tools.refresh_models()
 	if tool_shop_panel != null and tool_shop_panel.visible:
 		tool_shop_panel.refresh(_game_state, is_near_trader())
+	if robot_route_panel != null and robot_route_panel.visible:
+		robot_route_panel.refresh(_game_state)
 
 
 ## 画面右下の道具の枠を、キーの番号 (1〜9・0) と名前 (持っていない道具は「—」) のキーで選ぶ道具の数だけ描き直し、
@@ -439,7 +498,7 @@ func _refresh_tool_slots() -> void:
 		ToolShopPanelScript.describe_tool(
 			tools.get_selected_tool_id(), _game_state.find_owned_tool(tools.get_selected_tool_id())
 		)
-		+ "   (T: 道具を買う)"
+		+ "   (T: 道具を買う / R: 掃除ロボット)"
 	)
 
 
@@ -461,15 +520,10 @@ func _refresh_room_gauge() -> void:
 	]
 
 
-## プレイ中で、開発者画面・図鑑・道具を買う画面のどれも開いていない時だけ、歩く操作・つまむ操作・道具を使う操作を受け付ける。
+## プレイ中で、開発者画面・図鑑・道具を買う画面・掃除ロボットの回る順の画面のどれも開いていない時だけ、歩く操作・つまむ操作・道具を使う操作を受け付ける。
 ## つまむ操作は手を選んでいる時だけ、道具を使う操作は手以外を選んでいる時だけ受け付ける
 func _sync_controls() -> void:
-	var active: bool = (
-		_is_playing
-		and not dev_tuning_panel.visible
-		and not hair_book_panel.visible
-		and not tool_shop_panel.visible
-	)
+	var active: bool = _is_playing and _no_panel_open_except(null)
 	player.controls_enabled = active
 	hand.enabled = active and tools.get_selected_tool_id() == ToolCatalogScript.TOOL_HAND
 	tools.enabled = active
@@ -633,6 +687,27 @@ func _build_tool_ui() -> void:
 	tool_shop_panel.haul_requested.connect(_on_haul_requested)
 	tool_shop_panel.close_requested.connect(close_tool_shop)
 
+	automation = AutomationControllerScript.new()
+	automation.name = "Automation"
+	automation.auto_advance = auto_advance_automation
+	add_child(automation)
+	automation.setup(_game_state, mansion_world)
+	tools.set_automation(automation)
+
+	robot_route_panel = RobotRoutePanel.new()
+	robot_route_panel.name = "RobotRoutePanel"
+	robot_route_panel.visible = false
+	robot_route_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	# 幅は道具を買う画面と同じ 940 px (台の行の回る順の表示を 1 行に収める)。高さは台 4 台と部屋のボタン 1 段が収まる 560 px
+	robot_route_panel.offset_left = -470.0
+	robot_route_panel.offset_right = 470.0
+	robot_route_panel.offset_top = -280.0
+	robot_route_panel.offset_bottom = 280.0
+	ui_root.add_child(robot_route_panel)
+	robot_route_panel.buy_requested.connect(_on_robot_buy_requested)
+	robot_route_panel.route_change_requested.connect(_on_robot_route_change_requested)
+	robot_route_panel.close_requested.connect(close_robot_route)
+
 
 ## 見出しと 0〜100 のゲージの行を足し、ゲージを返す
 func _add_gauge(parent: VBoxContainer, caption: String, bar_name: String) -> ProgressBar:
@@ -698,6 +773,22 @@ func _on_purchase_requested(kind: StringName, item_id: StringName) -> void:
 		_play_sfx(AudioCatalog.SFX_BUY_TOOL)
 	tool_shop_panel.refresh(_game_state, is_near_trader())
 	_refresh_hud()
+
+
+## 掃除ロボットの回る順の画面で買う操作をした時。今いる部屋 (部屋の外なら屋敷の最初の部屋) を最初に回る部屋にして置く
+func _on_robot_buy_requested() -> void:
+	var room: MansionLayout.RoomDef = get_current_room()
+	if room == null and not _game_state.current_layout.rooms.is_empty():
+		room = _game_state.current_layout.rooms[0]
+	if room != null and _game_state.automation.buy_robot(room.room_id):
+		_play_sfx(AudioCatalog.SFX_BUY_TOOL)
+	robot_route_panel.refresh(_game_state)
+
+
+## 掃除ロボットの回る順の画面で回る順を変えた時
+func _on_robot_route_change_requested(robot_index: int, room_ids: Array[StringName]) -> void:
+	_game_state.automation.set_robot_route(robot_index, room_ids)
+	robot_route_panel.refresh(_game_state)
 
 
 ## 道具を買う画面で毛を売った時 (買取業者の近くにいる時だけ売る)

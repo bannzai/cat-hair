@@ -2,8 +2,6 @@ extends RefCounted
 ## 大型の道具の入力統合テスト (scripts/dev/integration.gd から呼ぶ)。業務用の吸引車・建物を覆う粘着シート・アンドロイド・
 ## 毛の加工機・毛を運ぶダンプカーを道具を買う画面で買って使い、加工してから売ると毛のまま売るより多く入るかを確かめる。
 
-## 道具とお金の入力統合テスト (つまむ入力を押して離す手順を使う)
-const IntegrationToolsScript := preload("res://scripts/dev/integration_tools.gd")
 ## 道具の定義
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 道具のルールの計算
@@ -97,7 +95,7 @@ func _verify_suction_truck(main: Node3D, game_state: Node) -> void:
 	)
 	var room_before: int = int(game_state.get_room_status(room.room_id)["hair_count"])
 	var field_before: int = main.mansion_world.get_hair_field().get_remaining_count()
-	await _press_and_release_use()
+	await _checker.press_and_release_use()
 	var room_after: int = int(game_state.get_room_status(room.room_id)["hair_count"])
 	var removed: int = room_before - room_after
 	_check(
@@ -121,7 +119,7 @@ func _verify_suction_truck(main: Node3D, game_state: Node) -> void:
 	await _checker.physics_frame
 	await _checker.physics_frame
 	var total_outside: int = game_state.get_total_remaining_hairs()
-	await _press_and_release_use()
+	await _checker.press_and_release_use()
 	_check(
 		game_state.get_total_remaining_hairs() == total_outside
 		and main.tool_message_label.text.contains("部屋の中で使う"),
@@ -148,7 +146,7 @@ func _verify_adhesive_sheet(main: Node3D, game_state: Node) -> void:
 		game_state, room.room_id, ToolRulesScript.SHEET_SURFACE_TYPES
 	)
 	var room_before: int = int(game_state.get_room_status(room.room_id)["hair_count"])
-	await _press_and_release_use()
+	await _checker.press_and_release_use()
 	var trace: Node3D = main.tools.get_trace()
 	_check(
 		main.tools.get_selected_tool_id() == sheet
@@ -163,7 +161,7 @@ func _verify_adhesive_sheet(main: Node3D, game_state: Node) -> void:
 	)
 	owned.consumable_count = 0
 	var total_empty: int = game_state.get_total_remaining_hairs()
-	await _press_and_release_use()
+	await _checker.press_and_release_use()
 	_check(
 		game_state.get_total_remaining_hairs() == total_empty
 		and main.tool_message_label.text.contains("シートが無い"),
@@ -365,8 +363,3 @@ static func standard_stocks(hairs_per_color: int) -> Array[HairStock]:
 		stock.count = hairs_per_color
 		stocks.append(stock)
 	return stocks
-
-
-## つまむ入力を押して離す (選んでいる道具を 1 回使う)
-func _press_and_release_use() -> void:
-	await IntegrationToolsScript.press_and_release_use(_checker)

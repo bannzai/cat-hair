@@ -2,7 +2,8 @@ extends "res://scripts/dev/headless_check.gd"
 ## メインシーンを tree に置いて動かす入力統合テスト (headless)。
 ## 音声系 (BGM・効果音・設定画面・フォーカス) と屋敷系 (移動・視点・開発者画面・保存・OS 引数) を検証する。
 ## 手で毛を取る操作は scripts/dev/integration_hand.gd、道具とお金は scripts/dev/integration_tools.gd、
-## 大型の道具は scripts/dev/integration_big_tools.gd に分割して実行する。
+## 猫と掃除ロボットは scripts/dev/integration_automation.gd、大型の道具は scripts/dev/integration_big_tools.gd に
+## 分割して実行する。
 ## 実行方法は AGENTS.md「検証方法」を参照。
 
 ## 動かして確かめるメインシーン
@@ -29,6 +30,8 @@ const IntegrationLook := preload("res://scripts/dev/integration_look.gd")
 const IntegrationHand := preload("res://scripts/dev/integration_hand.gd")
 ## 手に持って使う道具とお金の入力統合テスト
 const IntegrationTools := preload("res://scripts/dev/integration_tools.gd")
+## 猫と掃除ロボットの入力統合テスト
+const IntegrationAutomation := preload("res://scripts/dev/integration_automation.gd")
 ## 大型の道具の入力統合テスト
 const IntegrationBigTools := preload("res://scripts/dev/integration_big_tools.gd")
 
@@ -63,6 +66,7 @@ func _run() -> void:
 
 	# 1. 音声・設定画面の統合検証
 	var audio_main: Node3D = MAIN_SCENE.instantiate()
+	audio_main.auto_advance_automation = false
 	root.add_child(audio_main)
 	await process_frame
 
@@ -83,6 +87,7 @@ func _run() -> void:
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 	game_state.initialize_from_storage(TEST_SAVE_PATH)
 	var main: Node3D = MAIN_SCENE.instantiate()
+	main.auto_advance_automation = false
 	root.add_child(main)
 	await process_frame
 
@@ -92,6 +97,7 @@ func _run() -> void:
 	await _verify_dev_panel_keys_and_rebuild(main, game_state)
 	await IntegrationHand.run_all(self, main, game_state)
 	await IntegrationTools.run_all(self, main, game_state)
+	await IntegrationAutomation.run_all(self, main, game_state)
 	await IntegrationBigTools.run_all(self, main, game_state)
 	await _verify_manual_save_and_close_request(game_state)
 
@@ -447,6 +453,7 @@ func _check_reload_persisted_settings(
 		"reload_settings により保存済みの (false, false) が BGM・SFX バスの消音へ反映される"
 	)
 	var reopened_main: Node3D = MAIN_SCENE.instantiate()
+	reopened_main.auto_advance_automation = false
 	root.add_child(reopened_main)
 	await process_frame
 	var panel: Control = reopened_main.get_node_or_null(MainScript.SETTINGS_PANEL_PATH)
@@ -583,6 +590,7 @@ func _run_cmdline_process_verification() -> void:
 	if game_state == null:
 		return
 	var main: Node3D = MAIN_SCENE.instantiate()
+	main.auto_advance_automation = false
 	root.add_child(main)
 	await process_frame
 
@@ -869,6 +877,7 @@ func _verify_manual_save_and_close_request(game_state: Node) -> void:
 func _verify_resume_and_new_game_from_saved_state(game_state: Node) -> void:
 	game_state.initialize_from_storage(TEST_SAVE_PATH)
 	var resumed_main: Node3D = MAIN_SCENE.instantiate()
+	resumed_main.auto_advance_automation = false
 	root.add_child(resumed_main)
 	await process_frame
 
@@ -913,6 +922,7 @@ func _verify_standalone_main_local_game_state() -> void:
 		root.remove_child(saved_audio)
 
 	var standalone_main: Node3D = MAIN_SCENE.instantiate()
+	standalone_main.auto_advance_automation = false
 	root.add_child(standalone_main)
 	await process_frame
 	var local_state: Node = standalone_main.get_game_state()
