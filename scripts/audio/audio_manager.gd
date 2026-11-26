@@ -29,6 +29,8 @@ var _current_bgm_name: String = ""
 var _paused_by_focus: bool = false
 ## 読み込み済み AudioStream のキャッシュ (パス -> AudioStream)
 var _stream_cache: Dictionary = {}
+## 再生開始後に外部から stop_all() されていないか (_exit_tree() での解放待ち判定に使う)
+var _needs_exit_release_wait: bool = false
 
 
 ## プレイヤーを準備し、保存済みの設定を読み込んでバスへ適用する
@@ -39,10 +41,12 @@ func _ready() -> void:
 
 ## ツリーから外れる時にすべての再生を止め、AudioServer のミキシングスレッドによる解放を待つ
 func _exit_tree() -> void:
-	var had_active_playback: bool = _has_active_playback()
+	# 子ノード (AudioStreamPlayer) の _exit_tree() が親より先に走って playing が false になるため、
+	# 再生中に終了したかは _needs_exit_release_wait で判定する
+	var should_wait: bool = _needs_exit_release_wait
 	stop_all()
 	_clear_streams()
-	if had_active_playback:
+	if should_wait:
 		# 止めた直後に終了すると、AudioServer のミキシングスレッドが再生ハンドルを解放する前に
 		# ObjectDB::cleanup() が走りリーク警告が出るため、ミキシング数回分だけ待つ
 		OS.delay_msec(250)
@@ -83,6 +87,7 @@ func play_bgm(scene_name: String) -> bool:
 	_paused_by_focus = false
 	_bgm_player.play()
 	_current_bgm_name = scene_name
+	_needs_exit_release_wait = true
 	return true
 
 
@@ -108,6 +113,7 @@ func play_sfx(event_name: String) -> bool:
 	var player: AudioStreamPlayer = _pick_sfx_player()
 	player.stream = stream
 	player.play()
+	_needs_exit_release_wait = true
 	return true
 
 
@@ -117,16 +123,7 @@ func stop_all() -> void:
 	for player: AudioStreamPlayer in _sfx_players:
 		if player != null:
 			player.stop()
-
-
-## いずれかのプレイヤーが再生中かを返す
-func _has_active_playback() -> bool:
-	if _bgm_player != null and _bgm_player.playing:
-		return true
-	for player: AudioStreamPlayer in _sfx_players:
-		if player != null and player.playing:
-			return true
-	return false
+	_needs_exit_release_wait = false
 
 
 ## プレイヤーとキャッシュが保持する AudioStream 参照を解放する
