@@ -212,22 +212,28 @@ func aim_target() -> Dictionary:
 	var from: Vector3 = _camera.global_position
 	var direction: Vector3 = -_camera.global_basis.z
 	var hit: Dictionary = _world.get_hair_field().intersect_surfaces(from, direction, REACH_M)
-	if hit.is_empty():
+	if hit.is_empty() or is_view_blocked(hit["point"]):
 		return {}
-	var space: PhysicsDirectSpaceState3D = _camera.get_world_3d().direct_space_state
-	if space != null:
-		var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
-			from, hit["point"]
-		)
-		query.exclude = _excluded_rids
-		var blocker: Dictionary = space.intersect_ray(query)
-		if (
-			not blocker.is_empty()
-			and from.distance_to(blocker["position"])
-			< float(hit["distance"]) - OCCLUSION_TOLERANCE_M
-		):
-			return {}
 	return hit
+
+
+## カメラから target (ワールド座標) までの間を、プレイヤー以外の衝突体 (壁・家具) が target より
+## OCCLUSION_TOLERANCE_M 以上手前で遮るか (カメラが無い時と物理空間が無い時は遮らない扱い)
+func is_view_blocked(target: Vector3) -> bool:
+	if _camera == null:
+		return false
+	var space: PhysicsDirectSpaceState3D = _camera.get_world_3d().direct_space_state
+	if space == null:
+		return false
+	var from: Vector3 = _camera.global_position
+	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(from, target)
+	query.exclude = _excluded_rids
+	var blocker: Dictionary = space.intersect_ray(query)
+	return (
+		not blocker.is_empty()
+		and from.distance_to(blocker["position"])
+		< from.distance_to(target) - OCCLUSION_TOLERANCE_M
+	)
 
 
 ## 引いている毛を伸ばし (面の法線の向きへ起こして長く・太くする)、手の指を閉じる

@@ -18,7 +18,7 @@ const ROBOT_NAME: String = "掃除ロボット"
 const ROBOT_PRICE: int = 300
 ## 持てる台数の上限。回る順を決める画面に 1 台ずつ並べて選べる数
 const MAX_ROBOTS: int = 4
-## 回る順の 1 部屋に留まる秒数。部屋の中の輪 (10 秒で 1 周) を 2 周する長さ。値は仮で、自動テストプレイ (issue #13) で調整する。
+## 回る順の 1 部屋に留まる秒数。移る 2 秒の後に部屋の中の輪を LOOP_COUNT 周する長さ。値は仮で、自動テストプレイ (issue #13) で調整する。
 const ROOM_SECONDS: float = 20.0
 ## 部屋に留まっている間に毛を 1 本取る間隔 (秒)。猫 3 匹が落とす量 (1 秒に 1.5 本ほど) より少なく、1 台では追いつかず買い足す理由になる量にした。値は仮で、自動テストプレイ
 ## (issue #13) で調整する。
@@ -31,8 +31,12 @@ const CLEAN_SURFACE_TYPES: Array[StringName] = [
 ]
 ## 部屋の中で走る輪の大きさ (部屋の半幅に対する比率)。壁と家具の手前を回る大きさ
 const LOOP_RATIO: float = 0.55
-## 部屋の中で走る輪を 1 周する秒数。輪の長さ (部屋の幅 6 m ほどで約 8 m) を家庭用の掃除ロボットの速さ (毎秒 0.3 m ほど) より少し速く走る長さ
-const LOOP_SECONDS: float = 10.0
+## 1 部屋に留まる間に輪を回る周回数。輪の長さ (部屋の幅 6 m ほどで約 8 m) を、家庭用の掃除ロボットの速さ
+## (毎秒 0.3 m ほど) より少し速い毎秒 0.9 m ほどで走る数
+const LOOP_COUNT: int = 2
+## 部屋の中で走る輪を 1 周する秒数。部屋に着いて移り終えてから次の部屋へ移るまでに、ちょうど LOOP_COUNT 周して
+## 中心へ戻る長さ (次の部屋へは中心から移り出すため、途中で跳ばない)
+const LOOP_SECONDS: float = (ROOM_SECONDS - RouteClockScript.MOVE_SECONDS) / LOOP_COUNT
 
 
 ## 回る順 (部屋の id の並び) から RouteClock の道のりを組み立てる。stops の要素は {"point": 部屋の中心の床, "seconds", "room_id"}。

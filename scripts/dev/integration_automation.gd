@@ -256,6 +256,17 @@ func _verify_robot_panel(main: Node3D, game_state: Node) -> void:
 		game_state.automation.get_robots()[0].robot_room_ids == [first],
 		"「最後の部屋を外す」で足した部屋が回る順から外れる",
 	)
+	var add_button_before: Button = panel.get_add_room_button(other)
+	var robot_button_before: Button = panel.get_robot_button(0)
+	game_state.save_data.building_progress.money += 1
+	game_state.state_changed.emit()
+	await _checker.process_frame
+	_check(
+		panel.get_add_room_button(other) == add_button_before
+		and panel.get_robot_button(0) == robot_button_before
+		and is_instance_valid(add_button_before),
+		"お金や毛の本数が変わって画面を描き直しても、部屋と台のボタンは作り直さない (押している途中の操作を消さない)",
+	)
 	panel.get_clear_button().pressed.emit()
 	await _checker.process_frame
 	_check(
@@ -399,6 +410,28 @@ func _verify_brush_cat(main: Node3D, game_state: Node) -> void:
 	)
 	var cat_id: StringName = game_state.automation.get_cat_routes()[1]["cat_id"]
 	var aimed: bool = await _aim_at_cat(main, cat_id)
+	# 猫とプレイヤーの間に壁を立てると、狙いの先に猫がいてもブラシは届かない
+	var wall: StaticBody3D = StaticBody3D.new()
+	var wall_shape: CollisionShape3D = CollisionShape3D.new()
+	var wall_box: BoxShape3D = BoxShape3D.new()
+	# 光線の通り道をふさぐ大きさ (幅と高さ 1 m、厚さ 5 cm)
+	wall_box.size = Vector3(1.0, 1.0, 0.05)
+	wall_shape.shape = wall_box
+	wall.add_child(wall_shape)
+	main.add_child(wall)
+	var camera_position: Vector3 = main.player.get_viewport().get_camera_3d().global_position
+	wall.global_position = camera_position.lerp(main.automation.cat_centers()[cat_id], 0.5)
+	wall.look_at(camera_position)
+	await _checker.physics_frame
+	await _checker.physics_frame
+	var blocked_aim: StringName = main.tools.aimed_cat_id()
+	main.remove_child(wall)
+	wall.free()
+	await _checker.physics_frame
+	_check(
+		aimed and blocked_aim == &"" and main.tools.aimed_cat_id() == cat_id,
+		"猫との間に壁がある時はブラシで猫を狙えず、壁を除くと狙える",
+	)
 	var stock_before: int = game_state.get_raw_hair_stock_count()
 	var hairs_before: int = game_state.get_total_remaining_hairs()
 	await _press_and_release_use()

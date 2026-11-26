@@ -28,6 +28,8 @@ var _remove_last_button: Button = null
 var _clear_button: Button = null
 ## 組んでいる台 (GameState.get_robots の添字。台が無ければ -1)
 var _selected_index: int = -1
+## 部屋のボタンを作った時の屋敷の部屋の id の並び (屋敷を組み直して部屋が変わった時だけボタンを作り直す)
+var _room_button_ids: Array[StringName] = []
 ## 最後に描き直した時の、台ごとの回る順 (ボタンを押した時に、その順に部屋を足した順を出すため)
 var _routes_on_refresh: Array[Array] = []
 
@@ -61,36 +63,54 @@ func refresh(game_state: Node) -> void:
 		for room: MansionLayout.RoomDef in layout.rooms:
 			room_names[room.room_id] = room.display_name
 	_routes_on_refresh.clear()
-	for child: Node in _robot_rows.get_children():
-		_robot_rows.remove_child(child)
-		child.queue_free()
+	for robot: OwnedTool in robots:
+		_routes_on_refresh.append(robot.robot_room_ids.duplicate())
+	# 台の数か屋敷の部屋が変わった時だけボタンを作り直す。毛の本数やお金が変わるたび (掃除ロボットが 1 秒に 1 本取る
+	# たび) に作り直すと、押している途中のボタンが消えて押した操作が失われるため、それ以外は文字と押せるかだけ変える
+	if _robot_rows.get_child_count() != robots.size():
+		_clear_children(_robot_rows)
+		for robot_index: int in range(robots.size()):
+			var select: Button = Button.new()
+			select.name = "Robot%d" % robot_index
+			select.toggle_mode = true
+			select.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			select.pressed.connect(_on_robot_selected.bind(robot_index, game_state))
+			_robot_rows.add_child(select)
 	for robot_index: int in range(robots.size()):
-		var room_ids: Array[StringName] = robots[robot_index].robot_room_ids
-		_routes_on_refresh.append(room_ids.duplicate())
-		var select: Button = Button.new()
-		select.name = "Robot%d" % robot_index
-		select.toggle_mode = true
-		select.button_pressed = robot_index == _selected_index
-		select.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		select.text = "%d 台目: %s" % [robot_index + 1, describe_route(room_ids, room_names)]
-		select.pressed.connect(_on_robot_selected.bind(robot_index, game_state))
-		_robot_rows.add_child(select)
-	for child: Node in _room_buttons.get_children():
-		_room_buttons.remove_child(child)
-		child.queue_free()
-	var selected_route: Array = (
-		_routes_on_refresh[_selected_index] if _selected_index >= 0 else []
-	)
-	if layout != null:
-		for room: MansionLayout.RoomDef in layout.rooms:
+		var select: Button = _robot_rows.get_child(robot_index)
+		select.set_pressed_no_signal(robot_index == _selected_index)
+		select.text = "%d 台目: %s" % [
+			robot_index + 1, describe_route(robots[robot_index].robot_room_ids, room_names)
+		]
+	var rooms: Array[MansionLayout.RoomDef] = layout.rooms if layout != null else []
+	var room_ids_now: Array[StringName] = []
+	for room: MansionLayout.RoomDef in rooms:
+		room_ids_now.append(room.room_id)
+	if room_ids_now != _room_button_ids:
+		_clear_children(_room_buttons)
+		_room_button_ids = room_ids_now
+		for room: MansionLayout.RoomDef in rooms:
 			var add: Button = Button.new()
 			add.name = "AddRoom_%s" % String(room.room_id)
 			add.text = "+ %s" % room.display_name
-			add.disabled = _selected_index < 0 or selected_route.has(room.room_id)
 			add.pressed.connect(_on_add_room.bind(room.room_id))
 			_room_buttons.add_child(add)
+	var selected_route: Array = (
+		_routes_on_refresh[_selected_index] if _selected_index >= 0 else []
+	)
+	for room_id: StringName in _room_button_ids:
+		get_add_room_button(room_id).disabled = (
+			_selected_index < 0 or selected_route.has(room_id)
+		)
 	_remove_last_button.disabled = selected_route.is_empty()
 	_clear_button.disabled = selected_route.is_empty()
+
+
+## parent の子のノードをすべて外して解放する
+static func _clear_children(parent: Node) -> void:
+	for child: Node in parent.get_children():
+		parent.remove_child(child)
+		child.queue_free()
 
 
 ## 回る順の表示 (部屋の名前を「→」でつないだもの。空なら止まっている)

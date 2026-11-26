@@ -47,13 +47,24 @@ func advance(delta_seconds: float) -> Dictionary:
 	var changes: Dictionary = {"drops": [], "picks": []}
 	if _progress() == null or _game_state.current_layout == null:
 		return changes
-	var before: float = _seconds
-	_seconds = before + maxf(0.0, delta_seconds)
-	for route: Dictionary in _cat_routes:
-		_drop_cat_hairs(route, before, changes["drops"])
-	var robots: Array[OwnedTool] = get_robots()
-	for robot_index: int in range(robots.size()):
-		_pick_robot_hairs(robot_index, robots[robot_index], before, changes["picks"])
+	var end: float = _seconds + maxf(0.0, delta_seconds)
+	var robot_routes: Array[Dictionary] = []
+	for robot: OwnedTool in get_robots():
+		robot_routes.append(
+			RobotRulesScript.build_route(_game_state.current_layout, robot.robot_room_ids)
+		)
+	# 猫が落とす時刻と掃除ロボットが取る時刻はどれも整数の秒 (立ち止まる秒数・間隔・台ごとのずれが整数) なので、
+	# 1 秒の境目ごとに区切って起きた順に足し引きする。同じ時刻は猫が落とすのを先にする。
+	# 区切らないと、上限の面で後の時刻の取る分が先の落とす分の空きを作れず、時間の刻み方で本数が変わる
+	while _seconds < end:
+		var segment_start: float = _seconds
+		_seconds = minf(end, floorf(segment_start) + 1.0)
+		for route: Dictionary in _cat_routes:
+			_drop_cat_hairs(route, segment_start, changes["drops"])
+		for robot_index: int in range(robot_routes.size()):
+			_pick_robot_hairs(
+				robot_index, robot_routes[robot_index], segment_start, changes["picks"]
+			)
 	if not changes["drops"].is_empty() or not changes["picks"].is_empty():
 		_game_state.state_changed.emit()
 		_game_state.automation_advanced.emit(changes)
@@ -173,11 +184,10 @@ func _drop_cat_hairs(route: Dictionary, before: float, drops: Array) -> void:
 		)
 
 
-## 掃除ロボット 1 台が時計の before から今までに取った毛を、回る順の部屋の床とカーペットから減らして在庫に入れ、
-## 取った分を picks に書く (面と色が同じ分はまとめる)
-func _pick_robot_hairs(robot_index: int, robot: OwnedTool, before: float, picks: Array) -> void:
+## robot_index 台目の掃除ロボット (回る順の道のり route) が時計の before から今までに取った毛を、回る順の部屋の床と
+## カーペットから減らして在庫に入れ、取った分を picks に書く (面と色が同じ分はまとめる)
+func _pick_robot_hairs(robot_index: int, route: Dictionary, before: float, picks: Array) -> void:
 	var layout: MansionLayout = _game_state.current_layout
-	var route: Dictionary = RobotRulesScript.build_route(layout, robot.robot_room_ids)
 	var by_room: Dictionary = RobotRulesScript.picks_between(
 		route,
 		RobotRulesScript.robot_time(robot_index, before),

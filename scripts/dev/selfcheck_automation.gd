@@ -42,6 +42,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_robot_position()
 	suite._check_automation_reset()
 	suite._check_hair_field_add()
+	suite._check_capped_order()
 
 
 ## 判定を selfcheck 本体に記録する
@@ -535,6 +536,12 @@ func _check_robot_position() -> void:
 	var eighth: Vector3 = RobotRulesScript.position_at(
 		route, 20.0 + RouteClockScript.MOVE_SECONDS + RobotRulesScript.LOOP_SECONDS * 0.125, sizes
 	)
+	var before_leaving: Vector3 = RobotRulesScript.position_at(route, 39.999, sizes)
+	_check(
+		before_leaving.distance_to(Vector3(6.0, 0.0, 0.0)) < 0.01,
+		"掃除ロボットは部屋を出る直前に輪を回り終えて部屋の中心へ戻り、次の部屋へ跳ばずに移り出す (実際: %s)"
+		% str(before_leaving),
+	)
 	var reach_x: float = 3.0 * RobotRulesScript.LOOP_RATIO
 	_check(
 		moving.is_equal_approx(Vector3(3.0, 0.0, 0.0))
@@ -615,3 +622,39 @@ func _check_hair_field_add() -> void:
 		"面の外の所に足す毛は面の角に収め、無い面には足さない",
 	)
 	field.free()
+
+
+## 猫が毛を落とす面が上限に達していて掃除ロボットが同じ部屋で取る時も、時間の刻み方で本数と在庫が変わらないか
+## (取った後に空いた分へ、後の時刻に落ちる毛が入る)
+func _check_capped_order() -> void:
+	var results: Array[String] = []
+	# 刻みは 2 進数で割り切れる値にし、足し合わせた時計がちょうど 60 秒になるようにする
+	for step: float in [60.0, 1.0, 0.25]:
+		var state: Node = GameStateScript.new()
+		state.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray(["--hair-count=300"]))
+		var automation: RefCounted = state.automation
+		for route: Dictionary in automation.get_cat_routes():
+			for stop: Dictionary in route["stops"]:
+				var surface: SurfaceHair = state.save_data.building_progress.find_surface_hair(
+					stop["surface_id"]
+				)
+				var cap: int = maxi(
+					automation.get_initial_surface_hairs(stop["surface_id"]),
+					CatRulesScript.MIN_SURFACE_CAP,
+				)
+				surface.hair_counts[SurfaceHairScript.COLOR_WHITE] = (
+					surface.count_for_color(SurfaceHairScript.COLOR_WHITE) + cap - surface.total_count()
+				)
+		state.save_data.building_progress.money = RobotRulesScript.ROBOT_PRICE
+		automation.buy_robot(automation.get_cat_routes()[0]["stops"][0]["room_id"])
+		for _i: int in range(roundi(60.0 / step)):
+			automation.advance(step)
+		results.append(
+			"%d/%d" % [state.get_total_remaining_hairs(), state.get_raw_hair_stock_count()]
+		)
+		state.free()
+	_check(
+		results[0] == results[1] and results[1] == results[2],
+		"上限の面で猫と掃除ロボットが同じ部屋にいても、60 秒を 1 回・1 秒ずつ・0.25 秒ずつ進めた本数と在庫が同じ"
+		+ " (残り/在庫: %s)" % str(results),
+	)

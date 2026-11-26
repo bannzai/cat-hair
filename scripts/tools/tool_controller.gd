@@ -230,14 +230,18 @@ func set_automation(automation: AutomationController) -> void:
 	_automation = automation
 
 
-## 画面中央の光線の先、手の届く距離 (HandController.REACH_M) にいる猫の id (いなければ空)
+## 画面中央の光線の先、手の届く距離 (HandController.REACH_M) にいて、壁・家具に遮られない猫の id (いなければ空)
 func aimed_cat_id() -> StringName:
 	if _automation == null or _camera == null:
 		return &""
-	return CatRulesScript.cat_on_ray(
-		_automation.cat_centers(), _camera.global_position, -_camera.global_basis.z,
-		HandController.REACH_M
+	var centers: Dictionary = _automation.cat_centers()
+	var cat_id: StringName = CatRulesScript.cat_on_ray(
+		centers, _camera.global_position, -_camera.global_basis.z, HandController.REACH_M
 	)
+	# 壁・家具の向こうの猫にはブラシが届かない (手で毛を狙う時と同じ遮りの判定)
+	if cat_id != &"" and _hand != null and _hand.is_view_blocked(centers[cat_id]):
+		return &""
+	return cat_id
 
 
 ## 猫の表示名 (通り道の名前)
