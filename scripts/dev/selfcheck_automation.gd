@@ -19,6 +19,8 @@ const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 const HairStockScript := preload("res://scripts/data/hair_stock.gd")
 ## 屋敷の毛の描画 (猫が落とした毛を足す)
 const HairFieldScript := preload("res://scripts/hair_field.gd")
+## 撮影と録画で、見たい所との間に家具を挟まずに立つ所を選ぶ手順
+const ViewPointScript := preload("res://scripts/dev/view_point.gd")
 ## 状態管理 autoload スクリプト
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## selfcheck が使う一時セーブファイルパス (GameState の初期化だけに使い、保存はしない)
@@ -46,6 +48,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_surface_choice()
 	suite._check_empty_inputs()
 	suite._check_picks_only_notify()
+	suite._check_view_point()
 
 
 ## 判定を selfcheck 本体に記録する
@@ -793,3 +796,38 @@ static func _surface(surface_id: StringName, surface_type: StringName) -> Mansio
 	surface.room_id = &"r"
 	surface.surface_type = surface_type
 	return surface
+
+
+## 撮影で立つ所が、望む向きが塞がれていれば次の向きへ回り、望む向きが水平に決まらない時は後ろ (+Z) を使い、
+## どの向きも塞がる時は望む向きの所を返すか
+func _check_view_point() -> void:
+	var layout: MansionLayout = MansionLayout.new()
+	var room: MansionLayout.RoomDef = MansionLayout.RoomDef.new()
+	room.room_id = &"r"
+	room.size = Vector3(6.0, 3.0, 6.0)
+	layout.rooms.append(room)
+	var open_spot: Vector3 = ViewPointScript.clear_spot(layout, room, Vector3.ZERO, 1.0, Vector3.UP)
+	var shelf: MansionLayout.ObjectDef = MansionLayout.ObjectDef.new()
+	shelf.room_id = &"r"
+	shelf.object_kind = MansionLayoutScript.OBJECT_TABLE
+	shelf.position = Vector3(1.0, 0.0, 0.0)
+	shelf.size = Vector3(0.2, 1.0, 0.2)
+	layout.objects.append(shelf)
+	var turned_spot: Vector3 = ViewPointScript.clear_spot(
+		layout, room, Vector3.ZERO, 1.0, Vector3.RIGHT
+	)
+	var crowded: MansionLayout.ObjectDef = MansionLayout.ObjectDef.new()
+	crowded.room_id = &"r"
+	crowded.object_kind = MansionLayoutScript.OBJECT_TABLE
+	crowded.size = Vector3(5.0, 1.0, 5.0)
+	layout.objects.append(crowded)
+	var blocked_spot: Vector3 = ViewPointScript.clear_spot(
+		layout, room, Vector3.ZERO, 1.0, Vector3.RIGHT
+	)
+	_check(
+		open_spot.is_equal_approx(Vector3(0.0, 0.0, 1.0))
+		and turned_spot.is_equal_approx(Vector3(1.0, 0.0, -1.0).normalized())
+		and blocked_spot.is_equal_approx(Vector3(1.0, 0.0, 0.0)),
+		"真上を望むと後ろに立ち、右が家具で塞がれば 45 度回した所に立ち、どこも塞がれば望む右に立つ"
+		+ " (後ろ: %s / 回した所: %s / 塞がる時: %s)" % [open_spot, turned_spot, blocked_spot],
+	)

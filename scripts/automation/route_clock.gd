@@ -48,9 +48,10 @@ static func position_at(route: Dictionary, clock_seconds: float) -> Vector3:
 	if index < 0:
 		return Vector3.ZERO
 	var stops: Array = route["stops"]
-	var previous: Vector3 = stops[(index - 1 + stops.size()) % stops.size()]["point"]
-	var progress: float = clampf(seconds_in_stop(route, clock_seconds) / MOVE_SECONDS, 0.0, 1.0)
-	return previous.lerp(stops[index]["point"], progress)
+	return (stops[(index - 1 + stops.size()) % stops.size()]["point"] as Vector3).lerp(
+		stops[index]["point"],
+		clampf(seconds_in_stop(route, clock_seconds) / MOVE_SECONDS, 0.0, 1.0),
+	)
 
 
 ## 時刻 from_seconds より後から to_seconds まで (from_seconds < 時刻 ≦ to_seconds) に、留まった所ごとに起きる出来事の回数を返す

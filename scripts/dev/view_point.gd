@@ -27,8 +27,10 @@ static func clear_spot(
 		first = Vector3.BACK
 	first = first.normalized()
 	for step: int in range(DIRECTIONS):
-		var direction: Vector3 = first.rotated(Vector3.UP, TAU * float(step) / float(DIRECTIONS))
-		var spot: Vector3 = target_floor + direction * distance
+		var spot: Vector3 = (
+			target_floor
+			+ first.rotated(Vector3.UP, TAU * float(step) / float(DIRECTIONS)) * distance
+		)
 		if _is_line_clear(layout, room.room_id, spot, target_floor):
 			return spot
 	return target_floor + first * distance

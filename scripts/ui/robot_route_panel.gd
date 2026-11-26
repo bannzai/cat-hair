@@ -30,8 +30,8 @@ var _clear_button: Button = null
 var _selected_index: int = -1
 ## 部屋のボタンを作った時の屋敷の部屋の id の並び (屋敷を組み直して部屋が変わった時だけボタンを作り直す)
 var _room_button_ids: Array[StringName] = []
-## 最後に描き直した時の、台ごとの回る順 (ボタンを押した時に、その順に部屋を足した順を出すため)
-var _routes_on_refresh: Array[Array] = []
+## 回る順の正を持つ GameState (refresh で受け取る。操作の時に今の回る順を読む)
+var _game_state: Node = null
 
 
 ## ツリーに入った時に画面の部品を組み立てる
@@ -64,9 +64,7 @@ func refresh(game_state: Node) -> void:
 	if layout != null:
 		for room: MansionLayout.RoomDef in layout.rooms:
 			room_names[room.room_id] = room.display_name
-	_routes_on_refresh.clear()
-	for robot: OwnedTool in robots:
-		_routes_on_refresh.append(robot.robot_room_ids.duplicate())
+	_game_state = game_state
 	# 台の数か屋敷の部屋が変わった時だけボタンを作り直す。毛の本数やお金が変わるたび (掃除ロボットが 1 秒に 1 本取る
 	# たび) に作り直すと、押している途中のボタンが消えて押した操作が失われるため、それ以外は文字と押せるかだけ変える
 	if _robot_rows.get_child_count() != robots.size():
@@ -97,15 +95,21 @@ func refresh(game_state: Node) -> void:
 			add.text = "+ %s" % room.display_name
 			add.pressed.connect(_on_add_room.bind(room.room_id))
 			_room_buttons.add_child(add)
-	var selected_route: Array = (
-		_routes_on_refresh[_selected_index] if _selected_index >= 0 else []
-	)
+	var selected_route: Array[StringName] = _selected_route()
 	for room_id: StringName in _room_button_ids:
 		get_add_room_button(room_id).disabled = (
 			_selected_index < 0 or selected_route.has(room_id)
 		)
 	_remove_last_button.disabled = selected_route.is_empty()
 	_clear_button.disabled = selected_route.is_empty()
+
+
+## 組んでいる台の今の回る順の写し (GameState の正から読む。台が無ければ空)
+func _selected_route() -> Array[StringName]:
+	var robots: Array[OwnedTool] = _game_state.automation.get_robots() if _game_state != null else []
+	if _selected_index < 0 or _selected_index >= robots.size():
+		return []
+	return robots[_selected_index].robot_room_ids.duplicate()
 
 
 ## parent の子のノードをすべて外して解放する
@@ -241,8 +245,7 @@ func _on_robot_selected(robot_index: int, game_state: Node) -> void:
 func _on_add_room(room_id: StringName) -> void:
 	if _selected_index < 0:
 		return
-	var room_ids: Array[StringName] = []
-	room_ids.assign(_routes_on_refresh[_selected_index])
+	var room_ids: Array[StringName] = _selected_route()
 	room_ids.append(room_id)
 	route_change_requested.emit(_selected_index, room_ids)
 
@@ -251,8 +254,7 @@ func _on_add_room(room_id: StringName) -> void:
 func _on_remove_last() -> void:
 	if _selected_index < 0:
 		return
-	var room_ids: Array[StringName] = []
-	room_ids.assign(_routes_on_refresh[_selected_index])
+	var room_ids: Array[StringName] = _selected_route()
 	if room_ids.is_empty():
 		return
 	room_ids.pop_back()

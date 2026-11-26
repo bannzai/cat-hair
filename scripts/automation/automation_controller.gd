@@ -288,6 +288,7 @@ func _build_cat(route: Dictionary) -> Node3D:
 	name_label.outline_size = 10
 	name_label.pixel_size = 0.0022
 	name_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	# 名札は耳の先 (胴の上 0.2 m ほど) より上の 0.32 m に浮かせ、頭と重ならない高さにする
 	name_label.position = Vector3(0.0, torso_height + 0.32, 0.0)
 	body.add_child(name_label)
 	return cat
@@ -297,6 +298,7 @@ func _build_cat(route: Dictionary) -> Node3D:
 func _build_robot(robot_index: int) -> Node3D:
 	var robot: Node3D = Node3D.new()
 	robot.name = "Robot%d" % robot_index
+	# 本体 8 割・上蓋 2 割の高さで、上蓋を本体より 1 割強細くして縁を見せる (家庭用の円盤型の掃除ロボットの見た目)
 	var shell: CylinderMesh = CylinderMesh.new()
 	shell.top_radius = ROBOT_RADIUS_M
 	shell.bottom_radius = ROBOT_RADIUS_M
@@ -329,6 +331,7 @@ func _build_robot(robot_index: int) -> Node3D:
 	tag.outline_size = 10
 	tag.pixel_size = 0.002
 	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	# 番号の札は本体の上 12 cm に浮かせ、猫の名札 (胴の上 32 cm) より低くして、どちらの札か見分けられる高さにする
 	tag.position = Vector3(0.0, ROBOT_HEIGHT_M + 0.12, 0.0)
 	robot.add_child(tag)
 	return robot

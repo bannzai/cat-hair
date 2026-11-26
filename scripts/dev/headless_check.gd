@@ -57,6 +57,18 @@ static func acquire_game_state(tree_root: Window, target_save_path: String) -> D
 	return {"node": game_state, "created": created}
 
 
+## つまむ入力を押して離す (手以外の道具を選んでいる時は道具を 1 回使う)。
+## SceneTree の process_frame はノードの _process より先に出るため、physics_frame の待ちから呼ばれた時に
+## 1 フレームの待ちで離すと、ToolController._process が押した状態を 1 度も見ない。2 フレーム押してから離す
+func press_and_release_use() -> void:
+	Input.action_press(HandController.ACTION_PLUCK)
+	await process_frame
+	await process_frame
+	Input.action_release(HandController.ACTION_PLUCK)
+	await process_frame
+	await process_frame
+
+
 ## cond が false なら label を ERROR として出し、失敗として記録する。
 ## ERROR の行頭には実行した検証のスクリプトの名前 (selfcheck / integration) を付ける
 func _check(cond: bool, label: String) -> void:

@@ -302,10 +302,23 @@ func _verify_robot_panel(main: Node3D, game_state: Node) -> void:
 	panel.get_add_room_button(first).pressed.emit()
 	await _checker.process_frame
 	await _verify_second_robot(main, game_state, first)
+	await _checker._press_physical_key(KEY_B)
+	await _checker._press_physical_key(KEY_F1)
+	_check(
+		panel.visible and not main.hair_book_panel.visible and not main.dev_tuning_panel.visible,
+		"掃除ロボットの画面が開いている間は、B で図鑑も F1 で開発者向け画面も開かない",
+	)
 	await _checker._press_physical_key(KEY_R)
 	_check(
 		not panel.visible and main.player.controls_enabled,
 		"もう一度 R キーで画面が閉じ、操作が戻る",
+	)
+	await _checker._press_physical_key(KEY_R)
+	(panel.get_node("Layout/CloseButton") as Button).pressed.emit()
+	await _checker.process_frame
+	_check(
+		not panel.visible and main.player.controls_enabled,
+		"「閉じる」ボタンでも画面が閉じ、操作が戻る",
 	)
 
 
@@ -503,7 +516,7 @@ func _verify_brush_cat(main: Node3D, game_state: Node) -> void:
 	)
 	var stock_before: int = game_state.get_raw_hair_stock_count()
 	var hairs_before: int = game_state.get_total_remaining_hairs()
-	await _press_and_release_use()
+	await _checker.press_and_release_use()
 	_check(
 		aimed
 		and main.tools.get_selected_tool_id() == ToolCatalogScript.TOOL_BRUSH
@@ -513,7 +526,7 @@ func _verify_brush_cat(main: Node3D, game_state: Node) -> void:
 		"ブラシで猫を狙ってつまむ入力をすると、落ちる前の毛 %d 本が在庫に入り、屋敷の毛の本数は変わらない (狙えた: %s / メッセージ: %s)"
 		% [CatRulesScript.BRUSH_HAIRS, str(aimed), main.tool_message_label.text],
 	)
-	await _press_and_release_use()
+	await _checker.press_and_release_use()
 	_check(
 		game_state.get_raw_hair_stock_count() == stock_before + CatRulesScript.BRUSH_HAIRS
 		and main.tool_message_label.text.contains("休んでいる"),
@@ -555,13 +568,3 @@ static func _clear_surface(hair_field: Node3D, game_state: Node, surface_id: Str
 	if surface != null:
 		for color_id: Variant in surface.hair_counts.keys():
 			surface.hair_counts[color_id] = 0
-
-
-## つまむ入力を押して離す (道具を使う)
-func _press_and_release_use() -> void:
-	Input.action_press(HandController.ACTION_PLUCK)
-	await _checker.process_frame
-	await _checker.process_frame
-	Input.action_release(HandController.ACTION_PLUCK)
-	await _checker.process_frame
-	await _checker.process_frame
