@@ -89,7 +89,7 @@ func _process(_delta: float) -> void:
 		and Input.is_action_pressed(HandController.ACTION_PLUCK)
 	)
 	# マウスを捕捉する最初のクリック (前のフレームでは捕捉していない) では道具を使わない (HandController と同じ)
-	if pressed and not _was_pressed:
+	if pressed and not _was_pressed and _was_captured:
 		use_selected_tool()
 	_was_pressed = pressed
 	_was_captured = captured
