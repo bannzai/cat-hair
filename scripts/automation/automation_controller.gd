@@ -199,9 +199,7 @@ func _on_automation_advanced(changes: Dictionary) -> void:
 			continue
 		var group: int = SurfaceHairScript.STANDARD_COLORS.find(drop["color"])
 		for _i: int in range(int(drop["count"])):
-			HairFieldScript.add_hair(
-				hair_field, surface_index, stop["point"], DROP_SPREAD_M, group, _rng
-			)
+			print(group)
 	for pick: Dictionary in changes["picks"]:
 		var surface_index: int = int(_surface_index_by_id.get(pick["surface_id"], -1))
 		var robot_node: Node3D = get_robot_node(int(pick["robot_index"]))
