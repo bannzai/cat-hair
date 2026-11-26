@@ -83,11 +83,31 @@ func _verify_hair_sync(main: Node3D, game_state: Node) -> void:
 	var hair_field: Node3D = main.get_node("MansionWorld").get_hair_field()
 	var field_before: int = hair_field.get_remaining_count()
 	var state_before: int = game_state.get_total_remaining_hairs()
+	var progress: BuildingProgress = game_state.save_data.building_progress
+	var surface_before: Dictionary = {}
+	for surface: SurfaceHair in progress.surface_hairs:
+		surface_before[surface.surface_id] = surface.total_count()
 	var changes: Dictionary = game_state.automation.advance(30.0)
 	await _checker.process_frame
 	var dropped: int = 0
+	var dropped_by_surface: Dictionary = {}
 	for drop: Dictionary in changes["drops"]:
 		dropped += int(drop["count"])
+		dropped_by_surface[drop["surface_id"]] = (
+			int(dropped_by_surface.get(drop["surface_id"], 0)) + int(drop["count"])
+		)
+	var surfaces_grown: bool = not dropped_by_surface.is_empty()
+	for surface_id: Variant in dropped_by_surface.keys():
+		var surface: SurfaceHair = progress.find_surface_hair(StringName(surface_id))
+		surfaces_grown = (
+			surfaces_grown and surface != null
+			and surface.total_count()
+			== int(surface_before[surface_id]) + int(dropped_by_surface[surface_id])
+		)
+	_check(
+		surfaces_grown,
+		"猫が通った面 (%d 面) の毛が、その面に落とした本数だけ増える" % dropped_by_surface.size(),
+	)
 	_check(
 		dropped > 0
 		and game_state.get_total_remaining_hairs() == state_before + dropped
@@ -189,11 +209,21 @@ func _verify_robot_cleaning(main: Node3D, game_state: Node) -> void:
 	var cycle: float = float(route["cycle_seconds"])
 	var to_cycle_start: float = cycle - fposmod(game_state.automation.get_seconds(), cycle)
 	game_state.automation.advance(to_cycle_start)
+	var hairs_before: int = game_state.get_total_remaining_hairs()
 	var changes: Dictionary = game_state.automation.advance(RobotRulesScript.ROOM_SECONDS - 1.0)
 	await _checker.process_frame
 	var picked: int = 0
 	for pick: Dictionary in changes["picks"]:
 		picked += int(pick["count"])
+	var dropped: int = 0
+	for drop: Dictionary in changes["drops"]:
+		dropped += int(drop["count"])
+	_check(
+		picked > 0
+		and game_state.get_total_remaining_hairs() == hairs_before + dropped - picked,
+		"操作せずに時間を進めると、掃除ロボットが取った %d 本だけ屋敷の毛が減る (猫が落とした %d 本を除く)"
+		% [picked, dropped],
+	)
 	var robot_node: Node3D = main.automation.get_robot_node(0)
 	var in_room: bool = (
 		robot_node != null
