@@ -22,6 +22,30 @@ const INITIAL_RESIDENT_MOOD: float = 0.5
 const SOFA_SEAT_HEIGHT_RATIO: float = 0.56
 ## サイドボード天板の上に乗る装飾縁の高さ (m)。MansionWorld の TopTrim メッシュ高さの単一情報源
 const SIDEBOARD_TOP_TRIM_HEIGHT_M: float = 0.04
+## ソファの肘掛けの幅 (物の幅に対する比率)。MansionWorld の ArmLeft / ArmRight と座面の表面の単一情報源
+const SOFA_ARM_WIDTH_RATIO: float = 0.12
+## ソファの肘掛けの中心の X 位置 (物の幅に対する比率)
+const SOFA_ARM_OFFSET_RATIO: float = 0.44
+## ソファの背もたれの中心の Z 位置 (物の奥行に対する比率。後ろが負)
+const SOFA_BACKREST_OFFSET_RATIO: float = -0.36
+## ソファの背もたれの奥行 (物の奥行に対する比率)
+const SOFA_BACKREST_DEPTH_RATIO: float = 0.26
+## スーツの上着の中心位置 (物の幅・高さ・奥行に対する比率)。MansionWorld の SuitJacket と前身頃の表面の単一情報源
+const SUIT_JACKET_CENTER_RATIO: Vector3 = Vector3(0.0, 0.66, 0.0)
+## スーツの上着の大きさ (物の幅・高さ・奥行に対する比率)
+const SUIT_JACKET_SIZE_RATIO: Vector3 = Vector3(0.72, 0.46, 0.55)
+## 椅子に掛けたニットの中心位置 (物の幅・高さ・奥行に対する比率)。MansionWorld の KnitThrow と表面の単一情報源
+const KNIT_THROW_CENTER_RATIO: Vector3 = Vector3(0.0, 0.72, -0.15)
+## 椅子に掛けたニットの大きさ (物の幅・高さ・奥行に対する比率)
+const KNIT_THROW_SIZE_RATIO: Vector3 = Vector3(0.88, 0.34, 0.72)
+## ニット椅子の背もたれの中心位置 (物の幅・高さ・奥行に対する比率)。ニットの表面はこの前端より手前に置く
+const CHAIR_BACK_CENTER_RATIO: Vector3 = Vector3(0.0, 0.75, -0.40)
+## ニット椅子の背もたれの大きさ (物の幅・高さ・奥行に対する比率)
+const CHAIR_BACK_SIZE_RATIO: Vector3 = Vector3(1.0, 0.50, 0.16)
+## 縦の面 (スーツの前身頃) の向き。局所 +Y (法線) を物の前 (+Z) に、局所 Z を下向きにする
+const FRONT_FACING_BASIS: Basis = Basis(
+	Vector3(1.0, 0.0, 0.0), Vector3(0.0, 0.0, 1.0), Vector3(0.0, -1.0, 0.0)
+)
 ## 3 色分配で面インデックスに応じて主色・次点色へ割り振る比率 (3 色すべてが混ざりつつ偏りが見える値)
 const PRIMARY_COLOR_RATIO_STANDARD: float = 0.50
 ## 3 色分配で標準パターンの次点色へ割り振る比率
@@ -48,7 +72,7 @@ const DOOR_CORRIDOR_HALF_WIDTH_M: float = 0.45
 const DOOR_CORRIDOR_DEPTH_M: float = 1.0
 ## 通路外へ押し出す際の浮動小数点丸め誤差を吸収する微小マージン (m)
 const DOOR_CLEARANCE_EPSILON_M: float = 0.001
-## 家具天面の縁から毛がはみ出さないよう表面範囲を絞る比率
+## 家具の面の縁から毛がはみ出さないよう表面範囲を絞る比率
 const SURFACE_HAIR_EXTENT_RATIO: float = 0.85
 ## 探し物の置き場所を同一面内で均等分散させる黄金角 (ラジアン。約 137.5 度)
 const GOLDEN_ANGLE_RAD: float = 2.3999632
@@ -213,11 +237,7 @@ static func _build_rooms(layout: MansionLayout, tuning: MansionTuning) -> void:
 		floor_surface.surface_id = StringName("%s_floor" % String(room.room_id))
 		floor_surface.room_id = room.room_id
 		floor_surface.surface_type = MansionLayoutScript.SURFACE_FLOOR
-		floor_surface.center = Vector3(
-			room.center.x,
-			MansionLayoutScript.SURFACE_Y_OFFSET_M,
-			room.center.z,
-		)
+		floor_surface.center = Vector3(room.center.x, 0.0, room.center.z)
 		floor_surface.extents = Vector2(
 			maxf(MIN_FLOOR_HAIR_EXTENT_M, room_width - FLOOR_HAIR_INSET_M),
 			maxf(MIN_FLOOR_HAIR_EXTENT_M, room_width - FLOOR_HAIR_INSET_M),
@@ -298,15 +318,14 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		surface.surface_id = StringName("%s_surface" % String(obj.object_id))
 		surface.room_id = room.room_id
 		surface.surface_type = obj.surface_type
-		surface.center = Vector3(
-			obj.position.x,
-			surface_top_height_for_object(obj.object_kind, obj.size.y)
-			+ MansionLayoutScript.SURFACE_Y_OFFSET_M,
-			obj.position.z,
-		)
+		var local_face: Dictionary = object_surface_local_face(obj.object_kind, obj.size)
+		var object_basis: Basis = Basis(Vector3.UP, obj.rotation_y)
+		surface.center = obj.position + object_basis * (local_face["center"] as Vector3)
+		surface.basis = object_basis * (local_face["basis"] as Basis)
+		var face_size: Vector2 = local_face["size"]
 		surface.extents = Vector2(
-			maxf(MIN_SURFACE_EXTENT_M, rotated_size_x * SURFACE_HAIR_EXTENT_RATIO),
-			maxf(MIN_SURFACE_EXTENT_M, rotated_size_z * SURFACE_HAIR_EXTENT_RATIO),
+			maxf(MIN_SURFACE_EXTENT_M, face_size.x * SURFACE_HAIR_EXTENT_RATIO),
+			maxf(MIN_SURFACE_EXTENT_M, face_size.y * SURFACE_HAIR_EXTENT_RATIO),
 		)
 		surface.hair_weight = float(preset["weight"])
 		layout.surfaces.append(surface)
@@ -401,10 +420,10 @@ static func _build_found_item_spots(layout: MansionLayout, tuning: MansionTuning
 			if spot_idx < candidate_surfaces.size()
 			else SPOT_RADIUS_OVERFLOW
 		)
-		spot.position = Vector3(
-			surface.center.x + cos(angle_rad) * surface.extents.x * radius_scale,
-			surface.center.y + SPOT_HEIGHT_OFFSET_M,
-			surface.center.z + sin(angle_rad) * surface.extents.y * radius_scale,
+		spot.position = surface.frame() * Vector3(
+			cos(angle_rad) * surface.extents.x * radius_scale,
+			SPOT_HEIGHT_OFFSET_M,
+			sin(angle_rad) * surface.extents.y * radius_scale,
 		)
 		layout.found_item_spots.append(spot)
 
@@ -497,13 +516,57 @@ static func resident_id_for_room(room_id: StringName) -> StringName:
 	return StringName("resident_%s" % String(room_id))
 
 
-## 家具の種別と高さから、毛が乗る実際の上面高さ (m) を返す (MansionWorld のメッシュ高さと単一情報源で整合)
-static func surface_top_height_for_object(object_kind: StringName, object_height: float) -> float:
+## 物の種別と大きさから、毛が乗る面を物の局所座標 (底面中心が原点・回転前) で返す。
+## 戻り値は {"center": 面の中心 Vector3, "basis": 面の向き Basis (局所 +Y が法線), "size": 面の全幅 Vector2}。
+## 面の位置は MansionWorld が描くメッシュの面そのもの (上の比率の定数を両方が使う)
+static func object_surface_local_face(object_kind: StringName, object_size: Vector3) -> Dictionary:
+	var width: float = object_size.x
+	var height: float = object_size.y
+	var depth: float = object_size.z
 	if object_kind == MansionLayoutScript.OBJECT_SOFA:
-		return object_height * SOFA_SEAT_HEIGHT_RATIO
+		# 座面のうち、左右の肘掛けの内側と背もたれの前端より手前
+		var inner_half_x: float = (SOFA_ARM_OFFSET_RATIO - SOFA_ARM_WIDTH_RATIO * 0.5) * width
+		var back_front_z: float = (
+			(SOFA_BACKREST_OFFSET_RATIO + SOFA_BACKREST_DEPTH_RATIO * 0.5) * depth
+		)
+		return {
+			"center": Vector3(
+				0.0, height * SOFA_SEAT_HEIGHT_RATIO, (back_front_z + depth * 0.5) * 0.5
+			),
+			"basis": Basis.IDENTITY,
+			"size": Vector2(inner_half_x * 2.0, depth * 0.5 - back_front_z),
+		}
+	if object_kind == MansionLayoutScript.OBJECT_SUIT_RACK:
+		# 上着の前身頃 (物の前 +Z を向く縦の面)
+		var jacket_size: Vector3 = SUIT_JACKET_SIZE_RATIO * object_size
+		return {
+			"center": SUIT_JACKET_CENTER_RATIO * object_size + Vector3(0.0, 0.0, jacket_size.z * 0.5),
+			"basis": FRONT_FACING_BASIS,
+			"size": Vector2(jacket_size.x, jacket_size.y),
+		}
+	if object_kind == MansionLayoutScript.OBJECT_KNIT_CHAIR:
+		# 掛けたニットの上面のうち、背もたれの前端より手前
+		var throw_center: Vector3 = KNIT_THROW_CENTER_RATIO * object_size
+		var throw_size: Vector3 = KNIT_THROW_SIZE_RATIO * object_size
+		var back_front_z: float = (
+			CHAIR_BACK_CENTER_RATIO.z * depth + CHAIR_BACK_SIZE_RATIO.z * depth * 0.5
+		)
+		var throw_front_z: float = throw_center.z + throw_size.z * 0.5
+		return {
+			"center": Vector3(
+				0.0, throw_center.y + throw_size.y * 0.5, (back_front_z + throw_front_z) * 0.5
+			),
+			"basis": Basis.IDENTITY,
+			"size": Vector2(throw_size.x, throw_front_z - back_front_z),
+		}
+	var top_height: float = height
 	if object_kind == MansionLayoutScript.OBJECT_SIDEBOARD:
-		return object_height + SIDEBOARD_TOP_TRIM_HEIGHT_M
-	return object_height
+		top_height += SIDEBOARD_TOP_TRIM_HEIGHT_M
+	return {
+		"center": Vector3(0.0, top_height, 0.0),
+		"basis": Basis.IDENTITY,
+		"size": Vector2(width, depth),
+	}
 
 
 ## 各部屋に対応する住人の初期機嫌辞書を生成する

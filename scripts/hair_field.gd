@@ -4,6 +4,8 @@ extends Node3D
 ## https://docs.godotengine.org/en/stable/tutorials/performance/using_multimesh.html ) ため、
 ## 表面ごとに MultiMeshInstance3D を分けてフラスタムカリングが効くようにする。
 ## 手で 1 本抜く時は末尾インスタンスとの swap-remove で O(1) に消す。
+## 表面は「面の枠 (Transform3D) の局所 XZ 平面上の矩形」で、局所 +Y が面の外向きの法線になる。
+## 枠を回すと縦の面 (スーツの前身頃) や回転した家具の天面にも毛を置ける。
 
 ## 毛の色の系統 (白・黒・三毛)
 enum HairColorGroup {
@@ -36,8 +38,14 @@ const WHITE_MIN_CHANNEL: float = 0.75
 const INVALID_SLOT: int = -1
 ## 存在しない毛 ID または範囲外スロットに対する番兵色 (透明黒。実在の毛は alpha=1.0 のため区別可能)
 const INVALID_COLOR: Color = Color(0.0, 0.0, 0.0, 0.0)
+## 除外範囲 (家具の下の床等) に当たった時に配置をやり直す上限回数。
+## 部屋の床の 6 割が家具で覆われていても 64 回とも外れる確率は 0.6^64 ≈ 6e-15 で、
+## 上限に達した時は最後の候補にそのまま置く (配置本数を SurfaceHair の本数と必ず一致させるため)
+const EXCLUSION_RETRY_LIMIT: int = 64
+## 表面の向きを変えない時の面の局所基底 (+Y が上向きの法線)
+const UPWARD_BASIS: Basis = Basis.IDENTITY
 
-## 登録済みの配置表面定義 (name / bounds_min / bounds_max / weight)
+## 登録済みの配置表面定義 (name / transform / rect_min / rect_max / weight / exclusions)
 var _surfaces: Array[Dictionary] = []
 ## 生成済みの表面ごとのバケット (instance / multimesh / hair_ids / transforms / colors)。
 ## 表面ごとの有効本数は multimesh.visible_instance_count を唯一の SSOT とする
@@ -108,10 +116,19 @@ static func allocate_counts(
 static func pick_hair_color(rng: RandomNumberGenerator) -> Color:
 	var roll: float = rng.randf()
 	if roll < COLOR_WHITE_THRESHOLD:
+		return pick_hair_color_in_group(rng, HairColorGroup.WHITE)
+	if roll < COLOR_BLACK_THRESHOLD:
+		return pick_hair_color_in_group(rng, HairColorGroup.BLACK)
+	return pick_hair_color_in_group(rng, HairColorGroup.CALICO)
+
+
+## 指定した系統 (HairColorGroup) の中で毛の色を 1 つ選ぶ
+static func pick_hair_color_in_group(rng: RandomNumberGenerator, group: int) -> Color:
+	if group == HairColorGroup.WHITE:
 		# 白 (完全な純白 1.0 を避け、自然な明度差 0.89〜0.96 を付ける)
 		var brightness: float = rng.randf_range(0.89, 0.96)
 		return Color(brightness, brightness - 0.01, brightness - 0.03, 1.0)
-	if roll < COLOR_BLACK_THRESHOLD:
+	if group == HairColorGroup.BLACK:
 		# 黒 (影と完全に同化しないよう明度 0.07〜0.14 の濃いチャコールにする)
 		var brightness: float = rng.randf_range(0.07, 0.14)
 		return Color(brightness, brightness, brightness + 0.02, 1.0)
@@ -146,6 +163,17 @@ static func classify_hair_color(color: Color) -> int:
 	if max_channel >= WHITE_MIN_CHANNEL:
 		return HairColorGroup.WHITE
 	return HairColorGroup.BLACK
+
+
+## field の指定した表面に残っている毛を色の系統ごとに数え、HairColorGroup 順の 3 要素で返す
+static func count_surface_groups(field: Node3D, surface_index: int) -> PackedInt32Array:
+	var counts: PackedInt32Array = PackedInt32Array()
+	counts.resize(HairColorGroup.size())
+	counts.fill(0)
+	for slot: int in range(field.get_surface_visible_instance_count(surface_index)):
+		var hair_id: int = field.get_hair_id_at_slot(surface_index, slot)
+		counts[classify_hair_color(field.get_hair_color(hair_id))] += 1
+	return counts
 
 
 ## 1 本の猫の毛のメッシュ (3 セグメント・7 頂点・5 三角形の細い曲がった先細り形状) を作る
@@ -243,16 +271,73 @@ static func compute_aabb_min_transformed_y(basis: Basis, local_aabb: AABB) -> fl
 	)
 
 
-## 毛を配置する表面 (矩形の上面) を登録する
+## 毛を配置する表面 (ワールド軸に沿った矩形の上面。高さは bounds_min.y) を登録する
 func add_surface(
 	surface_name: String, bounds_min: Vector3, bounds_max: Vector3, weight: float
 ) -> void:
 	_surfaces.append({
 		"name": surface_name,
-		"bounds_min": bounds_min,
-		"bounds_max": bounds_max,
+		"transform": Transform3D(UPWARD_BASIS, Vector3(0.0, bounds_min.y, 0.0)),
+		"rect_min": Vector2(bounds_min.x, bounds_min.z),
+		"rect_max": Vector2(bounds_max.x, bounds_max.z),
 		"weight": weight,
+		"exclusions": [],
 	})
+
+
+## 向きの付いた表面を登録する。surface_transform の原点が面の中心、局所 +Y が面の外向きの法線、
+## size が局所 X / Z の全幅。exclusions は毛を置かない範囲 (家具の下の床等) で、
+## 各要素は {"inverse": ワールド → 範囲の局所の Transform3D, "half": 局所 X / Z の半幅 Vector2}
+func add_oriented_surface(
+	surface_name: String,
+	surface_transform: Transform3D,
+	size: Vector2,
+	weight: float,
+	exclusions: Array[Dictionary] = [],
+) -> void:
+	_surfaces.append({
+		"name": surface_name,
+		"transform": surface_transform,
+		"rect_min": -size * 0.5,
+		"rect_max": size * 0.5,
+		"weight": weight,
+		"exclusions": exclusions,
+	})
+
+
+## 登録済みの表面へ、表面ごと・色の系統ごとに指定した本数の毛を配置し、配置できた本数を返す。
+## counts_by_surface[i] は表面 i の HairColorGroup ごとの本数 (要素数 3)。足りない表面は 0 本にする
+func populate_with_group_counts(
+	counts_by_surface: Array[PackedInt32Array], seed_value: int = DEFAULT_SEED
+) -> int:
+	clear()
+	if _surfaces.is_empty():
+		return 0
+	var groups_by_surface: Array[PackedInt32Array] = []
+	var total: int = 0
+	for surface_idx: int in range(_surfaces.size()):
+		var groups: PackedInt32Array = PackedInt32Array()
+		if surface_idx < counts_by_surface.size():
+			var group_counts: PackedInt32Array = counts_by_surface[surface_idx]
+			for group: int in range(mini(group_counts.size(), HairColorGroup.size())):
+				for _i: int in range(maxi(0, group_counts[group])):
+					groups.append(group)
+		groups_by_surface.append(groups)
+		total += groups.size()
+	if total <= 0:
+		return 0
+	_prepare_shared_resources(total)
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var next_id: int = 0
+	for surface_idx: int in range(_surfaces.size()):
+		var groups: PackedInt32Array = groups_by_surface[surface_idx]
+		_buckets.append(_create_surface_bucket(
+			surface_idx, _surfaces[surface_idx], groups.size(), rng, next_id, groups
+		))
+		next_id += groups.size()
+	_remaining_count = total
+	return total
 
 
 ## 登録済みの表面へ合計 total_count 本の毛を配置し、配置できた本数を返す
@@ -260,11 +345,6 @@ func populate(total_count: int, seed_value: int = DEFAULT_SEED) -> int:
 	clear()
 	if total_count <= 0 or _surfaces.is_empty():
 		return 0
-
-	if _hair_mesh == null:
-		_hair_mesh = build_hair_mesh()
-	if _hair_material == null:
-		_hair_material = build_hair_material()
 
 	var weights: PackedFloat32Array = PackedFloat32Array()
 	weights.resize(_surfaces.size())
@@ -278,8 +358,7 @@ func populate(total_count: int, seed_value: int = DEFAULT_SEED) -> int:
 	if actual_total <= 0:
 		return 0
 
-	_id_to_surface.resize(actual_total)
-	_id_to_slot.resize(actual_total)
+	_prepare_shared_resources(actual_total)
 
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = seed_value
@@ -288,7 +367,7 @@ func populate(total_count: int, seed_value: int = DEFAULT_SEED) -> int:
 	for surface_idx: int in range(_surfaces.size()):
 		var count: int = counts[surface_idx]
 		_buckets.append(_create_surface_bucket(
-			surface_idx, _surfaces[surface_idx], count, rng, next_id
+			surface_idx, _surfaces[surface_idx], count, rng, next_id, PackedInt32Array()
 		))
 		next_id += count
 
@@ -428,7 +507,90 @@ func get_hair_color(hair_id: int) -> Color:
 	]
 
 
+## from から direction 向きの半直線が表から当たる表面のうち、max_distance 以内で最も近いものを返す。
+## 当たれば {"surface_index", "point", "distance"}、どこにも当たらなければ空の辞書
+func intersect_surfaces(from: Vector3, direction: Vector3, max_distance: float) -> Dictionary:
+	var best: Dictionary = {}
+	var dir: Vector3 = direction.normalized()
+	for surface_idx: int in range(_surfaces.size()):
+		var spec: Dictionary = _surfaces[surface_idx]
+		var surface_transform: Transform3D = spec["transform"]
+		var normal: Vector3 = surface_transform.basis.y.normalized()
+		var facing: float = dir.dot(normal)
+		if facing >= -0.0001:
+			continue
+		var distance: float = (surface_transform.origin - from).dot(normal) / facing
+		if distance < 0.0 or distance > max_distance:
+			continue
+		if not best.is_empty() and distance >= float(best["distance"]):
+			continue
+		var point: Vector3 = from + dir * distance
+		var local: Vector3 = surface_transform.affine_inverse() * point
+		var rect_min: Vector2 = spec["rect_min"]
+		var rect_max: Vector2 = spec["rect_max"]
+		if (
+			local.x < rect_min.x or local.x > rect_max.x
+			or local.z < rect_min.y or local.z > rect_max.y
+		):
+			continue
+		best = {"surface_index": surface_idx, "point": point, "distance": distance}
+	return best
+
+
+## 指定した表面で、根元が point から radius 以内にある毛 ID を近い順に最大 max_count 本返す
+func find_hairs_near(
+	surface_index: int, point: Vector3, radius: float, max_count: int
+) -> PackedInt32Array:
+	var result: PackedInt32Array = PackedInt32Array()
+	if surface_index < 0 or surface_index >= _buckets.size() or max_count <= 0:
+		return result
+	var bucket: Dictionary = _buckets[surface_index]
+	var transforms: Array[Transform3D] = bucket["transforms"]
+	var hair_ids: PackedInt32Array = bucket["hair_ids"]
+	var candidates: Array[Vector2] = []
+	var radius_sq: float = radius * radius
+	for slot: int in range((bucket["multimesh"] as MultiMesh).visible_instance_count):
+		var dist_sq: float = transforms[slot].origin.distance_squared_to(point)
+		if dist_sq <= radius_sq:
+			candidates.append(Vector2(dist_sq, float(hair_ids[slot])))
+	candidates.sort()
+	for candidate: Vector2 in candidates:
+		if result.size() >= max_count:
+			break
+		result.append(int(candidate.y))
+	return result
+
+
+## 指定した毛の見た目だけを display_transform に変える (伸びる演出用。照会用の transform は変えない)
+func set_hair_display_transform(hair_id: int, display_transform: Transform3D) -> void:
+	if not has_hair(hair_id):
+		return
+	var multimesh: MultiMesh = _buckets[_id_to_surface[hair_id]]["multimesh"]
+	multimesh.set_instance_transform(_id_to_slot[hair_id], display_transform)
+
+
+## 共有メッシュ・マテリアルを用意し、毛 ID の逆引き配列を total 本分確保する
+func _prepare_shared_resources(total: int) -> void:
+	if _hair_mesh == null:
+		_hair_mesh = build_hair_mesh()
+	if _hair_material == null:
+		_hair_material = build_hair_material()
+	_id_to_surface.resize(total)
+	_id_to_slot.resize(total)
+
+
+## 表面の局所 XZ 上の点がワールド座標で除外範囲のどれかに入るか
+static func _is_excluded(world_point: Vector3, exclusions: Array) -> bool:
+	for exclusion: Dictionary in exclusions:
+		var local: Vector3 = (exclusion["inverse"] as Transform3D) * world_point
+		var half: Vector2 = exclusion["half"]
+		if absf(local.x) <= half.x and absf(local.z) <= half.y:
+			return true
+	return false
+
+
 ## 1 表面分の MultiMeshInstance3D とバケットを生成し、乱数シードに従って毛を配置する。
+## groups が空なら色の系統も乱数で選び、空でなければ slot ごとに groups[slot] の系統で色を選ぶ。
 ## MultiMesh.get_instance_transform/color は headless (Dummy レンダラ) で既定値を返すため、
 ## CPU 側の transforms / colors 配列にも同値を保持して swap-remove と照会を統一する。
 func _create_surface_bucket(
@@ -436,7 +598,8 @@ func _create_surface_bucket(
 	spec: Dictionary,
 	count: int,
 	rng: RandomNumberGenerator,
-	start_id: int
+	start_id: int,
+	groups: PackedInt32Array,
 ) -> Dictionary:
 	var multimesh: MultiMesh = MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
@@ -452,9 +615,10 @@ func _create_surface_bucket(
 	var colors: PackedColorArray = PackedColorArray()
 	colors.resize(count)
 
-	var bounds_min: Vector3 = spec["bounds_min"]
-	var bounds_max: Vector3 = spec["bounds_max"]
-	var base_y: float = bounds_min.y + SURFACE_LIFT_M
+	var surface_transform: Transform3D = spec["transform"]
+	var rect_min: Vector2 = spec["rect_min"]
+	var rect_max: Vector2 = spec["rect_max"]
+	var exclusions: Array = spec["exclusions"]
 	var local_aabb: AABB = compute_mesh_aabb(_hair_mesh)
 
 	for slot: int in range(count):
@@ -472,16 +636,27 @@ func _create_surface_bucket(
 			rng.randf_range(-0.18, 0.18)
 		))
 		basis = basis.scaled_local(Vector3(rng.randf_range(0.85, 1.25), scale_len, scale_len))
-		# 回転・スケール後に先端や根元が表面の下へ潜らないよう最小 Y 分だけ持ち上げる。
+		# 回転・スケール後に先端や根元が表面 (面の局所 Y = 0) の下へ潜らないよう最小 Y 分だけ持ち上げる。
 		# 重なり合う毛同士の Z ファイトを避けるため高さに最大 1.8 mm の微差を付ける
-		var xform: Transform3D = Transform3D(basis, Vector3(
-			rng.randf_range(bounds_min.x, bounds_max.x),
-			base_y
+		var local_xform: Transform3D = Transform3D(basis, Vector3(
+			rng.randf_range(rect_min.x, rect_max.x),
+			SURFACE_LIFT_M
 			- minf(compute_aabb_min_transformed_y(basis, local_aabb), 0.0)
 			+ rng.randf_range(0.0, 0.0018),
-			rng.randf_range(bounds_min.z, bounds_max.z)
+			rng.randf_range(rect_min.y, rect_max.y)
 		))
-		var color: Color = pick_hair_color(rng)
+		var xform: Transform3D = surface_transform * local_xform
+		var retries: int = 0
+		while retries < EXCLUSION_RETRY_LIMIT and _is_excluded(xform.origin, exclusions):
+			local_xform.origin.x = rng.randf_range(rect_min.x, rect_max.x)
+			local_xform.origin.z = rng.randf_range(rect_min.y, rect_max.y)
+			xform = surface_transform * local_xform
+			retries += 1
+		var color: Color = (
+			pick_hair_color(rng)
+			if groups.is_empty()
+			else pick_hair_color_in_group(rng, groups[slot])
+		)
 		transforms[slot] = xform
 		colors[slot] = color
 		multimesh.set_instance_transform(slot, xform)
