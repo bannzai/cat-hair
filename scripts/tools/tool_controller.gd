@@ -299,6 +299,10 @@ func _cat_name(cat_id: StringName) -> String:
 func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
 	var tool_id: StringName = tool_def["id"]
 	var owned: OwnedTool = _game_state.find_owned_tool(tool_id)
+	# 吸える所を狙っていない時は、アンドロイドにパックを交換させない (交換の値段だけ減って何も吸えないため)
+	if _hand == null or _hand.aim_target().is_empty():
+		result["message"] = "狙いの先に毛の付く表面が無い"
+		return
 	var exchanged: bool = _game_state.purchase(
 		GameStateScript.PURCHASE_ANDROID_PACK_EXCHANGE, tool_id
 	)

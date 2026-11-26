@@ -210,7 +210,17 @@ func _verify_android_exchanges_vacuum_pack(main: Node3D, game_state: Node) -> vo
 	var owned: OwnedTool = game_state.find_owned_tool(vacuum)
 	await _checker._press_physical_key(KEY_6)
 	await HandAimScript.aim_at_floor_hair(_checker, main)
+	main.player.look_at_point(main.player.global_position + Vector3(0.0, 10.0, 0.0))
 	owned.consumable_count = 0
+	var money_at_ceiling: int = game_state.get_money()
+	await _checker.press_and_release_use()
+	_check(
+		owned.consumable_count == 0 and game_state.get_money() == money_at_ceiling
+		and main.tool_message_label.text.contains("毛の付く表面が無い"),
+		"パックが一杯の掃除機で天井を狙って使っても、アンドロイドは交換せずお金が減らない (%s)"
+		% main.tool_message_label.text,
+	)
+	await HandAimScript.aim_at_floor_hair(_checker, main)
 	var money_before: int = game_state.get_money()
 	var total_before: int = game_state.get_total_remaining_hairs()
 	await _checker.press_and_release_use()
