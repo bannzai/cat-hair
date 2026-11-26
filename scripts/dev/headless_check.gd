@@ -5,9 +5,6 @@ extends SceneTree
 
 ## 音声解放待ち時間と AudioManager 解決の単一の正
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
-## 音を止めてから終了するまで待つ時間 (秒)。AudioManager.AUDIO_RELEASE_TIME_SEC を参照する。
-## 描画付きの scripts/dev/screenshot.gd・scripts/dev/movie.gd もこの値を使う
-const AUDIO_RELEASE_TIME: float = AudioManagerScript.AUDIO_RELEASE_TIME_SEC
 
 ## 検証が 1 件でも失敗したか。true なら exit code 1 で終わる
 var failed: bool = false

@@ -40,7 +40,7 @@ func _run() -> void:
 
 	audio_manager.stop_all()
 	AudioSettings.apply_to_audio_server(true, true)
-	await create_timer(AUDIO_RELEASE_TIME).timeout
+	await create_timer(AudioManagerScript.AUDIO_RELEASE_TIME_SEC).timeout
 	root.remove_child(main)
 	main.free()
 	cleanup_audio_manager(self, audio_handle, settings_path)
@@ -263,7 +263,7 @@ func _check_settings_screen_toggles(
 	close_button.pressed.emit()
 
 
-## 保存済みの非既定値ファイルから reload_settings し、バス消音と新規 UI 初期表示へ反映されるか確認する
+## 保存済みの非既定値ファイルが _ready() の起動経路および reload_settings で反映されるか確認する
 func _check_reload_persisted_settings(
 	audio_manager: AudioManagerScript, settings_path: String
 ) -> void:
@@ -273,6 +273,22 @@ func _check_reload_persisted_settings(
 		AudioSettings.new(false, false).save_to_path(settings_path) == OK,
 		"再起動テスト用の非既定値 (false, false) を保存できる"
 	)
+
+	# _ready() だけで (reload_settings を外から呼ばずに) 保存済み設定とバス消音が反映されること
+	AudioSettings.apply_to_audio_server(true, true)
+	var boot_manager: AudioManagerScript = AudioManagerScript.new()
+	boot_manager.settings_path = settings_path
+	root.add_child(boot_manager)
+	_check(
+		not boot_manager.is_bgm_enabled()
+		and not boot_manager.is_sfx_enabled()
+		and AudioServer.is_bus_mute(bgm_bus_index)
+		and AudioServer.is_bus_mute(sfx_bus_index),
+		"起動時 (_ready) のみで保存済み設定 (false, false) と BGM・SFX バス消音が復元される"
+	)
+	root.remove_child(boot_manager)
+	boot_manager.free()
+
 	AudioSettings.apply_to_audio_server(true, true)
 	_check(
 		audio_manager.reload_settings(settings_path) == OK,
@@ -337,8 +353,32 @@ func _check_focus_pause_resume(audio_manager: AudioManagerScript) -> void:
 		"RESUMED で BGMPlayer.stream_paused が false に戻る"
 	)
 
-	# 明示停止中は裏に回っても一時停止扱いにならず、戻っても playing が false のまま
+	# 一時停止中に別曲へ切り替えると一時停止状態とフラグが解除されて新曲が再生される
+	audio_manager.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	audio_manager.play_bgm(AudioCatalog.BGM_MANSION)
+	_check(
+		not audio_manager.is_bgm_paused_by_focus()
+		and not bgm_player.stream_paused
+		and bgm_player.playing,
+		"一時停止中の別曲 play_bgm で stream_paused とフラグが解除され再生される"
+	)
+
+	# 一時停止中に stop_bgm() すると一時停止状態とフラグが解除され、直後の FOCUS_IN でも再開しない
+	audio_manager.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
 	audio_manager.stop_bgm()
+	_check(
+		not audio_manager.is_bgm_paused_by_focus()
+		and not bgm_player.stream_paused
+		and not bgm_player.playing,
+		"一時停止中の stop_bgm() で一時停止状態とフラグが解除される"
+	)
+	audio_manager.notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	_check(
+		audio_manager.get_current_bgm_name().is_empty() and not bgm_player.playing,
+		"一時停止中に stop_bgm() した後の FOCUS_IN で勝手に再開しない"
+	)
+
+	# 明示停止中は裏に回っても一時停止扱いにならず、戻っても playing が false のまま
 	audio_manager.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
 	_check(
 		not audio_manager.is_bgm_paused_by_focus() and not bgm_player.playing,
@@ -355,8 +395,9 @@ func _check_focus_pause_resume(audio_manager: AudioManagerScript) -> void:
 func _check_button_sfx_played(
 	audio_manager: AudioManagerScript, count_before: int, action_label: String
 ) -> void:
-	var player_index: int = audio_manager.get_last_sfx_player_index()
-	var player: AudioStreamPlayer = audio_manager.get_node_or_null("SFXPlayer%d" % player_index)
+	var player: AudioStreamPlayer = audio_manager.get_node_or_null(
+		"SFXPlayer%d" % audio_manager.get_last_sfx_player_index()
+	)
 	_check(
 		audio_manager.get_sfx_play_count() == count_before + 1
 		and audio_manager.get_last_sfx_event_name() == AudioCatalog.SFX_BUTTON

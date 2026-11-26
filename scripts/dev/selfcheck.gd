@@ -269,35 +269,40 @@ func _check_audio_manager_guards() -> void:
 
 ## scripts/dev/movie.gd のコマンドライン引数解釈と録画フレーム数計算の境界値を確認する
 func _check_movie_frame_calculations() -> void:
-	_check(
-		MovieScript.parse_positive_int_arg(
-			PackedStringArray(["--frames=150", "--fps=30"]), "--frames="
-		) == 150,
-		"--frames=150 を 150 として解釈できる"
+	# 正常系: frames と fps の両方が正の整数
+	var valid_options: Dictionary = MovieScript.parse_movie_options(
+		PackedStringArray(["--frames=150", "--fps=30"])
 	)
 	_check(
-		MovieScript.parse_positive_int_arg(
-			PackedStringArray(["--frames=150", "--fps=30"]), "--fps="
-		) == 30,
-		"--fps=30 を 30 として解釈できる"
+		int(valid_options.get("total_frames", -1)) == 150
+		and int(valid_options.get("fps", -1)) == 30,
+		"--frames=150 --fps=30 が正しく解釈される"
 	)
-	for bad_args: PackedStringArray in [
+	# frames のみ不正 (fps は正常)・fps のみ不正 (frames は正常)・両方不正
+	for bad_option_args: PackedStringArray in [
+		PackedStringArray(["--fps=30"]),
+		PackedStringArray(["--frames=", "--fps=30"]),
+		PackedStringArray(["--frames=0", "--fps=30"]),
+		PackedStringArray(["--frames=-5", "--fps=30"]),
+		PackedStringArray(["--frames=abc", "--fps=30"]),
+		PackedStringArray(["--frames=150"]),
+		PackedStringArray(["--frames=150", "--fps="]),
+		PackedStringArray(["--frames=150", "--fps=0"]),
+		PackedStringArray(["--frames=150", "--fps=-1"]),
+		PackedStringArray(["--frames=150", "--fps=abc"]),
 		PackedStringArray([]),
 		PackedStringArray(["--other=10"]),
-		PackedStringArray(["--frames="]),
-		PackedStringArray(["--frames=0"]),
-		PackedStringArray(["--frames=-5"]),
-		PackedStringArray(["--frames=abc"]),
+		PackedStringArray(["--frames=0", "--fps=0"]),
 	]:
 		_check(
-			MovieScript.parse_positive_int_arg(bad_args, "--frames=") == -1,
-			"不正・欠落引数 %s は -1 を返す" % str(bad_args)
+			MovieScript.parse_movie_options(bad_option_args).is_empty(),
+			"不正・欠落オプション %s は空辞書を返す" % str(bad_option_args)
 		)
-	# 解放フレーム数: ceil(0.25 * fps) + 2
+	# 解放待ちフレーム数の算出 (正の FPS と下限 0 の境界)
 	_check(MovieScript.calc_release_frames(30) == 10, "30 fps の解放待ちフレーム数が 10")
 	_check(MovieScript.calc_release_frames(60) == 17, "60 fps の解放待ちフレーム数が 17")
 	_check(MovieScript.calc_release_frames(0) == 3, "0 fps 下限の解放待ちフレーム数が 3")
-	# 通常録画フレーム数: maxi(1, total - release - END_MARGIN_FRAMES(2))
+	# 通常録画フレーム数の下限境界と正常値
 	_check(MovieScript.calc_record_frames(12, 10) == 1, "total=12 (境界未満) は下限 1 を返す")
 	_check(MovieScript.calc_record_frames(13, 10) == 1, "total=13 (境界) は 1 を返す")
 	_check(MovieScript.calc_record_frames(14, 10) == 2, "total=14 (境界 + 1) は 2 を返す")

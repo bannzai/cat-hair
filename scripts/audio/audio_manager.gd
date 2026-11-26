@@ -21,10 +21,11 @@ const SFX_POOL_SIZE: int = 4
 ## CI run 45764505977 / 45767272708 で実測し 0.25 秒で解消を確認)
 const AUDIO_RELEASE_TIME_SEC: float = 0.25
 
+## 設定ファイルの保存先 (既定は端末ローカル。テストで _ready() 前に差し替えられる)
+var settings_path: String = AudioSettings.DEFAULT_PATH
+
 ## 現在のオン・オフ設定
 var _settings: RefCounted = AudioSettings.new()
-## 設定ファイルの保存先 (テスト時のみ差し替える)
-var _settings_path: String = AudioSettings.DEFAULT_PATH
 ## BGM 再生用プレイヤー
 var _bgm_player: AudioStreamPlayer = null
 ## 効果音再生用プレイヤープール
@@ -67,7 +68,7 @@ static func play_button_sfx(tree: SceneTree) -> bool:
 ## プレイヤーを準備し、保存済みの設定を読み込んでバスへ適用する
 func _ready() -> void:
 	_setup_players()
-	reload_settings(_settings_path)
+	reload_settings(settings_path)
 
 
 ## ツリーから外れる時にすべての再生を止め、AudioServer の解放を待つ
@@ -95,8 +96,8 @@ func _notification(what: int) -> void:
 
 ## 指定パスの設定を読み直してバスへ適用する (初回起動時とテストで使用)
 func reload_settings(path: String = AudioSettings.DEFAULT_PATH) -> Error:
-	_settings_path = path
-	var err: Error = _settings.load_from_path(_settings_path)
+	settings_path = path
+	var err: Error = _settings.load_from_path(settings_path)
 	AudioSettings.apply_to_audio_server(_settings.bgm_enabled, _settings.sfx_enabled)
 	settings_changed.emit(_settings.bgm_enabled, _settings.sfx_enabled)
 	return err
@@ -197,7 +198,7 @@ func is_sfx_enabled() -> bool:
 func set_bgm_enabled(enabled: bool) -> Error:
 	_settings.bgm_enabled = enabled
 	AudioSettings.apply_to_audio_server(_settings.bgm_enabled, _settings.sfx_enabled)
-	var err: Error = _settings.save_to_path(_settings_path)
+	var err: Error = _settings.save_to_path(settings_path)
 	settings_changed.emit(_settings.bgm_enabled, _settings.sfx_enabled)
 	return err
 
@@ -206,7 +207,7 @@ func set_bgm_enabled(enabled: bool) -> Error:
 func set_sfx_enabled(enabled: bool) -> Error:
 	_settings.sfx_enabled = enabled
 	AudioSettings.apply_to_audio_server(_settings.bgm_enabled, _settings.sfx_enabled)
-	var err: Error = _settings.save_to_path(_settings_path)
+	var err: Error = _settings.save_to_path(settings_path)
 	settings_changed.emit(_settings.bgm_enabled, _settings.sfx_enabled)
 	return err
 
