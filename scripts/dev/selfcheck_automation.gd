@@ -57,8 +57,8 @@ func _check_route_clock() -> void:
 		and RouteClockScript.stop_index_at(route, 8.0) == 1
 		and RouteClockScript.stop_index_at(route, 13.99) == 1
 		and RouteClockScript.stop_index_at(route, 14.0) == 0
-		and RouteClockScript.stop_index_at(route, 30.0) == 1,
-		"留まる所は 8 秒で 2 か所目へ移り、14 秒で一巡して最初に戻る (30 秒は 2 巡目の 2 秒 → 2 か所目)",
+		and RouteClockScript.stop_index_at(route, 24.0) == 1,
+		"留まる所は 8 秒で 2 か所目へ移り、14 秒で一巡して最初に戻る (24 秒は 2 巡目の 10 秒 → 2 か所目)",
 	)
 	var halfway: Vector3 = RouteClockScript.position_at(
 		route, 8.0 + RouteClockScript.MOVE_SECONDS * 0.5

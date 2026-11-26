@@ -20,6 +20,12 @@ const HandAim := preload("res://scripts/dev/hand_aim.gd")
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## 手に持って使う道具の定義
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
+## 撮影で、見たい所との間に家具を挟まずに立つ所を選ぶ手順
+const ViewPointScript := preload("res://scripts/dev/view_point.gd")
+## 掃除ロボットの部屋の探し方 (猫がいる部屋を引く)
+const RobotRulesScript := preload("res://scripts/automation/robot_rules.gd")
+## 猫が今立ち止まっている所の添字
+const RouteClockScript := preload("res://scripts/automation/route_clock.gd")
 ## 道具をかけた跡を撮る時の取りこぼしの抽選の乱数のシード (撮る絵を毎回同じにする)
 const TOOL_TRACE_RNG_SEED: int = 20261126
 ## 道具をかけた跡を撮る所に要る、粘着ローラーの半径の中の毛の本数 (取りこぼした毛が跡の中に見える本数)
@@ -32,6 +38,8 @@ const ROBOT_TRACE_STEP_SECONDS: float = 0.25
 ## 掃除ロボットが毛を取った跡を撮る前に時計を進める回数 (0.25 秒 × 60 = 15 秒。部屋に留まる 20 秒の内に収まり、
 ## 輪を 1 周以上走った跡が残る長さ)
 const ROBOT_TRACE_STEPS: int = 60
+## 掃除ロボットを撮る時に、掃除ロボットから立つ位置までの水平距離 (m。掃除ロボットと周りの床の毛が画面に収まる距離)
+const ROBOT_VIEW_DISTANCE_M: float = 1.3
 ## 猫を撮る時に、猫から立つ位置までの水平距離 (m。猫の体と名札が画面に収まる距離)
 const CAT_VIEW_DISTANCE_M: float = 1.4
 
@@ -338,21 +346,36 @@ func _capture_automation(main: Node3D) -> String:
 	for _step: int in range(ROBOT_TRACE_STEPS):
 		automation.advance(ROBOT_TRACE_STEP_SECONDS)
 	await process_frame
+	# 前の撮影の道具の結果の文字を消し、掃除ロボットを部屋の中心の側から見下ろす (家具を間に挟まない)
+	main.tool_message_label.text = ""
 	var robot_node: Node3D = main.automation.get_robot_node(1)
 	main.player.set_spawn(
-		room.center + Vector3(room.size.x * 0.35, 0.0, room.size.z * 0.35), 0.0
+		ViewPointScript.clear_spot(
+			layout, room, robot_node.position, ROBOT_VIEW_DISTANCE_M,
+			room.center - robot_node.position
+		),
+		0.0,
 	)
 	await physics_frame
 	main.player.look_at_point(robot_node.position)
 	if not await _capture_frozen(main, "tmp/screenshot-robot-room.png"):
 		return "掃除ロボットが動いている部屋を保存できない"
 
-	var cat: Node3D = main.automation.get_cat_node(automation.get_cat_routes()[0]["cat_id"])
-	var cat_floor: Vector3 = Vector3(cat.global_position.x, 0.0, cat.global_position.z)
-	var toward_room: Vector3 = (Vector3(room.center.x, 0.0, room.center.z) - cat_floor)
-	if toward_room.length() < 0.1:
-		toward_room = Vector3.BACK
-	main.player.set_spawn(cat_floor + toward_room.normalized() * CAT_VIEW_DISTANCE_M, 0.0)
+	var cat_route: Dictionary = automation.get_cat_routes()[0]
+	var cat: Node3D = main.automation.get_cat_node(cat_route["cat_id"])
+	var cat_room: MansionLayout.RoomDef = RobotRulesScript.find_room(
+		layout,
+		cat_route["stops"][RouteClockScript.stop_index_at(cat_route, automation.get_seconds())][
+			"room_id"
+		],
+	)
+	main.player.set_spawn(
+		ViewPointScript.clear_spot(
+			layout, cat_room, cat.global_position, CAT_VIEW_DISTANCE_M,
+			cat_room.center - cat.global_position
+		),
+		0.0,
+	)
 	await physics_frame
 	main.player.look_at_point(cat.global_position)
 	return (

@@ -21,10 +21,12 @@ const END_MARGIN_FRAMES: int = 2
 const AUTOMATION_SPEED: float = 4.0
 ## 掃除ロボットの録画で置く台数 (同じ部屋を回らせ、取る量を目で追える数にする)
 const AUTOMATION_ROBOTS: int = 2
-## 掃除ロボットの録画で、部屋の角から部屋の中心へ寄って立つ割合 (部屋の半幅に対する比率)
+## 掃除ロボットの録画で、部屋の中心から離れて立つ距離の割合 (部屋の短い辺の半分に対する比率)
 const AUTOMATION_VIEW_RATIO: float = 0.7
 ## 掃除ロボットの値段の定数
 const RobotRulesScript := preload("res://scripts/automation/robot_rules.gd")
+## 部屋の中心との間に家具を挟まずに立つ所を選ぶ手順
+const ViewPointScript := preload("res://scripts/dev/view_point.gd")
 
 
 ## コマンドライン引数から prefix=<正の整数> を取り出す。未指定・空・非数値・0 以下は -1 を返す
@@ -122,7 +124,7 @@ func _run() -> void:
 	quit(0)
 
 
-## 屋敷に入り、最初の部屋を回る掃除ロボットを AUTOMATION_ROBOTS 台置いて、部屋の角から部屋の中心を見下ろす。置けたら true
+## 屋敷に入り、最初の部屋を回る掃除ロボットを AUTOMATION_ROBOTS 台置いて、家具を挟まない所から部屋の中心を見下ろす。置けたら true
 func _stage_automation(main: Node3D) -> bool:
 	await process_frame
 	main.enter_mansion()
@@ -133,8 +135,9 @@ func _stage_automation(main: Node3D) -> bool:
 		if not game_state.automation.buy_robot(room.room_id):
 			push_error("movie.gd: 掃除ロボットを置けない")
 			return false
-	var corner: Vector3 = room.center + Vector3(
-		room.size.x * 0.5 * AUTOMATION_VIEW_RATIO, 0.0, room.size.z * 0.5 * AUTOMATION_VIEW_RATIO
+	var corner: Vector3 = ViewPointScript.clear_spot(
+		game_state.current_layout, room, room.center,
+		minf(room.size.x, room.size.z) * 0.5 * AUTOMATION_VIEW_RATIO, Vector3(1.0, 0.0, 1.0)
 	)
 	main.player.set_spawn(corner, 0.0)
 	await physics_frame
