@@ -28,8 +28,10 @@ const SETTINGS_PANEL_PATH: String = "UILayer/UI/AudioSettingsPanel"
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
 ## 毛を抜いた時に画面中央に出す「+N 本」の表示を残す秒数
 const PLUCK_POPUP_SECONDS: float = 1.5
-## 画面中央の照準の文字
-const CROSSHAIR_TEXT: String = "+"
+## 画面中央の照準の線の長さと太さ (px)。線の交点が画面のちょうど中央 (狙いの光線の向き) に来る
+const CROSSHAIR_LINE_SIZE: Vector2 = Vector2(16.0, 2.0)
+## 照準の線の色
+const CROSSHAIR_COLOR: Color = Color(1.0, 1.0, 1.0, 0.85)
 
 ## 狙った毛を手でつまんで抜く操作
 var hand: HandController = null
@@ -37,8 +39,8 @@ var hand: HandController = null
 var hair_book_panel: HairBookPanel = null
 ## 在庫にある毛のままの本数の表示
 var stock_label: Label = null
-## 画面中央の照準
-var crosshair_label: Label = null
+## 画面中央の照準 (横と縦の線の親。画面全体に広げ、線を中央に置く)
+var crosshair: Control = null
 ## 毛を抜いた時に出す「+N 本」の表示
 var pluck_popup_label: Label = null
 ## 参照中の GameState ノード (autoload または検証時のフォールバック)
@@ -126,7 +128,7 @@ func _exit_tree() -> void:
 ## プレイ中の F1 (開発者調整画面開閉)・B (図鑑開閉)・F5 (手動セーブ) を処理する
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_dev_panel"):
-		if _is_playing:
+		if _is_playing and not hair_book_panel.visible:
 			toggle_dev_panel()
 	elif event.is_action_pressed("toggle_hair_book"):
 		if _is_playing and not dev_tuning_panel.visible:
@@ -315,15 +317,25 @@ func _build_hand_ui() -> void:
 	hand.setup(player.get_camera(), mansion_world, _game_state, player)
 	hand.hairs_plucked.connect(_on_hairs_plucked)
 
-	crosshair_label = Label.new()
-	crosshair_label.name = "Crosshair"
-	crosshair_label.text = CROSSHAIR_TEXT
-	crosshair_label.add_theme_font_size_override("font_size", 28)
-	crosshair_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	crosshair_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	crosshair_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	crosshair_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud.add_child(crosshair_label)
+	crosshair = Control.new()
+	crosshair.name = "Crosshair"
+	crosshair.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(crosshair)
+	var vertical_size: Vector2 = Vector2(CROSSHAIR_LINE_SIZE.y, CROSSHAIR_LINE_SIZE.x)
+	for line_size: Vector2 in [CROSSHAIR_LINE_SIZE, vertical_size]:
+		var line: ColorRect = ColorRect.new()
+		line.color = CROSSHAIR_COLOR
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		line.anchor_left = 0.5
+		line.anchor_right = 0.5
+		line.anchor_top = 0.5
+		line.anchor_bottom = 0.5
+		line.offset_left = -line_size.x * 0.5
+		line.offset_right = line_size.x * 0.5
+		line.offset_top = -line_size.y * 0.5
+		line.offset_bottom = line_size.y * 0.5
+		crosshair.add_child(line)
 
 	pluck_popup_label = Label.new()
 	pluck_popup_label.name = "PluckPopup"

@@ -84,7 +84,7 @@ func _build() -> void:
 
 	var hint: Label = Label.new()
 	hint.name = "Hint"
-	hint.text = "珍しい毛は、手でつまんだ時にしか見分けられない"
+	hint.text = "珍しい毛は手でつまんだ時にだけ見分けられる"
 	hint.add_theme_font_size_override("font_size", 14)
 	layout.add_child(hint)
 

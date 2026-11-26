@@ -325,6 +325,27 @@ func _check_oriented_surface_and_queries() -> void:
 		"半径内の毛を近い順に返し、その面の毛だけ (30 本) を返す",
 	)
 	_check(
+		field.find_hairs_near(0, Vector3(0, 1, 0), 10.0, 3).size() == 3
+		and field.find_hairs_near(0, Vector3(0, 1, 0), 10.0, 3)[0] == many[0],
+		"候補が上限より多い時は、近い順に上限の 3 本だけを返す",
+	)
+	_check(
+		field.intersect_surfaces(Vector3(0.1, 1.5, 2.0), Vector3(0, 0, -1), 5.0).is_empty(),
+		"面の矩形の外 (面の局所 Z の範囲外 = 高さ 1.5m) を通る光線は当たらない",
+	)
+	var stacked: Node3D = HairFieldScript.new()
+	stacked.add_surface("floor", Vector3(-1.0, 0.0, -1.0), Vector3(1.0, 0.0, 1.0), 1.0)
+	stacked.add_surface("seat", Vector3(-0.5, 0.4, -0.5), Vector3(0.5, 0.4, 0.5), 1.0)
+	var stacked_hit: Dictionary = stacked.intersect_surfaces(
+		Vector3(0.0, 1.6, 0.0), Vector3(0, -1, 0), 5.0
+	)
+	_check(
+		int(stacked_hit.get("surface_index", -1)) == 1
+		and is_equal_approx(float(stacked_hit["distance"]), 1.2),
+		"光線が 2 つの面を通る時は近い方 (床の上の座面) に当たる",
+	)
+	stacked.free()
+	_check(
 		field.find_hairs_near(0, Vector3(5, 5, 5), 0.05, 3).is_empty()
 		and field.find_hairs_near(-1, target_root, 1.0, 3).is_empty()
 		and field.find_hairs_near(0, target_root, 1.0, 0).is_empty(),

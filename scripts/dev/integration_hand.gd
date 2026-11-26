@@ -22,7 +22,7 @@ const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 ## 毛・加工品在庫データ型スクリプト (毛のままの形の定数を使う)
 const HairStockScript := preload("res://scripts/data/hair_stock.gd")
 ## 毛をつまむ入力アクション
-const ACTION_PLUCK: StringName = &"pluck_hair"
+const ACTION_PLUCK: StringName = HandController.ACTION_PLUCK
 
 ## 検証結果を記録する integration の SceneTree 参照
 var _checker: SceneTree = null
@@ -34,10 +34,12 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	suite._checker = checker
 	main.hand.allow_uncaptured_pluck = true
 	await checker.process_frame
+	suite._verify_crosshair_centered(main)
 	await suite._verify_hair_book_blocks_and_shows(main, game_state)
 	await suite._verify_aim_at_nothing(main, game_state)
 	await suite._verify_release_midway_and_pluck(main, game_state)
 	await suite._verify_upgrades_change_pull(main, game_state)
+	await suite._verify_hold_plucks_and_capture_gate(main, game_state)
 	main.hand.allow_uncaptured_pluck = false
 	Input.action_release(ACTION_PLUCK)
 	await checker.process_frame
@@ -48,12 +50,22 @@ func _check(cond: bool, label: String) -> void:
 	_checker._check(cond, label)
 
 
+## 照準の線の交点が画面のちょうど中央 (狙いの光線の向き) にあるか
+func _verify_crosshair_centered(main: Node3D) -> void:
+	var screen_center: Vector2 = main.get_viewport().get_visible_rect().get_center()
+	var centered: bool = main.crosshair.get_child_count() == 2
+	for line: Control in main.crosshair.get_children():
+		if line.get_global_rect().get_center().distance_to(screen_center) > 0.5:
+			centered = false
+	_check(centered, "照準の横と縦の線の中心が画面の中央にある (狙いの光線と同じ位置)")
+
+
 ## B キーで図鑑が開閉し、開いている間はつまむ入力で何も変わらず、見つけた珍しい毛の名前が出るか
 func _verify_hair_book_blocks_and_shows(main: Node3D, game_state: Node) -> void:
 	var hand: HandController = main.hand
 	var aimed_id: int = await HandAim.aim_at_floor_hair(_checker, main)
 	_check(aimed_id >= 0, "床の毛を画面中央に狙える位置と向きが見つかる")
-	await _press_physical_key(KEY_B)
+	await _checker._press_physical_key(KEY_B)
 	_check(
 		main.hair_book_panel.visible and not hand.enabled and not main.player.controls_enabled,
 		"B キーで図鑑が開き、歩く操作とつまむ操作が止まる",
@@ -64,7 +76,12 @@ func _verify_hair_book_blocks_and_shows(main: Node3D, game_state: Node) -> void:
 		not hand.is_pulling() and game_state.get_total_remaining_hairs() == before_total,
 		"図鑑が開いている間はつまむ入力で毛をつままず、残り本数も変わらない",
 	)
-	await _press_physical_key(KEY_B)
+	await _checker._press_physical_key(KEY_F1)
+	_check(
+		main.hair_book_panel.visible and not main.dev_tuning_panel.visible,
+		"図鑑が開いている間は F1 で開発者向け画面が開かない (2 つの画面が重ならない)",
+	)
+	await _checker._press_physical_key(KEY_B)
 	_check(
 		not main.hair_book_panel.visible and hand.enabled,
 		"B キーをもう一度押すと図鑑が閉じ、操作が戻る",
@@ -266,6 +283,42 @@ func _verify_upgrades_change_pull(main: Node3D, game_state: Node) -> void:
 	game_state.set_hand_upgrade_level(HandRulesScript.UPGRADE_GRAB_COUNT, 0)
 
 
+## 押し続けるだけで (引く時間を直接進めずに) 毛が抜け、押したままでは次の毛を引き始めないか。
+## マウスを捕捉していない時 (headless の検証の許可も無い時) はつままないか
+func _verify_hold_plucks_and_capture_gate(main: Node3D, game_state: Node) -> void:
+	var hand: HandController = main.hand
+	if await HandAim.aim_at_floor_hair(_checker, main) < 0:
+		_check(false, "押し続ける検証で床の毛を狙える")
+		return
+	var before_total: int = game_state.get_total_remaining_hairs()
+	# 実時間で 0.45 秒待つとフレーム数の上限 (Makefile の SCRIPT_FRAME_LIMIT) を使うため、時間の進みを 20 倍にする
+	Engine.time_scale = 20.0
+	await _press_pluck()
+	var held_frames: int = 0
+	while hand.is_pulling() and held_frames < 600:
+		await _checker.process_frame
+		held_frames += 1
+	for _step: int in range(5):
+		await _checker.process_frame
+	Engine.time_scale = 1.0
+	_check(
+		game_state.get_total_remaining_hairs() == before_total - 1 and not hand.is_pulling(),
+		"押し続けると引く時間の後に 1 本抜け、押したままでは次の毛を引き始めない",
+	)
+	Input.action_release(ACTION_PLUCK)
+	await _checker.process_frame
+
+	hand.allow_uncaptured_pluck = false
+	await _press_pluck()
+	_check(
+		not hand.is_pulling() and game_state.get_total_remaining_hairs() == before_total - 1,
+		"マウスを捕捉していない時はつまむ入力で毛をつままない",
+	)
+	Input.action_release(ACTION_PLUCK)
+	hand.allow_uncaptured_pluck = true
+	await _checker.process_frame
+
+
 ## つまむ入力を押し、HandController の _process がその押下を処理した直後まで進める。
 ## process_frame は各ノードの _process より前に出るため、まず process_frame に合わせてから押し、
 ## もう 1 回 process_frame を待つと、その間の _process が押下を見る
@@ -281,18 +334,4 @@ func _hold_pluck(frame_count: int) -> void:
 	for _step: int in range(frame_count):
 		await _checker.process_frame
 	Input.action_release(ACTION_PLUCK)
-	await _checker.process_frame
-
-
-## 指定した物理キーの押下・解放イベントを Input に流して 1 フレームずつ進める
-func _press_physical_key(physical_key: Key) -> void:
-	var press_event: InputEventKey = InputEventKey.new()
-	press_event.physical_keycode = physical_key
-	press_event.pressed = true
-	Input.parse_input_event(press_event)
-	await _checker.process_frame
-	var release_event: InputEventKey = InputEventKey.new()
-	release_event.physical_keycode = physical_key
-	release_event.pressed = false
-	Input.parse_input_event(release_event)
 	await _checker.process_frame
