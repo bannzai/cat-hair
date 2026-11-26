@@ -1,17 +1,59 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/mansion/mansion_world.gd" id="2_world"]
+[ext_resource type="Script" path="res://scripts/player/first_person_player.gd" id="3_player"]
+[ext_resource type="Script" path="res://scripts/ui/dev_tuning_panel.gd" id="4_devpanel"]
 
-[node name="Main" type="Control"]
+[sub_resource type="Environment" id="Environment_mansion"]
+background_mode = 1
+background_color = Color(0.14, 0.13, 0.12, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.95, 0.92, 0.86, 1)
+ambient_light_energy = 0.78
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hud"]
+bg_color = Color(0.08, 0.08, 0.1, 0.72)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_mansion")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.819152, 0.439385, -0.368688, 0, 0.642788, 0.766044, 0.573576, -0.627507, 0.526541, 0, 8, 0)
+light_color = Color(1, 0.96, 0.9, 1)
+light_energy = 0.75
+shadow_enabled = false
+
+[node name="MansionWorld" type="Node3D" parent="."]
+script = ExtResource("2_world")
+
+[node name="Player" type="CharacterBody3D" parent="."]
+script = ExtResource("3_player")
+
+[node name="UILayer" type="CanvasLayer" parent="."]
+
+[node name="UI" type="Control" parent="UILayer"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("1_main")
+mouse_filter = 2
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="HUD" type="Control" parent="UILayer/UI"]
+visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -19,9 +61,59 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.11, 0.1, 0.13, 1)
 
-[node name="Layout" type="VBoxContainer" parent="."]
+[node name="RemainingHairPanel" type="PanelContainer" parent="UILayer/UI/HUD"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -320.0
+offset_top = 18.0
+offset_right = -18.0
+offset_bottom = 68.0
+grow_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_hud")
+
+[node name="RemainingHairLabel" type="Label" parent="UILayer/UI/HUD/RemainingHairPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "残り毛本数: 0 本"
+horizontal_alignment = 2
+
+[node name="ControlsHintLabel" type="Label" parent="UILayer/UI/HUD"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -36.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.95, 0.94, 0.9, 0.9)
+theme_override_font_sizes/font_size = 15
+text = "WASD: 移動  /  マウス: 視点  /  F1: 開発者調整  /  F5: セーブ"
+horizontal_alignment = 1
+
+[node name="TitleOverlay" type="Control" parent="UILayer/UI"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Backdrop" type="ColorRect" parent="UILayer/UI/TitleOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.08, 0.07, 0.09, 0.52)
+
+[node name="Layout" type="VBoxContainer" parent="UILayer/UI/TitleOverlay"]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -29,20 +121,43 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -320.0
-offset_top = -100.0
+offset_top = -120.0
 offset_right = 320.0
-offset_bottom = 100.0
+offset_bottom = 120.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 32
+theme_override_constants/separation = 24
 alignment = 1
 
-[node name="TitleLabel" type="Label" parent="Layout"]
+[node name="TitleLabel" type="Label" parent="UILayer/UI/TitleOverlay/Layout"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 64
 text = "Oh My Fur!"
 horizontal_alignment = 1
 
-[node name="StartButton" type="Button" parent="Layout"]
+[node name="StartButton" type="Button" parent="UILayer/UI/TitleOverlay/Layout"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 24
 text = "はじめる"
+
+[node name="NewGameButton" type="Button" parent="UILayer/UI/TitleOverlay/Layout"]
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "はじめから"
+
+[node name="DevTuningPanel" type="PanelContainer" parent="UILayer/UI"]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -240.0
+offset_top = -170.0
+offset_right = 240.0
+offset_bottom = 170.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("4_devpanel")
