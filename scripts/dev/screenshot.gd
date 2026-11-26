@@ -16,6 +16,10 @@ const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 ## 目線を床の毛へ向ける手順
 const HandAim := preload("res://scripts/dev/hand_aim.gd")
+## 状態管理 autoload スクリプト (買う物の種類の定数を使う)
+const GameStateScript := preload("res://scripts/state/game_state.gd")
+## 手に持って使う道具の定義
+const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 引いている途中を撮る時の進み具合 (毛が伸びて手が閉じかけた所)
 const PULL_SNAPSHOT_PROGRESS: float = 0.7
 
@@ -153,6 +157,9 @@ func _capture_mansion_scenes(main: Node3D) -> String:
 	main.close_hair_book()
 	if not book_ok:
 		return "図鑑を保存できない"
+	var tool_error: String = await _capture_tools(main)
+	if not tool_error.is_empty():
+		return tool_error
 	main.open_dev_panel()
 	return "" if await _capture("tmp/screenshot-dev-panel.png") else "開発者向け調整画面を保存できない"
 
@@ -174,6 +181,28 @@ func _capture_pluck(main: Node3D) -> String:
 	if not await _capture_frozen(main, "tmp/screenshot-plucked.png"):
 		return "抜いた直後を保存できない"
 	return ""
+
+
+## 粘着ローラーを床の毛にかけた直後 (跡の円盤・取りこぼした毛・取りこぼしの割合・道具の並び・部屋のゲージ) と、
+## 道具を買う画面を撮る。撮れたら空文字、失敗したら理由を返す
+func _capture_tools(main: Node3D) -> String:
+	var game_state: Node = main.get_game_state()
+	game_state.save_data.building_progress.money = 1000
+	var roller: StringName = ToolCatalogScript.TOOL_LINT_ROLLER
+	if not game_state.purchase(GameStateScript.PURCHASE_TOOL, roller):
+		return "粘着ローラーを買えない"
+	if not main.tools.select_tool(roller):
+		return "粘着ローラーを選べない"
+	if await HandAim.aim_at_floor_hair(self, main) < 0:
+		return "粘着ローラーをかける床の毛を狙える位置が見つからない"
+	if not bool(main.tools.use_selected_tool()["used"]):
+		return "粘着ローラーを床にかけられない"
+	if not await _capture_frozen(main, "tmp/screenshot-tool-trace.png"):
+		return "道具をかけた跡を保存できない"
+	main.open_tool_shop()
+	var shop_ok: bool = await _capture("tmp/screenshot-tool-shop.png")
+	main.close_tool_shop()
+	return "" if shop_ok else "道具を買う画面を保存できない"
 
 
 ## メインシーンの処理を止めたまま現在の画面を path に保存する。保存できたら true

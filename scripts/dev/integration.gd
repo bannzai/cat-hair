@@ -1,7 +1,7 @@
 extends "res://scripts/dev/headless_check.gd"
 ## メインシーンを tree に置いて動かす入力統合テスト (headless)。
 ## 音声系 (BGM・効果音・設定画面・フォーカス) と屋敷系 (移動・視点・開発者画面・保存・OS 引数) を検証する。
-## 手で毛を取る操作は scripts/dev/integration_hand.gd に分割して実行する。
+## 手で毛を取る操作は scripts/dev/integration_hand.gd、道具とお金は scripts/dev/integration_tools.gd に分割して実行する。
 ## 実行方法は AGENTS.md「検証方法」を参照。
 
 ## 動かして確かめるメインシーン
@@ -24,6 +24,8 @@ const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 const FirstPersonPlayerScript := preload("res://scripts/player/first_person_player.gd")
 ## 手で毛を取る操作の入力統合テスト
 const IntegrationHand := preload("res://scripts/dev/integration_hand.gd")
+## 手に持って使う道具とお金の入力統合テスト
+const IntegrationTools := preload("res://scripts/dev/integration_tools.gd")
 
 ## integration テスト専用のセーブパス
 const TEST_SAVE_PATH: String = "user://integration_save_data.json"
@@ -83,6 +85,7 @@ func _run() -> void:
 	await _verify_enter_movement_and_look(main)
 	await _verify_dev_panel_keys_and_rebuild(main, game_state)
 	await IntegrationHand.run_all(self, main, game_state)
+	await IntegrationTools.run_all(self, main, game_state)
 	await _verify_manual_save_and_close_request(game_state)
 
 	root.remove_child(main)
