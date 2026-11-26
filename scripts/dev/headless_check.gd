@@ -5,6 +5,8 @@ extends SceneTree
 
 ## 音声解放待ち時間と AudioManager 解決の単一の正
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
+## 状態管理 autoload スクリプト (検証用 GameState 準備ヘルパーで使用)
+const GameStateScript := preload("res://scripts/state/game_state.gd")
 
 ## 検証が 1 件でも失敗したか。true なら exit code 1 で終わる
 var failed: bool = false
@@ -40,6 +42,19 @@ static func cleanup_audio_manager(
 			tree.root.remove_child(audio_manager)
 			audio_manager.free()
 	remove_file_if_exists(settings_path)
+
+
+## 検証用の autoload GameState を取得 (未登録なら生成・登録) し、指定セーブパスで初期化する
+static func acquire_game_state(tree_root: Window, target_save_path: String) -> Dictionary:
+	var created: bool = false
+	var game_state: Node = tree_root.get_node_or_null("GameState")
+	if game_state == null:
+		game_state = GameStateScript.new()
+		game_state.name = "GameState"
+		tree_root.add_child(game_state)
+		created = true
+	game_state.initialize_from_storage(target_save_path)
+	return {"node": game_state, "created": created}
 
 
 ## cond が false なら label を ERROR として出し、失敗として記録する。

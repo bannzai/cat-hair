@@ -1,5 +1,6 @@
 extends "res://scripts/dev/headless_check.gd"
 ## 純粋なロジックとプロジェクト設定の検証 (headless)。ゲームのルールの計算を足したら、ここに検証を足す。
+## 屋敷・セーブ・調整値の検証は scripts/dev/selfcheck_mansion.gd に分割して実行する。
 ## 実行方法は AGENTS.md「検証方法」を参照。
 
 ## プロジェクト設定のメインシーンに入っているべきパス
@@ -14,6 +15,8 @@ const RENDERING_METHOD: String = "forward_plus"
 const BUS_LAYOUT_PATH: String = "res://default_bus_layout.tres"
 ## プロジェクト設定の AudioManager autoload の値
 const AUDIO_MANAGER_AUTOLOAD: String = "*res://scripts/audio/audio_manager.gd"
+## プロジェクト設定の GameState autoload の値
+const GAME_STATE_AUTOLOAD: String = "*res://scripts/state/game_state.gd"
 ## 毛の描画ノードのスクリプト
 const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## ベンチマークスクリプト (純粋関数の単体検証用)
@@ -24,6 +27,8 @@ const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 const AudioSettings := preload("res://scripts/audio/audio_settings.gd")
 ## 起動録画スクリプト (引数解釈・録画フレーム計算の純粋関数)
 const MovieScript := preload("res://scripts/dev/movie.gd")
+## 屋敷・セーブ・調整値・プレイヤー純粋判定の検証スイート
+const SelfcheckMansion := preload("res://scripts/dev/selfcheck_mansion.gd")
 
 
 ## 検証をすべて実行して終える
@@ -42,20 +47,21 @@ func _initialize() -> void:
 	_check_audio_settings_bus_mute()
 	_check_audio_manager_guards()
 	_check_movie_frame_calculations()
+	SelfcheckMansion.run_all(self)
 	_finish()
 
 
-## プロジェクト設定の名前・メインシーン・レンダラ・音声設定が想定どおりか
+## プロジェクト設定の名前・メインシーン・レンダラ・音声設定・autoload・入力アクションが想定どおりか
 func _check_project_settings() -> void:
 	var main_scene: String = ProjectSettings.get_setting("application/run/main_scene", "")
 	_check(
 		main_scene == MAIN_SCENE_PATH,
-		"application/run/main_scene が %s (実際: %s)" % [MAIN_SCENE_PATH, main_scene]
+		"application/run/main_scene が %s (実際: %s)" % [MAIN_SCENE_PATH, main_scene],
 	)
 	var project_name: String = ProjectSettings.get_setting("application/config/name", "")
 	_check(
 		project_name == PROJECT_NAME,
-		"application/config/name が %s (実際: %s)" % [PROJECT_NAME, project_name]
+		"application/config/name が %s (実際: %s)" % [PROJECT_NAME, project_name],
 	)
 	var rendering_method: String = ProjectSettings.get_setting(
 		"rendering/renderer/rendering_method", ""
@@ -68,20 +74,38 @@ func _check_project_settings() -> void:
 	var bus_layout: String = ProjectSettings.get_setting("audio/buses/default_bus_layout", "")
 	_check(
 		bus_layout == BUS_LAYOUT_PATH,
-		"audio/buses/default_bus_layout が %s (実際: %s)" % [BUS_LAYOUT_PATH, bus_layout]
+		"audio/buses/default_bus_layout が %s (実際: %s)" % [BUS_LAYOUT_PATH, bus_layout],
 	)
-	var autoload_entry: String = ProjectSettings.get_setting("autoload/AudioManager", "")
+	var audio_autoload: String = ProjectSettings.get_setting("autoload/AudioManager", "")
 	_check(
-		autoload_entry == AUDIO_MANAGER_AUTOLOAD,
-		"autoload/AudioManager が %s (実際: %s)" % [AUDIO_MANAGER_AUTOLOAD, autoload_entry]
+		audio_autoload == AUDIO_MANAGER_AUTOLOAD,
+		"autoload/AudioManager が %s (実際: %s)" % [AUDIO_MANAGER_AUTOLOAD, audio_autoload],
 	)
+	var state_autoload: String = ProjectSettings.get_setting("autoload/GameState", "")
+	_check(
+		state_autoload == GAME_STATE_AUTOLOAD,
+		"autoload/GameState が %s (実際: %s)" % [GAME_STATE_AUTOLOAD, state_autoload],
+	)
+	for action_name: String in [
+		"move_forward",
+		"move_back",
+		"move_left",
+		"move_right",
+		"toggle_dev_panel",
+		"save_game",
+		"release_mouse",
+	]:
+		_check(
+			InputMap.has_action(action_name),
+			"入力アクション %s が定義されている" % action_name,
+		)
 
 
 ## メインシーンがロードでき、PackedScene が返るか
 func _check_main_scene_loads() -> void:
 	_check(
 		load(MAIN_SCENE_PATH) is PackedScene,
-		"%s が PackedScene としてロードできる" % MAIN_SCENE_PATH
+		"%s が PackedScene としてロードできる" % MAIN_SCENE_PATH,
 	)
 
 
@@ -577,7 +601,7 @@ func _check_audio_bus_layout() -> void:
 		var sfx_db: float = AudioServer.get_bus_volume_db(sfx_bus_index)
 		_check(
 			bgm_db < sfx_db,
-			"効果音を目立たせるため BGM 音量 (%s dB) < SFX 音量 (%s dB)" % [bgm_db, sfx_db]
+			"効果音を目立たせるため BGM 音量 (%s dB) < SFX 音量 (%s dB)" % [bgm_db, sfx_db],
 		)
 
 
@@ -595,44 +619,43 @@ func _check_audio_catalog() -> void:
 	}
 	_check(
 		AudioCatalog.all_bgm_names().size() == expected_bgm.size(),
-		"BGM 登録数が %d 件 (実際: %d)" % [expected_bgm.size(), AudioCatalog.all_bgm_names().size()]
+		"BGM 登録数が %d 件 (実際: %d)" % [expected_bgm.size(), AudioCatalog.all_bgm_names().size()],
 	)
 	_check(
 		AudioCatalog.all_sfx_names().size() == expected_sfx.size(),
-		"効果音登録数が %d 件 (実際: %d)" % [expected_sfx.size(), AudioCatalog.all_sfx_names().size()]
+		"効果音登録数が %d 件 (実際: %d)" % [expected_sfx.size(), AudioCatalog.all_sfx_names().size()],
 	)
 	for scene_name: String in expected_bgm.keys():
 		var expected_path: String = String(expected_bgm[scene_name])
 		var actual_path: String = AudioCatalog.resolve_bgm_path(scene_name)
 		_check(
 			actual_path == expected_path,
-			"BGM '%s' のパスが %s (実際: %s)" % [scene_name, expected_path, actual_path]
+			"BGM '%s' のパスが %s (実際: %s)" % [scene_name, expected_path, actual_path],
 		)
 		_check(
 			ResourceLoader.exists(actual_path) and load(actual_path) is AudioStream,
-			"BGM '%s' の素材 %s が AudioStream として読み込める" % [scene_name, actual_path]
+			"BGM '%s' の素材 %s が AudioStream として読み込める" % [scene_name, actual_path],
 		)
 	for event_name: String in expected_sfx.keys():
 		var expected_path: String = String(expected_sfx[event_name])
 		var actual_path: String = AudioCatalog.resolve_sfx_path(event_name)
 		_check(
 			actual_path == expected_path,
-			"効果音 '%s' のパスが %s (実際: %s)" % [event_name, expected_path, actual_path]
+			"効果音 '%s' のパスが %s (実際: %s)" % [event_name, expected_path, actual_path],
 		)
 		_check(
 			ResourceLoader.exists(actual_path) and load(actual_path) is AudioStream,
-			"効果音 '%s' の素材 %s が AudioStream として読み込める" % [event_name, actual_path]
+			"効果音 '%s' の素材 %s が AudioStream として読み込める" % [event_name, actual_path],
 		)
-	# 異常系・境界値: 空文字・未登録名・大文字小文字違い・末尾空白・BGM/SFX の取り違え
 	for bad_bgm: String in ["", "unknown", "TITLE", "title ", "button", "pluck_hair"]:
 		_check(
 			AudioCatalog.resolve_bgm_path(bad_bgm).is_empty(),
-			"未登録の BGM 名 '%s' は空文字を返す" % bad_bgm
+			"未登録の BGM 名 '%s' は空文字を返す" % bad_bgm,
 		)
 	for bad_sfx: String in ["", "unknown", "BUTTON", "pluck_hair ", "title", "mansion"]:
 		_check(
 			AudioCatalog.resolve_sfx_path(bad_sfx).is_empty(),
-			"未登録の効果音名 '%s' は空文字を返す" % bad_sfx
+			"未登録の効果音名 '%s' は空文字を返す" % bad_sfx,
 		)
 
 
@@ -641,73 +664,66 @@ func _check_audio_settings_persistence() -> void:
 	var test_path: String = ProjectSettings.globalize_path("res://tmp/selfcheck-audio-settings.cfg")
 	remove_file_if_exists(test_path)
 
-	# 初期値
 	var defaults: RefCounted = AudioSettings.new()
 	_check(defaults.bgm_enabled and defaults.sfx_enabled, "音声設定の初期値は BGM・効果音ともオン")
 
-	# 正常系: 4 通りの組み合わせを保存して別インスタンスで読み戻す
 	for pair: Array in [[false, true], [true, false], [false, false], [true, true]]:
 		var expected_bgm: bool = bool(pair[0])
 		var expected_sfx: bool = bool(pair[1])
 		_check(
 			AudioSettings.new(expected_bgm, expected_sfx).save_to_path(test_path) == OK,
-			"設定 (%s, %s) の保存が OK" % [expected_bgm, expected_sfx]
+			"設定 (%s, %s) の保存が OK" % [expected_bgm, expected_sfx],
 		)
 		var reader: RefCounted = AudioSettings.new(not expected_bgm, not expected_sfx)
 		_check(
 			reader.load_from_path(test_path) == OK,
-			"設定 (%s, %s) の読み込みが OK" % [expected_bgm, expected_sfx]
+			"設定 (%s, %s) の読み込みが OK" % [expected_bgm, expected_sfx],
 		)
 		_check(
 			reader.bgm_enabled == expected_bgm and reader.sfx_enabled == expected_sfx,
-			"保存した (%s, %s) を読み戻せる (実際: %s, %s)" % [
-				expected_bgm, expected_sfx, reader.bgm_enabled, reader.sfx_enabled
-			]
+			"保存した (%s, %s) を読み戻せる (実際: %s, %s)"
+			% [expected_bgm, expected_sfx, reader.bgm_enabled, reader.sfx_enabled],
 		)
 
-	# 異常系: 空パス
 	var empty_writer: RefCounted = AudioSettings.new(false, false)
 	_check(
 		empty_writer.save_to_path("") == ERR_INVALID_PARAMETER,
-		"空パスへの保存は ERR_INVALID_PARAMETER を返す"
+		"空パスへの保存は ERR_INVALID_PARAMETER を返す",
 	)
 	_check(
 		empty_writer.load_from_path("") == ERR_INVALID_PARAMETER,
-		"空パスからの読み込みは ERR_INVALID_PARAMETER を返す"
+		"空パスからの読み込みは ERR_INVALID_PARAMETER を返す",
 	)
 	_check(
 		empty_writer.bgm_enabled and empty_writer.sfx_enabled,
-		"空パス読み込み失敗時は既定値 (オン, オン) に戻る"
+		"空パス読み込み失敗時は既定値 (オン, オン) に戻る",
 	)
 
-	# 異常系: 存在しないファイル
 	remove_file_if_exists(test_path)
 	var missing_reader: RefCounted = AudioSettings.new(false, false)
 	_check(missing_reader.load_from_path(test_path) != OK, "存在しない設定ファイルの読み込みはエラーを返す")
 	_check(
 		missing_reader.bgm_enabled and missing_reader.sfx_enabled,
-		"存在しない設定ファイルの読み込み時は既定値 (オン, オン) に戻る"
+		"存在しない設定ファイルの読み込み時は既定値 (オン, オン) に戻る",
 	)
 
-	# 異常系: 対象セクションが無いファイル (エンジン ERROR を出さない有効な INI 構文)
 	_write_raw_text(test_path, "[other]\nvalue=1\n")
 	var other_section_reader: RefCounted = AudioSettings.new(false, false)
 	_check(
 		other_section_reader.load_from_path(test_path) == OK,
-		"audio セクションが無い設定ファイルはエラーなく読み込める"
+		"audio セクションが無い設定ファイルはエラーなく読み込める",
 	)
 	_check(
 		other_section_reader.bgm_enabled and other_section_reader.sfx_enabled,
-		"audio セクションが無い設定ファイルは既定値 (オン, オン) になる"
+		"audio セクションが無い設定ファイルは既定値 (オン, オン) になる",
 	)
 
-	# 異常系: 不正型 (sfx 側のみ不正型 / bgm 側のみ不正型) とキー欠落
 	_write_raw_text(test_path, "[audio]\nbgm_enabled=false\nsfx_enabled=\"bad\"\n")
 	var partial_type_reader: RefCounted = AudioSettings.new(true, false)
 	_check(partial_type_reader.load_from_path(test_path) == OK, "sfx 不正型混在ファイルは安全に読める")
 	_check(
 		(not partial_type_reader.bgm_enabled) and partial_type_reader.sfx_enabled,
-		"正常な bgm_enabled=false は保持し、不正型の sfx_enabled は既定値 true になる"
+		"正常な bgm_enabled=false は保持し、不正型の sfx_enabled は既定値 true になる",
 	)
 
 	_write_raw_text(test_path, "[audio]\nbgm_enabled=\"bad\"\nsfx_enabled=false\n")
@@ -715,7 +731,7 @@ func _check_audio_settings_persistence() -> void:
 	_check(bgm_type_reader.load_from_path(test_path) == OK, "bgm 不正型混在ファイルは安全に読める")
 	_check(
 		bgm_type_reader.bgm_enabled and (not bgm_type_reader.sfx_enabled),
-		"不正型の bgm_enabled は既定値 true になり、正常な sfx_enabled=false は保持する"
+		"不正型の bgm_enabled は既定値 true になり、正常な sfx_enabled=false は保持する",
 	)
 
 	_write_raw_text(test_path, "[audio]\nsfx_enabled=false\n")
@@ -723,7 +739,7 @@ func _check_audio_settings_persistence() -> void:
 	_check(missing_key_reader.load_from_path(test_path) == OK, "片方欠落ファイルは安全に読める")
 	_check(
 		missing_key_reader.bgm_enabled and (not missing_key_reader.sfx_enabled),
-		"欠落した bgm_enabled は既定値 true、存在する sfx_enabled=false は保持する"
+		"欠落した bgm_enabled は既定値 true、存在する sfx_enabled=false は保持する",
 	)
 
 	remove_file_if_exists(test_path)
@@ -738,23 +754,23 @@ func _check_audio_settings_bus_mute() -> void:
 	AudioSettings.apply_to_audio_server(false, true)
 	_check(
 		AudioServer.is_bus_mute(bgm_bus_index) and not AudioServer.is_bus_mute(sfx_bus_index),
-		"BGM オフ・効果音オンで BGM バスだけ消音になる"
+		"BGM オフ・効果音オンで BGM バスだけ消音になる",
 	)
 	AudioSettings.apply_to_audio_server(true, false)
 	_check(
 		(not AudioServer.is_bus_mute(bgm_bus_index)) and AudioServer.is_bus_mute(sfx_bus_index),
-		"BGM オン・効果音オフで SFX バスだけ消音になる"
+		"BGM オン・効果音オフで SFX バスだけ消音になる",
 	)
 	AudioSettings.apply_to_audio_server(false, false)
 	_check(
 		AudioServer.is_bus_mute(bgm_bus_index) and AudioServer.is_bus_mute(sfx_bus_index),
-		"両方オフで BGM・SFX バスとも消音になる"
+		"両方オフで BGM・SFX バスとも消音になる",
 	)
 	AudioSettings.apply_to_audio_server(true, true)
 	_check(
 		(not AudioServer.is_bus_mute(bgm_bus_index))
 		and (not AudioServer.is_bus_mute(sfx_bus_index)),
-		"両方オンで BGM・SFX バスとも消音解除になる"
+		"両方オンで BGM・SFX バスとも消音解除になる",
 	)
 
 
@@ -763,32 +779,30 @@ func _check_audio_manager_guards() -> void:
 	_check(AudioManagerScript.resolve(null) == null, "AudioManager.resolve(null) は null を返す")
 	_check(
 		not AudioManagerScript.play_button_sfx(null),
-		"AudioManager.play_button_sfx(null) は false を返す"
+		"AudioManager.play_button_sfx(null) は false を返す",
 	)
 	var unready_manager: AudioManagerScript = AudioManagerScript.new()
 	_check(
 		not unready_manager.play_bgm(AudioCatalog.BGM_TITLE),
-		"tree 追加前 (_bgm_player 未準備) の play_bgm は false を返す"
+		"tree 追加前 (_bgm_player 未準備) の play_bgm は false を返す",
 	)
 	_check(
 		not unready_manager.play_sfx(AudioCatalog.SFX_BUTTON),
-		"tree 追加前 (_sfx_players 未準備) の play_sfx は false を返す"
+		"tree 追加前 (_sfx_players 未準備) の play_sfx は false を返す",
 	)
 	unready_manager.free()
 
 
 ## scripts/dev/movie.gd のコマンドライン引数解釈と録画フレーム数計算の境界値を確認する
 func _check_movie_frame_calculations() -> void:
-	# 正常系: frames と fps の両方が正の整数
 	var valid_options: Dictionary = MovieScript.parse_movie_options(
 		PackedStringArray(["--frames=150", "--fps=30"])
 	)
 	_check(
 		int(valid_options.get("total_frames", -1)) == 150
 		and int(valid_options.get("fps", -1)) == 30,
-		"--frames=150 --fps=30 が正しく解釈される"
+		"--frames=150 --fps=30 が正しく解釈される",
 	)
-	# frames のみ不正 (fps は正常)・fps のみ不正 (frames は正常)・両方不正
 	for bad_option_args: PackedStringArray in [
 		PackedStringArray(["--fps=30"]),
 		PackedStringArray(["--frames=", "--fps=30"]),
@@ -806,17 +820,12 @@ func _check_movie_frame_calculations() -> void:
 	]:
 		_check(
 			MovieScript.parse_movie_options(bad_option_args).is_empty(),
-			"不正・欠落オプション %s は空辞書を返す" % str(bad_option_args)
+			"不正・欠落オプション %s は空辞書を返す" % str(bad_option_args),
 		)
-	# 解放待ちフレーム数の算出 (正の FPS と下限 0 の境界)
 	_check(MovieScript.calc_release_frames(30) == 10, "30 fps の解放待ちフレーム数が 10")
 	_check(MovieScript.calc_release_frames(60) == 17, "60 fps の解放待ちフレーム数が 17")
 	_check(MovieScript.calc_release_frames(0) == 3, "0 fps 下限の解放待ちフレーム数が 3")
-	# 最小必要フレーム数と通常録画フレーム数の境界値・正常値
-	_check(
-		MovieScript.calc_min_total_frames(10) == 13,
-		"release=10 の最小必要フレーム数が 13"
-	)
+	_check(MovieScript.calc_min_total_frames(10) == 13, "release=10 の最小必要フレーム数が 13")
 	_check(MovieScript.calc_record_frames(1, 10) == 0, "total=1 (予算不足) は 0 を返す")
 	_check(MovieScript.calc_record_frames(12, 10) == 0, "total=12 (境界未満) は 0 を返す")
 	_check(MovieScript.calc_record_frames(13, 10) == 1, "total=13 (境界) は 1 を返す")

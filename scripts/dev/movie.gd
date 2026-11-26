@@ -87,7 +87,7 @@ func _run() -> void:
 	)
 	var audio_handle: Dictionary = HeadlessCheck.prepare_audio_manager(self, settings_path)
 
-	var main: Control = MAIN_SCENE.instantiate()
+	var main: Node3D = MAIN_SCENE.instantiate()
 	root.add_child(main)
 	current_scene = main
 
