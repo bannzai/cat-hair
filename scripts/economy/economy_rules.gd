@@ -52,7 +52,7 @@ static func raw_stock_value(stocks: Array[HairStock]) -> int:
 ## 最初から毛が 0 本の部屋は 1.0、最初より毛が増えた部屋 (猫が落とす。issue #11) は 0.0
 static func cleanliness(remaining: int, initial: int) -> float:
 	if initial <= 0:
-		return 1.0 if remaining <= 0 else 0.0
+		return 0.0
 	return clampf(1.0 - float(maxi(0, remaining)) / float(initial), 0.0, 1.0)
 
 
