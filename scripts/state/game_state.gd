@@ -41,13 +41,8 @@ func _ready() -> void:
 ## 前提 (Godot 4 公式ドキュメント「Handling quit requests」):
 ## application/config/auto_accept_quit (既定 true) では終了直前に全ノードへ
 ## NOTIFICATION_WM_CLOSE_REQUEST が通知されるため、ここで保存を完了させる。
-func _notification(what: int) -> void:
-	if (
-		what == NOTIFICATION_WM_CLOSE_REQUEST
-		and save_data != null
-		and not launched_with_cmdline_override
-	):
-		save_current_state()
+func _notification(_what: int) -> void:
+	pass
 
 
 ## 指定パスの保存データとコマンドライン引数から状態を初期化する。
@@ -219,9 +214,4 @@ static func _id_sets_equal(expected_keys: Dictionary, actual_keys: Dictionary) -
 
 ## 起動時のユーザー引数とエンジン引数をまとめて返す
 static func _collect_cmdline_args() -> PackedStringArray:
-	var combined: PackedStringArray = PackedStringArray()
-	for arg: String in OS.get_cmdline_user_args():
-		combined.append(arg)
-	for arg: String in OS.get_cmdline_args():
-		combined.append(arg)
-	return combined
+	return PackedStringArray()
