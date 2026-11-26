@@ -11,9 +11,10 @@ const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 ## 毛を 1 本ずつ持って描くノードのスクリプト
 const HairFieldScript := preload("res://scripts/hair_field.gd")
 
-## HairField の色の系統 (HairColorGroup の値を添字にする) に対応する SurfaceHair の色。
-## SurfaceHair.STANDARD_COLORS と同じ並び (白・黒・三毛) で、selfcheck が一致を確かめる
-const HAIR_COLOR_BY_GROUP: Array[StringName] = SurfaceHairScript.STANDARD_COLORS
+## 上に物が重なり得る、床の高さの表面の種類 (物の真下に毛を置かない)
+const FLOOR_LIKE_SURFACE_TYPES: Array[StringName] = [
+	MansionLayoutScript.SURFACE_FLOOR, MansionLayoutScript.SURFACE_CARPET
+]
 ## 室内補助ライト (OmniLight3D) を置く部屋数の上限。
 ## 出典 (Godot 4 公式ドキュメント「OpenGL 3 / GL Compatibility レンダラーの制限」):
 ## GL Compatibility では 1 メッシュあたり同時適用できる Omni/Spot ライト数の既定上限が 8
@@ -163,7 +164,7 @@ func get_surface_def(surface_index: int) -> MansionLayout.SurfaceDef:
 func get_hair_color_id(hair_id: int) -> StringName:
 	if _hair_field == null or not _hair_field.has_hair(hair_id):
 		return &""
-	return HAIR_COLOR_BY_GROUP[
+	return SurfaceHairScript.STANDARD_COLORS[
 		HairFieldScript.classify_hair_color(_hair_field.get_hair_color(hair_id))
 	]
 
@@ -621,13 +622,13 @@ func _add_static_box(
 
 
 ## 表面ごと・色ごとの残り本数 (SurfaceHair) と同じ本数の毛を HairField に 1 本ずつ置く。
-## 床の表面では、同じ部屋の物の真下 (手が届かず見えない所) に毛を置かない
+## 床とカーペットの表面では、同じ部屋のほかの物の真下 (手が届かず見えない所) に毛を置かない
 func _build_hairs(layout: MansionLayout, progress: BuildingProgress) -> void:
 	var counts_by_surface: Array[PackedInt32Array] = []
 	for surface: MansionLayout.SurfaceDef in layout.surfaces:
 		var exclusions: Array[Dictionary] = []
-		if surface.surface_type == MansionLayoutScript.SURFACE_FLOOR:
-			exclusions = _object_footprints_in_room(layout, surface.room_id)
+		if surface.surface_type in FLOOR_LIKE_SURFACE_TYPES:
+			exclusions = _object_footprints_in_room(layout, surface)
 		_hair_field.add_oriented_surface(
 			String(surface.surface_id),
 			surface.frame(),
@@ -639,7 +640,7 @@ func _build_hairs(layout: MansionLayout, progress: BuildingProgress) -> void:
 		var surface_hair: SurfaceHair = (
 			progress.find_surface_hair(surface.surface_id) if progress != null else null
 		)
-		for color_id: StringName in HAIR_COLOR_BY_GROUP:
+		for color_id: StringName in SurfaceHairScript.STANDARD_COLORS:
 			group_counts.append(
 				surface_hair.count_for_color(color_id) if surface_hair != null else 0
 			)
@@ -647,13 +648,16 @@ func _build_hairs(layout: MansionLayout, progress: BuildingProgress) -> void:
 	_hair_field.populate_with_group_counts(counts_by_surface)
 
 
-## 指定した部屋に置いた物の床の上の占有範囲を、HairField の除外範囲の形で返す
+## 表面と同じ部屋に置いた物 (その表面自身の物を除く) の床の上の占有範囲を、HairField の除外範囲の形で返す
 static func _object_footprints_in_room(
-	layout: MansionLayout, room_id: StringName
+	layout: MansionLayout, surface: MansionLayout.SurfaceDef
 ) -> Array[Dictionary]:
 	var footprints: Array[Dictionary] = []
 	for obj: MansionLayout.ObjectDef in layout.objects:
-		if obj.room_id != room_id:
+		if (
+			obj.room_id != surface.room_id
+			or MansionBuilderScript.object_surface_id(obj.object_id) == surface.surface_id
+		):
 			continue
 		footprints.append({
 			"inverse": Transform3D(Basis(Vector3.UP, obj.rotation_y), obj.position).affine_inverse(),

@@ -478,7 +478,7 @@ func _check_object_surface_faces() -> void:
 	var all_faces_match: bool = true
 	for obj: MansionLayout.ObjectDef in layout.objects:
 		var surface: MansionLayout.SurfaceDef = layout.find_surface(
-			StringName("%s_surface" % String(obj.object_id))
+			MansionBuilderScript.object_surface_id(obj.object_id)
 		)
 		var face: Dictionary = MansionBuilderScript.object_surface_local_face(
 			obj.object_kind, obj.size
@@ -512,26 +512,29 @@ func _check_world_hairs_match_progress() -> void:
 		var group_counts: PackedInt32Array = HairFieldScript.count_surface_groups(
 			hair_field, surface_idx
 		)
-		for group: int in range(MansionWorldScript.HAIR_COLOR_BY_GROUP.size()):
+		for group: int in range(SurfaceHairScript.STANDARD_COLORS.size()):
 			if group_counts[group] != surface_hair.count_for_color(
-				MansionWorldScript.HAIR_COLOR_BY_GROUP[group]
+				SurfaceHairScript.STANDARD_COLORS[group]
 			):
 				counts_match = false
 	_check(counts_match, "既定屋敷の HairField の本数が面ごと・色ごとに SurfaceHair と一致する (計 12000)")
 	_check(
-		MansionWorldScript.HAIR_COLOR_BY_GROUP[HairFieldScript.HairColorGroup.WHITE]
+		SurfaceHairScript.STANDARD_COLORS[HairFieldScript.HairColorGroup.WHITE]
 		== SurfaceHairScript.COLOR_WHITE
-		and MansionWorldScript.HAIR_COLOR_BY_GROUP[HairFieldScript.HairColorGroup.BLACK]
+		and SurfaceHairScript.STANDARD_COLORS[HairFieldScript.HairColorGroup.BLACK]
 		== SurfaceHairScript.COLOR_BLACK
-		and MansionWorldScript.HAIR_COLOR_BY_GROUP[HairFieldScript.HairColorGroup.CALICO]
+		and SurfaceHairScript.STANDARD_COLORS[HairFieldScript.HairColorGroup.CALICO]
 		== SurfaceHairScript.COLOR_CALICO,
 		"HairField の色の系統と SurfaceHair の色が同じ並びで対応する",
 	)
-	_check(_floor_hairs_clear_of_objects(layout, hair_field), "床の毛が同じ部屋の物の真下に置かれない")
+	_check(
+		_floor_hairs_clear_of_objects(layout, hair_field),
+		"床とカーペットの毛が同じ部屋のほかの物の真下に置かれない",
+	)
 	var first_hair: int = hair_field.get_hair_id_at_slot(0, 0)
 	_check(
 		world.get_hair_color_id(first_hair)
-		== MansionWorldScript.HAIR_COLOR_BY_GROUP[
+		== SurfaceHairScript.STANDARD_COLORS[
 			HairFieldScript.classify_hair_color(hair_field.get_hair_color(first_hair))
 		]
 		and world.get_hair_color_id(-1) == &""
@@ -539,21 +542,38 @@ func _check_world_hairs_match_progress() -> void:
 		and world.get_surface_def(-1) == null,
 		"屋敷から毛の色 (SurfaceHair の色) と表面の定義を引け、無い毛・面は空と null",
 	)
+	# 1 部屋に物を 12 個置くと、内側の物がカーペットの上に重なる (mansion_builder.gd の RING_SHRINK_FACTOR)
+	var dense_tuning: MansionTuning = MansionTuningScript.new()
+	dense_tuning.room_count = 1
+	dense_tuning.object_count = 12
+	dense_tuning.hair_count = 3000
+	var dense_layout: MansionLayout = MansionBuilderScript.build_layout(dense_tuning)
+	world.rebuild(
+		dense_layout, MansionBuilderScript.build_initial_progress(dense_layout, dense_tuning)
+	)
+	_check(
+		_floor_hairs_clear_of_objects(dense_layout, world.get_hair_field())
+		and world.get_hair_field().get_remaining_count() == 3000,
+		"物を 12 個置いた部屋でも、床とカーペットの毛がほかの物の真下に無く、本数は 3000 本のまま",
+	)
 	world.free()
 
 
-## 床の表面の毛の根元が、同じ部屋の物の床の占有範囲の内側に 1 本も無いか
+## 床とカーペットの表面の毛の根元が、同じ部屋のほかの物の床の占有範囲の内側に 1 本も無いか
 func _floor_hairs_clear_of_objects(layout: MansionLayout, hair_field: Node3D) -> bool:
 	for surface_idx: int in range(layout.surfaces.size()):
 		var surface: MansionLayout.SurfaceDef = layout.surfaces[surface_idx]
-		if surface.surface_type != MansionLayoutScript.SURFACE_FLOOR:
+		if not surface.surface_type in MansionWorldScript.FLOOR_LIKE_SURFACE_TYPES:
 			continue
 		for slot: int in range(hair_field.get_surface_visible_instance_count(surface_idx)):
 			var root: Vector3 = hair_field.get_hair_transform(
 				hair_field.get_hair_id_at_slot(surface_idx, slot)
 			).origin
 			for obj: MansionLayout.ObjectDef in layout.objects:
-				if obj.room_id != surface.room_id:
+				if (
+					obj.room_id != surface.room_id
+					or MansionBuilderScript.object_surface_id(obj.object_id) == surface.surface_id
+				):
 					continue
 				var local: Vector3 = (
 					Transform3D(Basis(Vector3.UP, obj.rotation_y), obj.position).affine_inverse()

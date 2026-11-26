@@ -21,8 +21,6 @@ const MainScript := preload("res://scripts/main.gd")
 const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 ## 毛・加工品在庫データ型スクリプト (毛のままの形の定数を使う)
 const HairStockScript := preload("res://scripts/data/hair_stock.gd")
-## 毛をつまむ入力アクション
-const ACTION_PLUCK: StringName = HandController.ACTION_PLUCK
 
 ## 検証結果を記録する integration の SceneTree 参照
 var _checker: SceneTree = null
@@ -40,8 +38,10 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await suite._verify_release_midway_and_pluck(main, game_state)
 	await suite._verify_upgrades_change_pull(main, game_state)
 	await suite._verify_hold_plucks_and_capture_gate(main, game_state)
+	await suite._verify_occluded_aim(main, game_state)
+	await suite._verify_rare_hair_from_pluck(main, game_state)
 	main.hand.allow_uncaptured_pluck = false
-	Input.action_release(ACTION_PLUCK)
+	Input.action_release(HandController.ACTION_PLUCK)
 	await checker.process_frame
 
 
@@ -153,7 +153,7 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		"狙った床の毛をつまむ入力で、その表面の毛を 1 本つまむ",
 	)
 	if pulled_ids.is_empty():
-		Input.action_release(ACTION_PLUCK)
+		Input.action_release(HandController.ACTION_PLUCK)
 		return
 	_check(
 		is_equal_approx(
@@ -168,7 +168,7 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		and hand.get_hand_view().get_pull_progress() >= 0.5,
 		"引いている途中は進み具合が 0.5 以上 1 未満で、画面の手も同じだけ引いている",
 	)
-	Input.action_release(ACTION_PLUCK)
+	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
 	_check(
 		not hand.is_pulling()
@@ -192,7 +192,7 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		and game_state.get_total_remaining_hairs() == before_total,
 		"押したまま手の届く距離より遠くへ離れると、毛は抜けずに引くのをやめる",
 	)
-	Input.action_release(ACTION_PLUCK)
+	Input.action_release(HandController.ACTION_PLUCK)
 	if await HandAim.aim_at_floor_hair(_checker, main) != aimed_id:
 		_check(false, "離れた後に同じ床の毛を狙い直せる")
 		return
@@ -210,7 +210,7 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 	var before_color: int = surface_hair.count_for_color(plucked_color)
 	var plucked: int = hand.advance_pull(hand.get_pull_duration())
 	await _checker.process_frame
-	Input.action_release(ACTION_PLUCK)
+	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
 	_check(
 		plucked == 1 and not hair_field.has_hair(plucked_id),
@@ -277,7 +277,7 @@ func _verify_upgrades_change_pull(main: Node3D, game_state: Node) -> void:
 		hand.get_pulling_ids().size() == reachable.size() and reachable.size() >= 1,
 		"一度につまめる本数 2 段 (3 本) で、狙った点の近くの毛を最大 3 本まとめてつまむ",
 	)
-	Input.action_release(ACTION_PLUCK)
+	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
 	game_state.set_hand_upgrade_level(HandRulesScript.UPGRADE_DEXTERITY, 0)
 	game_state.set_hand_upgrade_level(HandRulesScript.UPGRADE_GRAB_COUNT, 0)
@@ -305,7 +305,7 @@ func _verify_hold_plucks_and_capture_gate(main: Node3D, game_state: Node) -> voi
 		game_state.get_total_remaining_hairs() == before_total - 1 and not hand.is_pulling(),
 		"押し続けると引く時間の後に 1 本抜け、押したままでは次の毛を引き始めない",
 	)
-	Input.action_release(ACTION_PLUCK)
+	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
 
 	hand.allow_uncaptured_pluck = false
@@ -314,9 +314,82 @@ func _verify_hold_plucks_and_capture_gate(main: Node3D, game_state: Node) -> voi
 		not hand.is_pulling() and game_state.get_total_remaining_hairs() == before_total - 1,
 		"マウスを捕捉していない時はつまむ入力で毛をつままない",
 	)
-	Input.action_release(ACTION_PLUCK)
+	Input.action_release(HandController.ACTION_PLUCK)
 	hand.allow_uncaptured_pluck = true
 	await _checker.process_frame
+
+
+## 毛の面より手前に衝突体がある時はつまめず、取り除くとまたつまめるか
+func _verify_occluded_aim(main: Node3D, game_state: Node) -> void:
+	var hand: HandController = main.hand
+	if await HandAim.aim_at_floor_hair(_checker, main) < 0:
+		_check(false, "遮りの検証で床の毛を狙える")
+		return
+	var camera: Camera3D = main.player.get_camera()
+	var target_point: Vector3 = hand.aim_target()["point"]
+	var blocker: StaticBody3D = StaticBody3D.new()
+	var shape: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.3, 0.3, 0.05)
+	shape.shape = box
+	blocker.add_child(shape)
+	main.add_child(blocker)
+	blocker.global_position = camera.global_position.lerp(target_point, 0.5)
+	await _checker.physics_frame
+	await _checker.physics_frame
+	var before_total: int = game_state.get_total_remaining_hairs()
+	await _press_pluck()
+	_check(
+		hand.aim_target().is_empty() and not hand.is_pulling()
+		and game_state.get_total_remaining_hairs() == before_total,
+		"毛の面より手前に衝突体があると、狙いが空になりつまむ入力で何も変わらない",
+	)
+	Input.action_release(HandController.ACTION_PLUCK)
+	blocker.queue_free()
+	await _checker.physics_frame
+	await _checker.physics_frame
+	_check(not hand.aim_target().is_empty(), "手前の衝突体を取り除くと、同じ毛をまた狙える")
+	await _checker.process_frame
+
+
+## 抜いた毛が珍しい毛 (猫のヒゲ) になる乱数で抜くと、珍しい毛の在庫に入り、「珍しい毛: 猫のヒゲ」が出るか。
+## 猫のヒゲは図鑑の検証で既に図鑑に載っているので「(図鑑に載った)」は出ない
+func _verify_rare_hair_from_pluck(main: Node3D, game_state: Node) -> void:
+	var hand: HandController = main.hand
+	# 最初の乱数が猫のヒゲの区間 [0, 1/400) に入るシードを探す (どの色の毛でも猫のヒゲになる)
+	var whisker_seed: int = -1
+	var probe: RandomNumberGenerator = RandomNumberGenerator.new()
+	for candidate: int in range(1, 200000):
+		probe.seed = candidate
+		if probe.randf() < 1.0 / 400.0:
+			whisker_seed = candidate
+			break
+	if whisker_seed < 0 or await HandAim.aim_at_floor_hair(_checker, main) < 0:
+		_check(false, "珍しい毛の検証でシードと床の毛が見つかる")
+		return
+	hand.set_rng_seed(whisker_seed)
+	var before_whisker: int = _rare_stock_count(game_state, HandRulesScript.RARE_WHISKER)
+	await _press_pluck()
+	var plucked: int = hand.advance_pull(hand.get_pull_duration())
+	Input.action_release(HandController.ACTION_PLUCK)
+	await _checker.process_frame
+	_check(
+		plucked == 1
+		and _rare_stock_count(game_state, HandRulesScript.RARE_WHISKER) == before_whisker + 1
+		and main.get_pluck_popup_text().contains("珍しい毛: 猫のヒゲ")
+		and not main.get_pluck_popup_text().contains("(図鑑に載った)"),
+		"珍しい毛を引き当てて抜くと猫のヒゲの在庫が 1 増え、「珍しい毛: 猫のヒゲ」が出る (図鑑に載り済みなので新しくは載らない)",
+	)
+	hand.set_rng_seed(Time.get_ticks_usec())
+
+
+## 毛のままの在庫のうち、指定した珍しい毛の本数を返す
+static func _rare_stock_count(game_state: Node, rare_hair_id: StringName) -> int:
+	var total: int = 0
+	for stock: HairStock in game_state.save_data.building_progress.hair_stocks:
+		if stock.rare_hair_id == rare_hair_id:
+			total += stock.count
+	return total
 
 
 ## つまむ入力を押し、HandController の _process がその押下を処理した直後まで進める。
@@ -324,14 +397,14 @@ func _verify_hold_plucks_and_capture_gate(main: Node3D, game_state: Node) -> voi
 ## もう 1 回 process_frame を待つと、その間の _process が押下を見る
 func _press_pluck() -> void:
 	await _checker.process_frame
-	Input.action_press(ACTION_PLUCK)
+	Input.action_press(HandController.ACTION_PLUCK)
 	await _checker.process_frame
 
 
 ## つまむ入力を指定フレーム数だけ押し続けてから離す
 func _hold_pluck(frame_count: int) -> void:
-	Input.action_press(ACTION_PLUCK)
+	Input.action_press(HandController.ACTION_PLUCK)
 	for _step: int in range(frame_count):
 		await _checker.process_frame
-	Input.action_release(ACTION_PLUCK)
+	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame

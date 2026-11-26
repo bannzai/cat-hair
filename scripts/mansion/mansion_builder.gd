@@ -315,7 +315,7 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		layout.objects.append(obj)
 
 		var surface: MansionLayout.SurfaceDef = MansionLayoutScript.SurfaceDef.new()
-		surface.surface_id = StringName("%s_surface" % String(obj.object_id))
+		surface.surface_id = object_surface_id(obj.object_id)
 		surface.room_id = room.room_id
 		surface.surface_type = obj.surface_type
 		var local_face: Dictionary = object_surface_local_face(obj.object_kind, obj.size)
@@ -514,6 +514,11 @@ static func _split_by_color(surface_total: int, surface_index: int) -> Dictionar
 ## 部屋 id から対応する住人 id を生成する (進行生成とレイアウト照合の単一情報源)
 static func resident_id_for_room(room_id: StringName) -> StringName:
 	return StringName("resident_%s" % String(room_id))
+
+
+## 物の毛が乗る表面の id を返す (物の id から決まる)
+static func object_surface_id(object_id: StringName) -> StringName:
+	return StringName("%s_surface" % String(object_id))
 
 
 ## 物の種別と大きさから、毛が乗る面を物の局所座標 (底面中心が原点・回転前) で返す。

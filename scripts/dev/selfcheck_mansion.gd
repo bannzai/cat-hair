@@ -50,7 +50,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_mansion_builder_boundaries()
 	suite._check_tuning_equals_and_cmdline_args()
 	suite._check_dev_tuning_panel_preserves_unaligned_values()
-	suite._check_visual_hair_and_light_limits()
+	suite._check_world_hair_and_light_limits()
 	suite._check_player_mouse_predicates()
 	suite._check_save_and_load_roundtrip()
 	suite._check_save_missing_corrupted_and_clamping()
@@ -406,7 +406,7 @@ func _check_dev_tuning_panel_preserves_unaligned_values() -> void:
 
 
 ## MansionWorld の毛の本数の境界と室内ライト数上限の境界を検証する
-func _check_visual_hair_and_light_limits() -> void:
+func _check_world_hair_and_light_limits() -> void:
 	var world: MansionWorld = MansionWorldScript.new()
 	_rebuild_world_case(world, 1, 0, 100)
 	_check(world.get_hair_field().get_remaining_count() == 100, "1 面 100 本の屋敷で毛が 100 本置かれる")

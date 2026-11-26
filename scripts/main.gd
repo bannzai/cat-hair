@@ -26,7 +26,8 @@ const SETTINGS_BUTTON_PATH: String = "UILayer/UI/TitleOverlay/Layout/SettingsBut
 const SETTINGS_PANEL_PATH: String = "UILayer/UI/AudioSettingsPanel"
 ## 手で毛を取る時のルールの計算 (珍しい毛の名前)
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
-## 毛を抜いた時に画面中央に出す「+N 本」の表示を残す秒数
+## 毛を抜いた時に画面中央に出す「+N 本」の表示を残す秒数。床の毛を 1 本抜く時間 (0.45 秒) より長く、
+## 続けて抜いた時に次の表示で上書きされるまで読める長さにした仮の値
 const PLUCK_POPUP_SECONDS: float = 1.5
 ## 画面中央の照準の線の長さと太さ (px)。線の交点が画面のちょうど中央 (狙いの光線の向き) に来る
 const CROSSHAIR_LINE_SIZE: Vector2 = Vector2(16.0, 2.0)
