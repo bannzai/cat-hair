@@ -110,6 +110,11 @@ func get_stretched_hair_endpoints() -> PackedVector3Array:
 	return PackedVector3Array([top, _stretched_hair_root(top)])
 
 
+## 伸びた毛のメッシュ (高さ 1 の円柱) の今のワールドの transform
+func get_stretched_hair_transform() -> Transform3D:
+	return _stretched_hair.global_transform
+
+
 ## 指先の位置から、伸びた毛の床側の端の位置を返す
 func _stretched_hair_root(top: Vector3) -> Vector3:
 	return Vector3(
@@ -141,7 +146,7 @@ func _update_stretched_hair() -> void:
 
 ## 手のひら・指・親指・袖・伸びた毛のノードを生成して子に置く
 func _build_hand() -> void:
-	var skin: StandardMaterial3D = _make_material(SKIN_COLOR, 0.55)
+	var skin: StandardMaterial3D = make_material(SKIN_COLOR, 0.55)
 
 	var palm_mesh: BoxMesh = BoxMesh.new()
 	palm_mesh.size = PALM_SIZE_M
@@ -176,7 +181,7 @@ func _build_hand() -> void:
 		self,
 		"Sleeve",
 		sleeve_mesh,
-		_make_material(SLEEVE_COLOR, 0.95),
+		make_material(SLEEVE_COLOR, 0.95),
 		Vector3(0.0, 0.0, SLEEVE_LENGTH_M * 0.5 + 0.01),
 		Vector3(PI * 0.5, 0.0, 0.0),
 	)
@@ -190,7 +195,7 @@ func _build_hand() -> void:
 	_stretched_hair = MeshInstance3D.new()
 	_stretched_hair.name = "StretchedHair"
 	_stretched_hair.mesh = hair_mesh
-	_stretched_hair.material_override = _make_material(STRETCHED_HAIR_COLOR, 0.6)
+	_stretched_hair.material_override = make_material(STRETCHED_HAIR_COLOR, 0.6)
 	_stretched_hair.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_stretched_hair.top_level = true
 	add_child(_stretched_hair)
@@ -231,8 +236,8 @@ func _add_mesh(
 	parent_node.add_child(mesh_instance)
 
 
-## 指定色と粗さの StandardMaterial3D を生成する
-static func _make_material(albedo_color: Color, roughness_value: float) -> StandardMaterial3D:
+## 指定色と粗さの StandardMaterial3D を生成する (見た目の試作の部屋・手で共通に使う)
+static func make_material(albedo_color: Color, roughness_value: float) -> StandardMaterial3D:
 	var surface_material: StandardMaterial3D = StandardMaterial3D.new()
 	surface_material.albedo_color = albedo_color
 	surface_material.roughness = roughness_value

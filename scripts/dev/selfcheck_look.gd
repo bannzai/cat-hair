@@ -28,6 +28,8 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_prototype_environment()
 	suite._check_apply_to_first_room_only()
 	suite._check_automation_props()
+	suite._check_apply_edges()
+	suite._check_textured_material()
 	suite._check_hand_pose()
 	suite._check_hud_samples()
 
@@ -161,8 +163,40 @@ func _check_automation_props() -> void:
 	var layout: MansionLayout = MansionBuilderScript.build_layout(tuning)
 	var progress: BuildingProgress = MansionBuilderScript.build_initial_progress(layout, tuning)
 	look_room.apply(layout, progress, null)
+	var hair_field: Node3D = look_room.get_hair_field()
+	var origins: Array[Vector3] = []
+	for hair_id: int in range(look_room.get_placed_hair_count()):
+		origins.append(hair_field.get_hair_transform(hair_id).origin)
 	var before: int = look_room.get_visual_hair_count()
 	var removed: int = look_room.show_automation_props()
+	# 帯の外の毛 (家具の上・どの帯の Z 幅にも入らない・走り始めより壁側) が 1 本も消えていないことを、
+	# ROBOT_LANES と部屋の寸法から帯を求め直して確かめる
+	var room: MansionLayout.RoomDef = layout.rooms[0]
+	var lane_start_x: float = (
+		room.center.x - room.size.x * 0.5 + LookPrototypeRoomScript.ROBOT_LANE_START_MARGIN_M
+	)
+	var kept_outside_lanes: bool = true
+	var outside_lane_count: int = 0
+	for hair_id: int in range(origins.size()):
+		var origin: Vector3 = origins[hair_id]
+		var near_lane: bool = false
+		for lane: Dictionary in LookPrototypeRoomScript.ROBOT_LANES:
+			if (
+				absf(origin.z - (room.center.z + float(lane["rz"]) * room.size.z))
+				<= LookPrototypeRoomScript.ROBOT_RADIUS_M
+			):
+				near_lane = true
+		if (
+			origin.y > LookPrototypeRoomScript.ROBOT_CLEAR_MAX_Y_M
+			or not near_lane
+			or origin.x < lane_start_x
+		):
+			outside_lane_count += 1
+			kept_outside_lanes = kept_outside_lanes and hair_field.has_hair(hair_id)
+	_check(
+		outside_lane_count > 0 and kept_outside_lanes,
+		"帯の外の毛 %d 本 (家具の上・帯の Z 幅の外・走り始めより壁側) は 1 本も消えない" % outside_lane_count,
+	)
 	_check(
 		removed > 0
 		and look_room.get_visual_hair_count() == before - removed
@@ -176,6 +210,81 @@ func _check_automation_props() -> void:
 		"2 回置いても掃除ロボットは同じ台数で、消えた帯の毛は増えも減りもしない",
 	)
 	look_room.free()
+
+
+## 描く毛の上限・部屋の無いレイアウト・進行の無い時・窓を付ける壁が無い時と西の壁に付ける時の重ね方を検証する
+func _check_apply_edges() -> void:
+	var look_room: LookPrototypeRoom = LookPrototypeRoomScript.new()
+	var tuning: MansionTuning = MansionTuningScript.new()
+	tuning.room_count = 1
+	tuning.object_count = 4
+	# 1 部屋の屋敷で、部屋の毛が描く毛の上限を超える本数
+	tuning.hair_count = LookPrototypeRoomScript.VISUAL_HAIR_CAP + 5000
+	var layout: MansionLayout = MansionBuilderScript.build_layout(tuning)
+	var progress: BuildingProgress = MansionBuilderScript.build_initial_progress(layout, tuning)
+	look_room.apply(layout, progress, null)
+	_check(
+		look_room.get_visual_hair_count() == LookPrototypeRoomScript.VISUAL_HAIR_CAP,
+		"部屋で数えている毛が上限を超える時は上限の本数だけ描く (%d)" % look_room.get_visual_hair_count(),
+	)
+
+	var room: MansionLayout.RoomDef = layout.rooms[0]
+	var window: Node3D = look_room.get_window()
+	_check(
+		window != null
+		and LookPrototypeRoomScript.window_wall_side(room) == &"west"
+		and is_equal_approx(
+			window.position.x,
+			room.center.x - room.size.x * 0.5 + MansionWorldScript.WALL_THICKNESS_M,
+		)
+		and window.basis.z.is_equal_approx(Vector3.LEFT),
+		"西の壁にドアが無い時は、窓を西の壁の内側の面に部屋の内側へ向けて付ける",
+	)
+
+	look_room.apply(layout, null, null)
+	_check(
+		look_room.get_target_room_id() == room.room_id
+		and look_room.get_hair_field() == null
+		and look_room.get_visual_hair_count() == 0,
+		"進行が無い時は部屋を重ねるが毛は描かない",
+	)
+
+	room.open_west = true
+	room.open_south = true
+	room.open_east = true
+	room.open_north = true
+	look_room.apply(layout, progress, null)
+	_check(look_room.get_window() == null, "4 面ともドアの部屋には窓を付けない")
+
+	look_room.apply(MansionLayoutScript.new(), progress, null)
+	_check(
+		look_room.get_target_room_id() == &"" and look_room.get_child_count() == 0,
+		"部屋の無いレイアウトには何も重ねない",
+	)
+	look_room.free()
+
+
+## 材質の凹凸は、高さの画像があり強さが正の時だけ付くことを検証する
+func _check_textured_material() -> void:
+	var height: Image = Image.create(4, 4, false, Image.FORMAT_RGBA8)
+	var with_both: StandardMaterial3D = LookPrototypeRoomScript._make_textured_material(
+		Color.WHITE, 0.5, null, height, 1.0, 1.0
+	)
+	var zero_strength: StandardMaterial3D = LookPrototypeRoomScript._make_textured_material(
+		Color.WHITE, 0.5, null, height, 0.0, 1.0
+	)
+	var no_height: StandardMaterial3D = LookPrototypeRoomScript._make_textured_material(
+		Color.WHITE, 0.5, null, null, 1.0, 1.0
+	)
+	_check(
+		with_both.normal_enabled
+		and with_both.normal_texture != null
+		and not zero_strength.normal_enabled
+		and not no_height.normal_enabled
+		and with_both.uv1_triplanar
+		and with_both.uv1_scale.is_equal_approx(Vector3.ONE),
+		"凹凸は高さの画像があり強さが正の時だけ付き、テクスチャは繰り返しの長さ 1 m で 3 方向から投影する",
+	)
 
 
 ## 手の構図の切り替えで、伸びた毛が毛をつまんでいる間だけ見えることを検証する

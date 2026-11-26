@@ -43,7 +43,7 @@ const WINDOW_SIZE_M: Vector2 = Vector2(1.5, 1.6)
 const WINDOW_CENTER_HEIGHT_M: float = 1.6
 ## 窓の外の昼の光の色。曇りの日の昼の空のやや青い白
 const DAYLIGHT_COLOR: Color = Color(0.86, 0.92, 1.0)
-## 窓から差す光の強さ。部屋の天井の灯り (MansionWorld.ROOM_LIGHT_ENERGY = 1.6) より強くし、
+## 窓から差す光の強さ。部屋の天井の灯り (MansionWorld.ROOM_LIGHT_ENERGY) より強くし、
 ## 窓の側から影が落ちる向きを主にする値
 const DAYLIGHT_ENERGY: float = 7.0
 ## 窓から差す光の到達距離 (部屋の幅に対する倍率)。反対の壁まで届く倍率
@@ -52,7 +52,7 @@ const DAYLIGHT_RANGE_RATIO: float = 1.6
 const DAYLIGHT_SPOT_ANGLE_DEG: float = 55.0
 ## 窓から差す光を下へ傾ける角度 (rad)。昼過ぎの日差しが床に斜めに落ちる角度 (約 35 度)
 const DAYLIGHT_TILT_RAD: float = 0.6
-## 試作の部屋の環境光の強さ。既定 (main.tscn の 0.78) より下げ、窓と灯りの影が見える値
+## 試作の部屋の環境光の強さ。既定 (main.tscn の WorldEnvironment) より下げ、窓と灯りの影が見える値 (CI の撮影で影が見えることを目視した)
 const PROTOTYPE_AMBIENT_ENERGY: float = 0.45
 ## 試作の部屋の露出。環境光を下げた分を戻し、暗くなりすぎないための値
 const PROTOTYPE_EXPOSURE: float = 1.25
@@ -224,6 +224,16 @@ func get_placed_hair_count() -> int:
 	return _placed_hair_count
 
 
+## 試作の部屋に 1 本ずつ描いている毛のノード (apply の前と、毛を描かなかった時は null。検証から毛の位置を読むため)
+func get_hair_field() -> Node3D:
+	return _hair_field
+
+
+## 窓のノード (窓を付けなかった時は null)
+func get_window() -> Node3D:
+	return _content_root.get_node_or_null("Window") as Node3D if _content_root != null else null
+
+
 ## 置いた掃除ロボットの台数
 func get_robot_count() -> int:
 	if _robots_root == null:
@@ -364,12 +374,12 @@ func _add_window_and_daylight() -> void:
 		&"south": Vector3.FORWARD,
 		&"north": Vector3.BACK,
 	}[side]
-	var half_extent: float = (
-		_room.size.x * 0.5 if side == &"west" or side == &"east" else _room.size.z * 0.5
-	)
 	var wall_face: Vector3 = (
 		_room.center
-		- inward * (half_extent - MansionWorldScript.WALL_THICKNESS_M)
+		- inward * (
+			(_room.size.x if side == &"west" or side == &"east" else _room.size.z) * 0.5
+			- MansionWorldScript.WALL_THICKNESS_M
+		)
 		+ Vector3(0.0, WINDOW_CENTER_HEIGHT_M, 0.0)
 	)
 	var window_root: Node3D = Node3D.new()
@@ -385,10 +395,9 @@ func _add_window_and_daylight() -> void:
 	daylight.spot_angle = DAYLIGHT_SPOT_ANGLE_DEG
 	daylight.shadow_enabled = true
 	# 窓の面より 5 cm 内側から、部屋の内側へ向けて下へ傾ける (SpotLight3D は -Z を照らす)
-	var light_position: Vector3 = wall_face + inward * 0.05
 	daylight.transform = Transform3D(
 		Basis.looking_at(inward * cos(DAYLIGHT_TILT_RAD) + Vector3.DOWN * sin(DAYLIGHT_TILT_RAD)),
-		light_position,
+		wall_face + inward * 0.05,
 	)
 	_content_root.add_child(daylight)
 
@@ -473,7 +482,9 @@ func _add_hair_field(layout: MansionLayout, progress: BuildingProgress) -> void:
 
 ## MansionWorld が描いた仮の毛 (細長い箱) のうち、試作の部屋の中にあるものを床の下へ移して見えなくする。
 ## 試作の部屋の毛は _add_hair_field の 1 本ずつの毛で描くため。MansionWorld の毛の描画のコードは #9 が書き換えるため変えず、
-## 描画済みの MultiMesh の位置だけを動かす。headless では MultiMesh の位置を読めない (既定値が返る) ため何もしない
+## 描画済みの MultiMesh の位置だけを動かす。headless では何もしない (MultiMesh.get_instance_transform が headless の
+## Dummy レンダラで既定値を返すことは、scripts/hair_field.gd の _create_surface_bucket のコメントの記述による。
+## この PR では確かめていない)
 func _hide_world_hairs_in_room(world: MansionWorld) -> void:
 	if world == null or DisplayServer.get_name() == "headless":
 		return
@@ -520,8 +531,7 @@ func _add_robot(parent_node: Node3D, robot_name: String, floor_position: Vector3
 	robot.position = floor_position
 	parent_node.add_child(robot)
 	# 本体は艶を抑えた濃い灰色、上蓋は明るい灰色 (実在の製品の配色と意匠を避けた無地)
-	var body: StandardMaterial3D = _make_material(Color(0.15, 0.15, 0.16), 0.55)
-	var lid: StandardMaterial3D = _make_material(Color(0.36, 0.37, 0.38), 0.45)
+	var body: StandardMaterial3D = FirstPersonHandScript.make_material(Color(0.15, 0.15, 0.16), 0.55)
 	_add_cylinder(
 		robot,
 		"Body",
@@ -536,7 +546,7 @@ func _add_robot(parent_node: Node3D, robot_name: String, floor_position: Vector3
 		ROBOT_RADIUS_M * 0.88,
 		ROBOT_HEIGHT_M * 0.2,
 		Vector3(0.0, ROBOT_HEIGHT_M * 0.9, 0.0),
-		lid,
+		FirstPersonHandScript.make_material(Color(0.36, 0.37, 0.38), 0.45),
 	)
 	_add_cylinder(
 		robot,
@@ -557,18 +567,17 @@ func _add_robot(parent_node: Node3D, robot_name: String, floor_position: Vector3
 
 ## 掃除ロボットが走り始めた壁際に、形だけの充電台を置く
 func _add_dock(parent_node: Node3D) -> void:
-	var half_width: float = _room.size.x * 0.5
 	# 充電台は幅 32 cm・高さ 12 cm・奥行 14 cm (家庭用の標準)。帯の始まりの壁 (-X) に付ける
 	_add_box(
 		parent_node,
 		"Dock",
 		Vector3(
-			_room.center.x - half_width + MansionWorldScript.WALL_THICKNESS_M + 0.07,
+			_room.center.x - _room.size.x * 0.5 + MansionWorldScript.WALL_THICKNESS_M + 0.07,
 			0.06,
 			_room.center.z + float(ROBOT_LANES[1]["rz"]) * _room.size.z,
 		),
 		Vector3(0.14, 0.12, 0.32),
-		_make_material(Color(0.18, 0.18, 0.19), 0.6),
+		FirstPersonHandScript.make_material(Color(0.18, 0.18, 0.19), 0.6),
 	)
 
 
@@ -615,6 +624,8 @@ func _add_box(
 func _ensure_materials() -> void:
 	if not _materials.is_empty():
 		return
+	# ノイズの周波数は、1 画素あたりの変化の速さ。0.32 は毛足の細かい凹凸 (数画素で変わる)、0.12 は編み目や布の
+	# 大きなむら (10 画素前後で変わる) に見える値。種はテクスチャごとに違う模様にするための任意の値
 	var wood_height: Image = _make_wood_height_image()
 	var fine_noise: Image = _make_noise_image(0.32, 7)
 	var coarse_noise: Image = _make_noise_image(0.12, 11)
@@ -627,12 +638,14 @@ func _ensure_materials() -> void:
 	_materials[&"furniture"] = _make_textured_material(
 		Color(0.34, 0.21, 0.13), 0.5, wood_height, wood_height, 0.6, FLOOR_TEXTURE_REPEAT_M
 	)
-	_materials[&"dark_wood"] = _make_material(Color(0.22, 0.14, 0.09), 0.55)
+	# 濃い木 (巾木・窓枠・ドア枠): 床より暗くして、床と壁の境目と枠の輪郭が見える色
+	_materials[&"dark_wood"] = FirstPersonHandScript.make_material(Color(0.22, 0.14, 0.09), 0.55)
 	# 壁: くすんだ緑灰の壁紙 (縦の細い縞)。窓の光の色を受けて写実寄りに見える彩度の低い色
 	_materials[&"wall"] = _make_textured_material(
 		Color(0.52, 0.56, 0.50), 0.9, _make_wallpaper_image(), null, 0.0, WALLPAPER_TEXTURE_REPEAT_M
 	)
-	_materials[&"ceiling"] = _make_material(Color(0.82, 0.81, 0.78), 0.95)
+	# 天井: 漆喰のわずかに暖かい白。灯りを照り返さないよう粗さを高くする
+	_materials[&"ceiling"] = FirstPersonHandScript.make_material(Color(0.82, 0.81, 0.78), 0.95)
 	# カーペット: 深い臙脂の毛足。細かい凹凸と、毛足の明暗のむら
 	_materials[&"carpet"] = _make_textured_material(
 		Color(0.42, 0.10, 0.11), 0.98, fine_noise, fine_noise, 2.5, FABRIC_TEXTURE_REPEAT_M
@@ -655,13 +668,14 @@ func _ensure_materials() -> void:
 		Color(0.08, 0.085, 0.10), 0.9, fine_noise, fine_noise, 0.8, FABRIC_TEXTURE_REPEAT_M
 	)
 	# 金属: ハンガーラックの柱。鏡面の艶は避け、つや消しの鉄にする
-	var metal: StandardMaterial3D = _make_material(Color(0.40, 0.40, 0.42), 0.6)
+	var metal: StandardMaterial3D = FirstPersonHandScript.make_material(Color(0.40, 0.40, 0.42), 0.6)
 	metal.metallic = 0.6
 	_materials[&"metal"] = metal
 
 
 ## 木の床板の高さの画像 (明るいほど高い)。4 枚の板・板ごとの明るさの差・木目の縞・継ぎ目の溝を描く
 static func _make_wood_height_image() -> Image:
+	# 木目の縞の揺らぎ。0.06 は板 1 枚 (32 画素) の中でゆっくり曲がる周波数。種は任意
 	var grain: Image = _make_noise_image(0.06, 3)
 	var image: Image = Image.create(WOOD_TEXTURE_SIZE, WOOD_TEXTURE_SIZE, false, TEXTURE_IMAGE_FORMAT)
 	for y: int in range(WOOD_TEXTURE_SIZE):
@@ -685,6 +699,7 @@ static func _make_wood_height_image() -> Image:
 
 ## 縦の細い縞の壁紙の明るさの画像
 static func _make_wallpaper_image() -> Image:
+	# 壁紙の紙の細かいむら。0.2 は数画素で変わる周波数。種は任意
 	var noise: Image = _make_noise_image(0.2, 5)
 	var image: Image = Image.create(WOOD_TEXTURE_SIZE, WOOD_TEXTURE_SIZE, false, TEXTURE_IMAGE_FORMAT)
 	for y: int in range(WOOD_TEXTURE_SIZE):
@@ -717,7 +732,9 @@ static func _make_textured_material(
 	normal_strength: float,
 	repeat_m: float,
 ) -> StandardMaterial3D:
-	var surface_material: StandardMaterial3D = _make_material(albedo_color, roughness_value)
+	var surface_material: StandardMaterial3D = FirstPersonHandScript.make_material(
+		albedo_color, roughness_value
+	)
 	surface_material.uv1_triplanar = true
 	surface_material.uv1_world_triplanar = true
 	surface_material.uv1_scale = Vector3.ONE / repeat_m
@@ -734,10 +751,3 @@ static func _make_textured_material(
 		surface_material.normal_texture = ImageTexture.create_from_image(normal)
 	return surface_material
 
-
-## 指定色と粗さの StandardMaterial3D を生成する
-static func _make_material(albedo_color: Color, roughness_value: float) -> StandardMaterial3D:
-	var surface_material: StandardMaterial3D = StandardMaterial3D.new()
-	surface_material.albedo_color = albedo_color
-	surface_material.roughness = roughness_value
-	return surface_material
