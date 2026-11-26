@@ -6,7 +6,7 @@ extends RefCounted
 
 const SaveDataScript := preload("res://scripts/data/save_data.gd")
 
-## 既定の保存先パス
+## 既定の保存先パス (Godot のユーザーデータ領域 user:// 直下の単一 JSON)
 const DEFAULT_SAVE_PATH: String = "user://save_data.json"
 
 
@@ -35,8 +35,7 @@ static func load_from_path(path: String = DEFAULT_SAVE_PATH) -> SaveData:
 	if text.strip_edges().is_empty():
 		return null
 	var json: JSON = JSON.new()
-	var parse_err: Error = json.parse(text)
-	if parse_err != OK:
+	if json.parse(text) != OK:
 		return null
 	return SaveDataScript.from_dict(json.data)
 
@@ -50,5 +49,4 @@ static func has_save_file(path: String = DEFAULT_SAVE_PATH) -> bool:
 static func delete_save_file(path: String = DEFAULT_SAVE_PATH) -> Error:
 	if not FileAccess.file_exists(path):
 		return OK
-	var abs_path: String = ProjectSettings.globalize_path(path)
-	return DirAccess.remove_absolute(abs_path)
+	return DirAccess.remove_absolute(ProjectSettings.globalize_path(path))

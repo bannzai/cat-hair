@@ -3,25 +3,54 @@ extends Resource
 ## 屋敷の作りを決める開発者向けの調整値。
 ## 屋敷の組み立てはこの値を入力にし、セーブデータとコマンドライン引数から復元できる。
 
+## 境界テスト要件 (毛 0 本で組み立て可能) を満たす最小値
 const MIN_HAIR_COUNT: int = 0
+## PROJECT.md の「数百万本」を余裕をもって試せる上限 (1,000 万本)
 const MAX_HAIR_COUNT: int = 10000000
+## 既定 4 部屋・物 16 個に 3 色を偏り付きで配りつつ 3 桁区切り表示が確認しやすい初期値
 const DEFAULT_HAIR_COUNT: int = 12000
 
+## 探し物を置かない境界テストを許す最小値
 const MIN_FOUND_ITEM_COUNT: int = 0
+## 最大 16 部屋に対して各部屋 10 個超まで試験配置できる上限
 const MAX_FOUND_ITEM_COUNT: int = 200
+## 既定 4 部屋に対して 1 部屋あたり 1〜2 個の探し物が入る初期値
 const DEFAULT_FOUND_ITEM_COUNT: int = 5
 
+## ドア幅 1.8m と左右の壁・家具の配置余白を確保できる最小部屋幅 (m)
 const MIN_ROOM_SIZE_M: float = 4.0
+## 一人称カメラの遠平面 120m 内に最大 4x4 部屋が収まる 1 部屋幅の上限 (m)
 const MAX_ROOM_SIZE_M: float = 16.0
+## 家具 4 個前後を置いても中央のカーペットと通路が確保できる標準部屋幅 (m)
 const DEFAULT_ROOM_SIZE_M: float = 6.0
 
+## 床表面のみで屋敷を組み立てる境界テストを許す最小値
 const MIN_OBJECT_COUNT: int = 0
+## 最大 16 部屋に 1 部屋あたり十数個まで家具を試験配置できる上限
 const MAX_OBJECT_COUNT: int = 200
+## 既定 4 部屋に 1 部屋あたり 4 個の家具・布を均等配置できる初期値
 const DEFAULT_OBJECT_COUNT: int = 16
 
+## 屋敷として成立する最小部屋数 (境界要件: 部屋 1 つ)
 const MIN_ROOM_COUNT: int = 1
+## 4x4 グリッドの 1 階構成として移動・描画負荷を抑えられる上限
 const MAX_ROOM_COUNT: int = 16
+## 2x2 グリッドで複数部屋のドア開口と隣室の見通しを確認できる初期値
 const DEFAULT_ROOM_COUNT: int = 4
+
+## コマンドライン引数のプレフィックス定義 (単一情報源)
+const ARG_HAIR_COUNT: String = "--hair-count="
+const ARG_FOUND_ITEM_COUNT: String = "--found-item-count="
+const ARG_ROOM_SIZE: String = "--room-size="
+const ARG_OBJECT_COUNT: String = "--object-count="
+const ARG_ROOM_COUNT: String = "--room-count="
+const CMDLINE_ARG_PREFIXES: Array[String] = [
+	ARG_HAIR_COUNT,
+	ARG_FOUND_ITEM_COUNT,
+	ARG_ROOM_SIZE,
+	ARG_OBJECT_COUNT,
+	ARG_ROOM_COUNT,
+]
 
 ## 屋敷全体の毛の総本数
 @export var hair_count: int = DEFAULT_HAIR_COUNT
@@ -47,96 +76,93 @@ func clamped() -> MansionTuning:
 
 
 ## 別の調整値とすべての値が一致するか
-func equals(other: MansionTuning) -> bool:
-	if other == null:
+func equals(other_tuning: MansionTuning) -> bool:
+	if other_tuning == null:
 		return false
 	return (
-		hair_count == other.hair_count
-		and found_item_count == other.found_item_count
-		and is_equal_approx(room_size_m, other.room_size_m)
-		and object_count == other.object_count
-		and room_count == other.room_count
+		hair_count == other_tuning.hair_count
+		and found_item_count == other_tuning.found_item_count
+		and is_equal_approx(room_size_m, other_tuning.room_size_m)
+		and object_count == other_tuning.object_count
+		and room_count == other_tuning.room_count
 	)
 
 
 ## JSON 保存用の辞書に変換する
 func to_dict() -> Dictionary:
-	var safe: MansionTuning = clamped()
+	var safe_tuning: MansionTuning = clamped()
 	return {
-		"hair_count": safe.hair_count,
-		"found_item_count": safe.found_item_count,
-		"room_size_m": safe.room_size_m,
-		"object_count": safe.object_count,
-		"room_count": safe.room_count,
+		"hair_count": safe_tuning.hair_count,
+		"found_item_count": safe_tuning.found_item_count,
+		"room_size_m": safe_tuning.room_size_m,
+		"object_count": safe_tuning.object_count,
+		"room_count": safe_tuning.room_count,
 	}
 
 
 ## 辞書から調整値を復元する。不正な値や欠損がある場合は null を返す
-static func from_dict(data: Variant) -> MansionTuning:
-	if not (data is Dictionary):
+static func from_dict(raw_tuning_dict: Variant) -> MansionTuning:
+	if not (raw_tuning_dict is Dictionary):
 		return null
-	var dict: Dictionary = data
-	for key: String in [
+	var tuning_dict: Dictionary = raw_tuning_dict
+	for field_key: String in [
 		"hair_count",
 		"found_item_count",
 		"room_size_m",
 		"object_count",
 		"room_count",
 	]:
-		if not dict.has(key):
+		if not tuning_dict.has(field_key):
 			return null
-		var val: Variant = dict[key]
-		if not (val is int or val is float):
+		var field_value: Variant = tuning_dict[field_key]
+		if not (field_value is int or field_value is float):
 			return null
 	var tuning: MansionTuning = MansionTuning.new()
-	tuning.hair_count = int(dict["hair_count"])
-	tuning.found_item_count = int(dict["found_item_count"])
-	tuning.room_size_m = float(dict["room_size_m"])
-	tuning.object_count = int(dict["object_count"])
-	tuning.room_count = int(dict["room_count"])
+	tuning.hair_count = int(tuning_dict["hair_count"])
+	tuning.found_item_count = int(tuning_dict["found_item_count"])
+	tuning.room_size_m = float(tuning_dict["room_size_m"])
+	tuning.object_count = int(tuning_dict["object_count"])
+	tuning.room_count = int(tuning_dict["room_count"])
 	return tuning.clamped()
 
 
-## コマンドライン引数 (--hair-count=... 等) を base に上書きした調整値を返す。
-## 指定が 1 つも無い場合は base の複製を返す。
+## コマンドライン引数 (--hair-count=... 等) を base_tuning に上書きした調整値を返す。
+## 指定が 1 つも無い場合は base_tuning の複製を返す。
 static func from_cmdline_args(
-	args: PackedStringArray,
-	base: MansionTuning = null,
+	cmdline_args: PackedStringArray,
+	base_tuning: MansionTuning = null,
 ) -> MansionTuning:
-	var result: MansionTuning = base.clamped() if base != null else MansionTuning.new()
-	for arg: String in args:
-		if arg.begins_with("--hair-count="):
-			var raw: String = arg.substr("--hair-count=".length())
-			if raw.is_valid_int():
-				result.hair_count = raw.to_int()
-		elif arg.begins_with("--found-item-count="):
-			var raw: String = arg.substr("--found-item-count=".length())
-			if raw.is_valid_int():
-				result.found_item_count = raw.to_int()
-		elif arg.begins_with("--room-size="):
-			var raw: String = arg.substr("--room-size=".length())
-			if raw.is_valid_float():
-				result.room_size_m = raw.to_float()
-		elif arg.begins_with("--object-count="):
-			var raw: String = arg.substr("--object-count=".length())
-			if raw.is_valid_int():
-				result.object_count = raw.to_int()
-		elif arg.begins_with("--room-count="):
-			var raw: String = arg.substr("--room-count=".length())
-			if raw.is_valid_int():
-				result.room_count = raw.to_int()
+	var result: MansionTuning = (
+		base_tuning.clamped() if base_tuning != null else MansionTuning.new()
+	)
+	for arg: String in cmdline_args:
+		if arg.begins_with(ARG_HAIR_COUNT):
+			var raw_int: String = arg.substr(ARG_HAIR_COUNT.length())
+			if raw_int.is_valid_int():
+				result.hair_count = raw_int.to_int()
+		elif arg.begins_with(ARG_FOUND_ITEM_COUNT):
+			var raw_int: String = arg.substr(ARG_FOUND_ITEM_COUNT.length())
+			if raw_int.is_valid_int():
+				result.found_item_count = raw_int.to_int()
+		elif arg.begins_with(ARG_ROOM_SIZE):
+			var raw_float: String = arg.substr(ARG_ROOM_SIZE.length())
+			if raw_float.is_valid_float():
+				result.room_size_m = raw_float.to_float()
+		elif arg.begins_with(ARG_OBJECT_COUNT):
+			var raw_int: String = arg.substr(ARG_OBJECT_COUNT.length())
+			if raw_int.is_valid_int():
+				result.object_count = raw_int.to_int()
+		elif arg.begins_with(ARG_ROOM_COUNT):
+			var raw_int: String = arg.substr(ARG_ROOM_COUNT.length())
+			if raw_int.is_valid_int():
+				result.room_count = raw_int.to_int()
 	return result.clamped()
 
 
 ## 引数の中に調整値の上書き指定が 1 つ以上含まれているか
-static func has_cmdline_override(args: PackedStringArray) -> bool:
-	for arg: String in args:
-		if (
-			arg.begins_with("--hair-count=")
-			or arg.begins_with("--found-item-count=")
-			or arg.begins_with("--room-size=")
-			or arg.begins_with("--object-count=")
-			or arg.begins_with("--room-count=")
-		):
-			return true
+static func has_cmdline_override(cmdline_args: PackedStringArray) -> bool:
+	for arg: String in cmdline_args:
+		for prefix: String in CMDLINE_ARG_PREFIXES:
+			if arg.begins_with(prefix):
+				return true
 	return false

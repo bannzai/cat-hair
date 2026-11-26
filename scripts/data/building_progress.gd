@@ -79,88 +79,97 @@ func to_dict() -> Dictionary:
 
 
 ## 辞書から復元する。不正な構造の場合は null を返す
-static func from_dict(data: Variant) -> BuildingProgress:
-	if not (data is Dictionary):
+static func from_dict(raw_progress_dict: Variant) -> BuildingProgress:
+	if not (raw_progress_dict is Dictionary):
 		return null
-	var dict: Dictionary = data
-	if not (dict.get("building_id") is String):
+	var progress_dict: Dictionary = raw_progress_dict
+	if not (progress_dict.get("building_id") is String):
 		return null
-	var raw_elapsed: Variant = dict.get("elapsed_seconds")
-	var raw_money: Variant = dict.get("money")
+	var raw_elapsed: Variant = progress_dict.get("elapsed_seconds")
+	var raw_money: Variant = progress_dict.get("money")
 	if not (raw_elapsed is int or raw_elapsed is float):
 		return null
 	if not (raw_money is int or raw_money is float):
 		return null
 	var progress: BuildingProgress = BuildingProgress.new()
-	progress.building_id = StringName(dict["building_id"])
+	progress.building_id = StringName(progress_dict["building_id"])
 	progress.elapsed_seconds = maxf(0.0, float(raw_elapsed))
 	progress.money = maxi(0, int(raw_money))
-	if not _load_surface_hairs(dict.get("surface_hairs"), progress):
+	if not _load_surface_hairs(progress_dict.get("surface_hairs"), progress):
 		return null
-	if not _load_hair_stocks(dict.get("hair_stocks"), progress):
+	if not _load_hair_stocks(progress_dict.get("hair_stocks"), progress):
 		return null
-	if not _load_owned_tools(dict.get("owned_tools"), progress):
+	if not _load_owned_tools(progress_dict.get("owned_tools"), progress):
 		return null
-	if not _load_resident_moods(dict.get("resident_moods"), progress):
+	if not _load_resident_moods(progress_dict.get("resident_moods"), progress):
 		return null
-	if not _load_found_items(dict.get("found_items"), progress):
+	if not _load_found_items(progress_dict.get("found_items"), progress):
 		return null
 	return progress
 
 
-static func _load_surface_hairs(raw: Variant, target: BuildingProgress) -> bool:
-	if not (raw is Array):
+## 面の毛配列を復元して target_progress へ格納する。要素が不正なら false
+static func _load_surface_hairs(raw_entries: Variant, target_progress: BuildingProgress) -> bool:
+	if not (raw_entries is Array):
 		return false
-	for entry: Variant in raw:
+	for entry: Variant in raw_entries:
 		var parsed: SurfaceHair = SurfaceHairScript.from_dict(entry)
 		if parsed == null:
 			return false
-		target.surface_hairs.append(parsed)
+		target_progress.surface_hairs.append(parsed)
 	return true
 
 
-static func _load_hair_stocks(raw: Variant, target: BuildingProgress) -> bool:
-	if not (raw is Array):
+## 毛・加工品の在庫配列を復元して target_progress へ格納する。要素が不正なら false
+static func _load_hair_stocks(raw_entries: Variant, target_progress: BuildingProgress) -> bool:
+	if not (raw_entries is Array):
 		return false
-	for entry: Variant in raw:
+	for entry: Variant in raw_entries:
 		var parsed: HairStock = HairStockScript.from_dict(entry)
 		if parsed == null:
 			return false
-		target.hair_stocks.append(parsed)
+		target_progress.hair_stocks.append(parsed)
 	return true
 
 
-static func _load_owned_tools(raw: Variant, target: BuildingProgress) -> bool:
-	if not (raw is Array):
+## 所持道具配列を復元して target_progress へ格納する。要素が不正なら false
+static func _load_owned_tools(raw_entries: Variant, target_progress: BuildingProgress) -> bool:
+	if not (raw_entries is Array):
 		return false
-	for entry: Variant in raw:
+	for entry: Variant in raw_entries:
 		var parsed: OwnedTool = OwnedToolScript.from_dict(entry)
 		if parsed == null:
 			return false
-		target.owned_tools.append(parsed)
+		target_progress.owned_tools.append(parsed)
 	return true
 
 
-static func _load_resident_moods(raw: Variant, target: BuildingProgress) -> bool:
-	if not (raw is Dictionary):
+## 住人ごとの機嫌辞書を復元して target_progress へ格納する。型が不正なら false
+static func _load_resident_moods(raw_moods: Variant, target_progress: BuildingProgress) -> bool:
+	if not (raw_moods is Dictionary):
 		return false
-	var moods: Dictionary = raw
-	for key: Variant in moods.keys():
-		if not (key is String):
+	var moods_dict: Dictionary = raw_moods
+	for resident_key: Variant in moods_dict.keys():
+		if not (resident_key is String):
 			return false
-		var val: Variant = moods[key]
-		if not (val is int or val is float):
+		var mood_value: Variant = moods_dict[resident_key]
+		if not (mood_value is int or mood_value is float):
 			return false
-		target.resident_moods[StringName(key)] = clampf(float(val), 0.0, 1.0)
+		target_progress.resident_moods[StringName(resident_key)] = clampf(
+			float(mood_value),
+			0.0,
+			1.0,
+		)
 	return true
 
 
-static func _load_found_items(raw: Variant, target: BuildingProgress) -> bool:
-	if not (raw is Array):
+## 探し物進捗配列を復元して target_progress へ格納する。要素が不正なら false
+static func _load_found_items(raw_entries: Variant, target_progress: BuildingProgress) -> bool:
+	if not (raw_entries is Array):
 		return false
-	for entry: Variant in raw:
+	for entry: Variant in raw_entries:
 		var parsed: FoundItemProgress = FoundItemProgressScript.from_dict(entry)
 		if parsed == null:
 			return false
-		target.found_items.append(parsed)
+		target_progress.found_items.append(parsed)
 	return true

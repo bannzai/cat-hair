@@ -67,6 +67,7 @@ func _capture_scenes() -> bool:
 	return true
 
 
+## 撮影に使ったメインシーン・自前生成 GameState・一時セーブファイルを片付ける
 func _cleanup(main: Node3D, game_state: Node, created_state: bool) -> void:
 	if current_scene == main:
 		current_scene = null

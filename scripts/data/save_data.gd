@@ -6,7 +6,7 @@ const BuildingRecordScript := preload("res://scripts/data/building_record.gd")
 const BuildingProgressScript := preload("res://scripts/data/building_progress.gd")
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 
-## 現在の保存スキーマ版
+## 現在の保存スキーマ版 (初版 = 1)
 const SCHEMA_VERSION: int = 1
 
 ## 保存スキーマのバージョン
@@ -26,8 +26,8 @@ const SCHEMA_VERSION: int = 1
 ## JSON 保存用の辞書に変換する
 func to_dict() -> Dictionary:
 	var upgrades_out: Dictionary = {}
-	for key: Variant in hand_upgrade_levels.keys():
-		upgrades_out[String(key)] = maxi(0, int(hand_upgrade_levels[key]))
+	for upgrade_key: Variant in hand_upgrade_levels.keys():
+		upgrades_out[String(upgrade_key)] = maxi(0, int(hand_upgrade_levels[upgrade_key]))
 	var rare_out: Array[String] = []
 	for rare_id: StringName in found_rare_hair_ids:
 		rare_out.append(String(rare_id))
@@ -50,66 +50,69 @@ func to_dict() -> Dictionary:
 
 
 ## 辞書から復元する。壊れたデータや未対応スキーマの場合は null を返す
-static func from_dict(data: Variant) -> SaveData:
-	if not (data is Dictionary):
+static func from_dict(raw_save_dict: Variant) -> SaveData:
+	if not (raw_save_dict is Dictionary):
 		return null
-	var dict: Dictionary = data
-	var raw_version: Variant = dict.get("schema_version")
+	var save_dict: Dictionary = raw_save_dict
+	var raw_version: Variant = save_dict.get("schema_version")
 	if not (raw_version is int or raw_version is float):
 		return null
 	if int(raw_version) != SCHEMA_VERSION:
 		return null
 	var parsed_progress: BuildingProgress = BuildingProgressScript.from_dict(
-		dict.get("building_progress")
+		save_dict.get("building_progress")
 	)
 	if parsed_progress == null:
 		return null
-	var parsed_tuning: MansionTuning = MansionTuningScript.from_dict(dict.get("tuning"))
+	var parsed_tuning: MansionTuning = MansionTuningScript.from_dict(save_dict.get("tuning"))
 	if parsed_tuning == null:
 		return null
-	var save: SaveData = SaveData.new()
-	save.schema_version = SCHEMA_VERSION
-	save.building_progress = parsed_progress
-	save.tuning = parsed_tuning
-	if not _load_hand_upgrades(dict.get("hand_upgrade_levels"), save):
+	var save_data: SaveData = SaveData.new()
+	save_data.schema_version = SCHEMA_VERSION
+	save_data.building_progress = parsed_progress
+	save_data.tuning = parsed_tuning
+	if not _load_hand_upgrades(save_dict.get("hand_upgrade_levels"), save_data):
 		return null
-	if not _load_rare_hairs(dict.get("found_rare_hair_ids"), save):
+	if not _load_rare_hairs(save_dict.get("found_rare_hair_ids"), save_data):
 		return null
-	if not _load_building_records(dict.get("building_records"), save):
+	if not _load_building_records(save_dict.get("building_records"), save_data):
 		return null
-	return save
+	return save_data
 
 
-static func _load_hand_upgrades(raw: Variant, target: SaveData) -> bool:
-	if not (raw is Dictionary):
+## 手の強化レベル辞書を復元して target_save へ格納する。型が不正なら false
+static func _load_hand_upgrades(raw_upgrades: Variant, target_save: SaveData) -> bool:
+	if not (raw_upgrades is Dictionary):
 		return false
-	var upgrades: Dictionary = raw
-	for key: Variant in upgrades.keys():
-		if not (key is String):
+	var upgrades_dict: Dictionary = raw_upgrades
+	for upgrade_key: Variant in upgrades_dict.keys():
+		if not (upgrade_key is String):
 			return false
-		var val: Variant = upgrades[key]
-		if not (val is int or val is float):
+		var level_value: Variant = upgrades_dict[upgrade_key]
+		if not (level_value is int or level_value is float):
 			return false
-		target.hand_upgrade_levels[StringName(key)] = maxi(0, int(val))
+		target_save.hand_upgrade_levels[StringName(upgrade_key)] = maxi(0, int(level_value))
 	return true
 
 
-static func _load_rare_hairs(raw: Variant, target: SaveData) -> bool:
-	if not (raw is Array):
+## 図鑑の珍しい毛 id 配列を復元して target_save へ格納する。要素が不正なら false
+static func _load_rare_hairs(raw_rare_ids: Variant, target_save: SaveData) -> bool:
+	if not (raw_rare_ids is Array):
 		return false
-	for entry: Variant in raw:
-		if not (entry is String):
+	for rare_entry: Variant in raw_rare_ids:
+		if not (rare_entry is String):
 			return false
-		target.found_rare_hair_ids.append(StringName(entry))
+		target_save.found_rare_hair_ids.append(StringName(rare_entry))
 	return true
 
 
-static func _load_building_records(raw: Variant, target: SaveData) -> bool:
-	if not (raw is Array):
+## 建物成績配列を復元して target_save へ格納する。要素が不正なら false
+static func _load_building_records(raw_records: Variant, target_save: SaveData) -> bool:
+	if not (raw_records is Array):
 		return false
-	for entry: Variant in raw:
-		var parsed: BuildingRecord = BuildingRecordScript.from_dict(entry)
+	for record_entry: Variant in raw_records:
+		var parsed: BuildingRecord = BuildingRecordScript.from_dict(record_entry)
 		if parsed == null:
 			return false
-		target.building_records.append(parsed)
+		target_save.building_records.append(parsed)
 	return true

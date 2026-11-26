@@ -4,7 +4,7 @@ extends Resource
 
 ## どの道具か (ToolDef の id)
 @export var tool_id: StringName = &""
-## 道具のレベル。上げると取りこぼしが減る
+## 道具のレベル (購入直後は 1)。上げると取りこぼしが減る
 @export var level: int = 1
 ## 消耗品の残り (粘着ローラーの紙の枚数等)。消耗品の無い道具は 0
 @export var consumable_count: int = 0
@@ -26,28 +26,28 @@ func to_dict() -> Dictionary:
 
 
 ## 辞書から復元する。不正な構造の場合は null を返す
-static func from_dict(data: Variant) -> OwnedTool:
-	if not (data is Dictionary):
+static func from_dict(raw_tool_dict: Variant) -> OwnedTool:
+	if not (raw_tool_dict is Dictionary):
 		return null
-	var dict: Dictionary = data
-	if not (dict.get("tool_id") is String):
+	var tool_dict: Dictionary = raw_tool_dict
+	if not (tool_dict.get("tool_id") is String):
 		return null
-	var raw_level: Variant = dict.get("level")
-	var raw_consumable: Variant = dict.get("consumable_count")
-	var raw_rooms: Variant = dict.get("robot_room_ids")
+	var raw_level: Variant = tool_dict.get("level")
+	var raw_consumable: Variant = tool_dict.get("consumable_count")
+	var raw_rooms: Variant = tool_dict.get("robot_room_ids")
 	if not (raw_level is int or raw_level is float):
 		return null
 	if not (raw_consumable is int or raw_consumable is float):
 		return null
 	if not (raw_rooms is Array):
 		return null
-	var tool: OwnedTool = OwnedTool.new()
-	tool.tool_id = StringName(dict["tool_id"])
-	tool.level = maxi(1, int(raw_level))
-	tool.consumable_count = maxi(0, int(raw_consumable))
+	var owned_tool: OwnedTool = OwnedTool.new()
+	owned_tool.tool_id = StringName(tool_dict["tool_id"])
+	owned_tool.level = maxi(1, int(raw_level))
+	owned_tool.consumable_count = maxi(0, int(raw_consumable))
 	var rooms_arr: Array = raw_rooms
-	for entry: Variant in rooms_arr:
-		if not (entry is String):
+	for room_entry: Variant in rooms_arr:
+		if not (room_entry is String):
 			return null
-		tool.robot_room_ids.append(StringName(entry))
-	return tool
+		owned_tool.robot_room_ids.append(StringName(room_entry))
+	return owned_tool

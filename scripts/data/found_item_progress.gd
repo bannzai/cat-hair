@@ -32,23 +32,23 @@ func to_dict() -> Dictionary:
 
 
 ## 辞書から復元する。不正な構造の場合は null を返す
-static func from_dict(data: Variant) -> FoundItemProgress:
-	if not (data is Dictionary):
+static func from_dict(raw_progress_dict: Variant) -> FoundItemProgress:
+	if not (raw_progress_dict is Dictionary):
 		return null
-	var dict: Dictionary = data
-	if not (dict.get("found_item_id") is String):
+	var progress_dict: Dictionary = raw_progress_dict
+	if not (progress_dict.get("found_item_id") is String):
 		return null
-	var raw_cond: Variant = dict.get("condition")
-	if not (raw_cond is int or raw_cond is float):
+	var raw_condition: Variant = progress_dict.get("condition")
+	if not (raw_condition is int or raw_condition is float):
 		return null
-	var cond_int: int = int(raw_cond)
-	if cond_int < Condition.HIDDEN or cond_int > Condition.DAMAGED:
+	var condition_int: int = int(raw_condition)
+	if condition_int < Condition.HIDDEN or condition_int > Condition.DAMAGED:
 		return null
-	var raw_returned: Variant = dict.get("is_returned")
+	var raw_returned: Variant = progress_dict.get("is_returned")
 	if not (raw_returned is bool):
 		return null
 	var progress: FoundItemProgress = FoundItemProgress.new()
-	progress.found_item_id = StringName(dict["found_item_id"])
-	progress.condition = cond_int as Condition
+	progress.found_item_id = StringName(progress_dict["found_item_id"])
+	progress.condition = condition_int as Condition
 	progress.is_returned = raw_returned
 	return progress

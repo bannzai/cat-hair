@@ -9,7 +9,19 @@ const BuildingProgressScript := preload("res://scripts/data/building_progress.gd
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 const FoundItemProgressScript := preload("res://scripts/data/found_item_progress.gd")
 
-## 部屋名のプリセット (1 階)
+## 床の毛分配重み。部屋全面を占める最大面積のため家具・布 (1.0〜2.2) より大きく設定
+const FLOOR_HAIR_WEIGHT: float = 2.5
+## 住人の初期機嫌 (0.0 不機嫌 〜 1.0 ご機嫌の中間値。開始時点で増減の余地を残す)
+const INITIAL_RESIDENT_MOOD: float = 0.5
+## ソファ表面 (座面) の高さ比率。MansionWorld の座面メッシュ高さ (size.y * 0.56) と一致させる
+const SOFA_SEAT_HEIGHT_RATIO: float = 0.56
+## 3 色分配で面インデックスに応じて主色・次点色へ割り振る比率 (3 色すべてが混ざりつつ偏りが見える値)
+const PRIMARY_COLOR_RATIO_STANDARD: float = 0.50
+const SECONDARY_COLOR_RATIO_STANDARD: float = 0.30
+const PRIMARY_COLOR_RATIO_CALICO: float = 0.45
+const SECONDARY_COLOR_RATIO_CALICO: float = 0.35
+
+## 屋敷 1 階の部屋名プリセット (先頭から順に使用し、9 部屋目以降は連番)
 const ROOM_PRESETS: Array[Dictionary] = [
 	{"id": &"hall", "name": "玄関ホール"},
 	{"id": &"living", "name": "居間"},
@@ -21,7 +33,9 @@ const ROOM_PRESETS: Array[Dictionary] = [
 	{"id": &"corridor", "name": "廊下"},
 ]
 
-## 配置する物のプリセット。床・カーペット・ソファ・家具・住人のスーツ・ニットが揃う順
+## 配置する物のプリセット。
+## size は一般的な家具の標準寸法 (m)、weight は面積と布の毛の付きやすさによる分配相対比。
+## 床・カーペット・ソファ・家具・住人のスーツ・ニットの全表面種別が揃う順で定義する。
 const OBJECT_PRESETS: Array[Dictionary] = [
 	{
 		"kind": &"carpet",
@@ -61,7 +75,8 @@ const OBJECT_PRESETS: Array[Dictionary] = [
 	},
 ]
 
-## 部屋内の相対スロット (部屋中心からの割合、-0.5..0.5。ドア開口と南側スポーンを避ける)
+## 部屋内の相対配置スロット (部屋中心からの割合、-0.5..0.5)。
+## 4 壁中央のドア開口と南側 (+Z) の初期スポーン位置を避けた 8 位置。
 const ROOM_SLOTS: Array[Dictionary] = [
 	{"rx": 0.0, "rz": -0.05, "rot": 0.0},
 	{"rx": -0.27, "rz": -0.27, "rot": 0.0},
@@ -108,36 +123,34 @@ static func build_initial_progress(
 	return progress
 
 
-## 部屋グリッドと隣接ドア開口を組み立てる
+## 部屋グリッドと隣接ドア開口および床表面を組み立てる
 static func _build_rooms(layout: MansionLayout, tuning: MansionTuning) -> void:
-	var count: int = tuning.room_count
-	var cols: int = maxi(1, ceili(sqrt(float(count))))
-	var room_size: float = tuning.room_size_m
-	var grid_map: Dictionary = {}
+	var room_total: int = tuning.room_count
+	var grid_columns: int = maxi(1, ceili(sqrt(float(room_total))))
+	var room_width: float = tuning.room_size_m
+	var grid_cells: Dictionary = {}
 
-	for idx: int in range(count):
-		var gx: int = idx % cols
-		var gz: int = idx / cols
-		grid_map[Vector2i(gx, gz)] = idx
+	for room_idx: int in range(room_total):
+		grid_cells[Vector2i(room_idx % grid_columns, room_idx / grid_columns)] = room_idx
 
-	for idx: int in range(count):
-		var gx: int = idx % cols
-		var gz: int = idx / cols
+	for room_idx: int in range(room_total):
+		var grid_x: int = room_idx % grid_columns
+		var grid_z: int = room_idx / grid_columns
 		var room: MansionLayout.RoomDef = MansionLayoutScript.RoomDef.new()
-		if idx < ROOM_PRESETS.size():
-			room.room_id = ROOM_PRESETS[idx]["id"]
-			room.display_name = ROOM_PRESETS[idx]["name"]
+		if room_idx < ROOM_PRESETS.size():
+			room.room_id = ROOM_PRESETS[room_idx]["id"]
+			room.display_name = ROOM_PRESETS[room_idx]["name"]
 		else:
-			room.room_id = StringName("room_%d" % idx)
-			room.display_name = "部屋 %d" % (idx + 1)
-		room.grid_x = gx
-		room.grid_z = gz
-		room.center = Vector3(float(gx) * room_size, 0.0, -float(gz) * room_size)
-		room.size = Vector3(room_size, MansionLayoutScript.CEILING_HEIGHT_M, room_size)
-		room.open_north = grid_map.has(Vector2i(gx, gz + 1))
-		room.open_south = grid_map.has(Vector2i(gx, gz - 1))
-		room.open_east = grid_map.has(Vector2i(gx + 1, gz))
-		room.open_west = grid_map.has(Vector2i(gx - 1, gz))
+			room.room_id = StringName("room_%d" % room_idx)
+			room.display_name = "部屋 %d" % (room_idx + 1)
+		room.grid_x = grid_x
+		room.grid_z = grid_z
+		room.center = Vector3(float(grid_x) * room_width, 0.0, -float(grid_z) * room_width)
+		room.size = Vector3(room_width, MansionLayoutScript.CEILING_HEIGHT_M, room_width)
+		room.open_north = grid_cells.has(Vector2i(grid_x, grid_z + 1))
+		room.open_south = grid_cells.has(Vector2i(grid_x, grid_z - 1))
+		room.open_east = grid_cells.has(Vector2i(grid_x + 1, grid_z))
+		room.open_west = grid_cells.has(Vector2i(grid_x - 1, grid_z))
 		layout.rooms.append(room)
 
 		var floor_surface: MansionLayout.SurfaceDef = MansionLayoutScript.SurfaceDef.new()
@@ -145,8 +158,8 @@ static func _build_rooms(layout: MansionLayout, tuning: MansionTuning) -> void:
 		floor_surface.room_id = room.room_id
 		floor_surface.surface_type = MansionLayoutScript.SURFACE_FLOOR
 		floor_surface.center = Vector3(room.center.x, 0.01, room.center.z)
-		floor_surface.extents = Vector2(maxf(1.0, room_size - 0.6), maxf(1.0, room_size - 0.6))
-		floor_surface.hair_weight = 2.5
+		floor_surface.extents = Vector2(maxf(1.0, room_width - 0.6), maxf(1.0, room_width - 0.6))
+		floor_surface.hair_weight = FLOOR_HAIR_WEIGHT
 		layout.surfaces.append(floor_surface)
 
 
@@ -165,16 +178,17 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		var local_idx: int = per_room_counts[room_idx]
 		per_room_counts[room_idx] = local_idx + 1
 
-		var preset_idx: int = (local_idx + room_idx) % OBJECT_PRESETS.size()
-		var preset: Dictionary = OBJECT_PRESETS[preset_idx]
+		var preset: Dictionary = OBJECT_PRESETS[(local_idx + room_idx) % OBJECT_PRESETS.size()]
 		var obj: MansionLayout.ObjectDef = MansionLayoutScript.ObjectDef.new()
 		obj.object_id = StringName("obj_%d_%s" % [obj_idx, String(preset["kind"])])
 		obj.room_id = room.room_id
 		obj.object_kind = preset["kind"]
 		obj.surface_type = preset["surface_type"]
 		var raw_size: Vector3 = preset["size"]
-		var max_footprint: float = maxf(0.5, room.size.x * 0.34)
-		var fit_scale: float = minf(1.0, max_footprint / maxf(raw_size.x, raw_size.z))
+		var fit_scale: float = minf(
+			1.0,
+			maxf(0.5, room.size.x * 0.34) / maxf(raw_size.x, raw_size.z),
+		)
 		obj.size = Vector3(raw_size.x * fit_scale, raw_size.y, raw_size.z * fit_scale)
 
 		var slot: Dictionary = ROOM_SLOTS[local_idx % ROOM_SLOTS.size()]
@@ -185,10 +199,8 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		if ring > 0:
 			offset_x += (0.28 if (ring % 2 == 1) else -0.28)
 			offset_z += (0.22 if ((local_idx % 2) == 0) else -0.22)
-		var margin_x: float = maxf(0.35, obj.size.x * 0.5 + 0.2)
-		var margin_z: float = maxf(0.35, obj.size.z * 0.5 + 0.2)
-		var limit_x: float = maxf(0.1, room.size.x * 0.5 - margin_x)
-		var limit_z: float = maxf(0.1, room.size.z * 0.5 - margin_z)
+		var limit_x: float = maxf(0.1, room.size.x * 0.5 - maxf(0.35, obj.size.x * 0.5 + 0.2))
+		var limit_z: float = maxf(0.1, room.size.z * 0.5 - maxf(0.35, obj.size.z * 0.5 + 0.2))
 		offset_x = clampf(offset_x, -limit_x, limit_x)
 		offset_z = clampf(offset_z, -limit_z, limit_z)
 
@@ -200,8 +212,10 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		surface.surface_id = StringName("%s_surface" % String(obj.object_id))
 		surface.room_id = room.room_id
 		surface.surface_type = obj.surface_type
-		var surface_y: float = obj.size.y * 0.56 if obj.object_kind == &"sofa" else obj.size.y
-		surface.center = Vector3(obj.position.x, surface_y + 0.01, obj.position.z)
+		var surface_height: float = (
+			obj.size.y * SOFA_SEAT_HEIGHT_RATIO if obj.object_kind == &"sofa" else obj.size.y
+		)
+		surface.center = Vector3(obj.position.x, surface_height + 0.01, obj.position.z)
 		surface.extents = Vector2(maxf(0.3, obj.size.x * 0.85), maxf(0.3, obj.size.z * 0.85))
 		surface.hair_weight = float(preset["weight"])
 		layout.surfaces.append(surface)
@@ -218,20 +232,20 @@ static func _build_found_item_spots(layout: MansionLayout, tuning: MansionTuning
 	if candidate_surfaces.is_empty():
 		candidate_surfaces = layout.surfaces
 
-	for idx: int in range(tuning.found_item_count):
-		var surface: MansionLayout.SurfaceDef = candidate_surfaces[idx % candidate_surfaces.size()]
+	for spot_idx: int in range(tuning.found_item_count):
+		var surface: MansionLayout.SurfaceDef = (
+			candidate_surfaces[spot_idx % candidate_surfaces.size()]
+		)
 		var spot: MansionLayout.FoundItemSpotDef = MansionLayoutScript.FoundItemSpotDef.new()
-		spot.found_item_id = StringName("found_item_%d" % idx)
+		spot.found_item_id = StringName("found_item_%d" % spot_idx)
 		spot.room_id = surface.room_id
 		spot.surface_id = surface.surface_id
-		var angle: float = float(idx) * 2.3999632
-		var radius_scale: float = 0.25 if idx < candidate_surfaces.size() else 0.38
-		var jitter_x: float = cos(angle) * surface.extents.x * radius_scale
-		var jitter_z: float = sin(angle) * surface.extents.y * radius_scale
+		var angle_rad: float = float(spot_idx) * 2.3999632
+		var radius_scale: float = 0.25 if spot_idx < candidate_surfaces.size() else 0.38
 		spot.position = Vector3(
-			surface.center.x + jitter_x,
+			surface.center.x + cos(angle_rad) * surface.extents.x * radius_scale,
 			surface.center.y + 0.05,
-			surface.center.z + jitter_z,
+			surface.center.z + sin(angle_rad) * surface.extents.y * radius_scale,
 		)
 		layout.found_item_spots.append(spot)
 
@@ -243,11 +257,10 @@ static func _configure_spawn(layout: MansionLayout, tuning: MansionTuning) -> vo
 		layout.spawn_yaw = 0.0
 		return
 	var first_room: MansionLayout.RoomDef = layout.rooms[0]
-	var spawn_z_offset: float = maxf(0.9, tuning.room_size_m * 0.36)
 	layout.spawn_position = Vector3(
 		first_room.center.x,
 		0.05,
-		first_room.center.z + spawn_z_offset,
+		first_room.center.z + maxf(0.9, tuning.room_size_m * 0.36),
 	)
 	layout.spawn_yaw = 0.0
 
@@ -268,10 +281,11 @@ static func _distribute_hairs(
 	var allocated: Array[int] = []
 	allocated.resize(layout.surfaces.size())
 	var assigned_sum: int = 0
-	for i: int in range(layout.surfaces.size()):
-		var w: float = maxf(0.01, layout.surfaces[i].hair_weight)
-		var share: int = int(floor(float(safe_total) * (w / total_weight)))
-		allocated[i] = share
+	for surface_idx: int in range(layout.surfaces.size()):
+		var share: int = int(
+			floor(float(safe_total) * (maxf(0.01, layout.surfaces[surface_idx].hair_weight) / total_weight))
+		)
+		allocated[surface_idx] = share
 		assigned_sum += share
 
 	var remainder: int = safe_total - assigned_sum
@@ -281,11 +295,10 @@ static func _distribute_hairs(
 		remainder -= 1
 		cursor += 1
 
-	for i: int in range(layout.surfaces.size()):
-		var surface: MansionLayout.SurfaceDef = layout.surfaces[i]
+	for surface_idx: int in range(layout.surfaces.size()):
 		var entry: SurfaceHair = SurfaceHairScript.new()
-		entry.surface_id = surface.surface_id
-		entry.hair_counts = _split_by_color(allocated[i], i)
+		entry.surface_id = layout.surfaces[surface_idx].surface_id
+		entry.hair_counts = _split_by_color(allocated[surface_idx], surface_idx)
 		result.append(entry)
 	return result
 
@@ -296,18 +309,18 @@ static func _split_by_color(surface_total: int, surface_index: int) -> Dictionar
 	var black_count: int = 0
 	var calico_count: int = 0
 	if surface_total > 0:
-		var mode: int = surface_index % 3
-		if mode == 0:
-			white_count = int(floor(float(surface_total) * 0.5))
-			black_count = int(floor(float(surface_total) * 0.3))
+		var color_pattern: int = surface_index % 3
+		if color_pattern == 0:
+			white_count = int(floor(float(surface_total) * PRIMARY_COLOR_RATIO_STANDARD))
+			black_count = int(floor(float(surface_total) * SECONDARY_COLOR_RATIO_STANDARD))
 			calico_count = surface_total - white_count - black_count
-		elif mode == 1:
-			black_count = int(floor(float(surface_total) * 0.5))
-			calico_count = int(floor(float(surface_total) * 0.3))
+		elif color_pattern == 1:
+			black_count = int(floor(float(surface_total) * PRIMARY_COLOR_RATIO_STANDARD))
+			calico_count = int(floor(float(surface_total) * SECONDARY_COLOR_RATIO_STANDARD))
 			white_count = surface_total - black_count - calico_count
 		else:
-			calico_count = int(floor(float(surface_total) * 0.45))
-			white_count = int(floor(float(surface_total) * 0.35))
+			calico_count = int(floor(float(surface_total) * PRIMARY_COLOR_RATIO_CALICO))
+			white_count = int(floor(float(surface_total) * SECONDARY_COLOR_RATIO_CALICO))
 			black_count = surface_total - calico_count - white_count
 	return {
 		SurfaceHairScript.COLOR_WHITE: white_count,
@@ -320,8 +333,7 @@ static func _split_by_color(surface_total: int, surface_index: int) -> Dictionar
 static func _build_initial_resident_moods(layout: MansionLayout) -> Dictionary:
 	var moods: Dictionary = {}
 	for room: MansionLayout.RoomDef in layout.rooms:
-		var resident_id: StringName = StringName("resident_%s" % String(room.room_id))
-		moods[resident_id] = 0.5
+		moods[StringName("resident_%s" % String(room.room_id))] = INITIAL_RESIDENT_MOOD
 	return moods
 
 

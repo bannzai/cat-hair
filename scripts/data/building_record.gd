@@ -20,20 +20,20 @@ func to_dict() -> Dictionary:
 
 
 ## 辞書から復元する。不正な構造の場合は null を返す
-static func from_dict(data: Variant) -> BuildingRecord:
-	if not (data is Dictionary):
+static func from_dict(raw_record_dict: Variant) -> BuildingRecord:
+	if not (raw_record_dict is Dictionary):
 		return null
-	var dict: Dictionary = data
-	if not (dict.get("building_id") is String):
+	var record_dict: Dictionary = raw_record_dict
+	if not (record_dict.get("building_id") is String):
 		return null
-	var raw_seconds: Variant = dict.get("clear_seconds")
-	var raw_returned: Variant = dict.get("returned_found_item_count")
+	var raw_seconds: Variant = record_dict.get("clear_seconds")
+	var raw_returned: Variant = record_dict.get("returned_found_item_count")
 	if not (raw_seconds is int or raw_seconds is float):
 		return null
 	if not (raw_returned is int or raw_returned is float):
 		return null
 	var record: BuildingRecord = BuildingRecord.new()
-	record.building_id = StringName(dict["building_id"])
+	record.building_id = StringName(record_dict["building_id"])
 	record.clear_seconds = maxf(0.0, float(raw_seconds))
 	record.returned_found_item_count = maxi(0, int(raw_returned))
 	return record

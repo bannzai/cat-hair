@@ -4,7 +4,9 @@ extends Node
 ## --headless --script 検証から安全に扱うため、他スクリプトからは登録名の静的参照を使わず
 ## root.get_node_or_null("GameState") で取得する。
 
+## 進行状態や残り毛本数が変わった時に発火し、HUD 等の表示を更新する
 signal state_changed
+## 調整値から屋敷レイアウトが組み立て直された時に発火し、3D 空間を再構築する
 signal mansion_rebuilt(layout: MansionLayout)
 
 const SaveDataScript := preload("res://scripts/data/save_data.gd")
@@ -22,11 +24,16 @@ var current_layout: MansionLayout = null
 var loaded_from_save: bool = false
 
 
+## autoload 起動時に保存ファイルとコマンドライン引数から初期状態を構築する
 func _ready() -> void:
 	if save_data == null:
 		initialize_from_storage(save_path, _collect_cmdline_args())
 
 
+## ウィンドウ終了要求時に現在の状態を保存する。
+## 前提 (Godot 4 公式ドキュメント「Handling quit requests」):
+## application/config/auto_accept_quit (既定 true) では終了直前に全ノードへ
+## NOTIFICATION_WM_CLOSE_REQUEST が通知されるため、ここで保存を完了させる。
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST and save_data != null:
 		save_current_state()
@@ -39,37 +46,30 @@ func initialize_from_storage(
 	cmdline_args: PackedStringArray = PackedStringArray(),
 ) -> void:
 	save_path = target_path
-	var loaded: SaveData = SaveStorageScript.load_from_path(save_path)
+	var loaded_save: SaveData = SaveStorageScript.load_from_path(save_path)
 	var has_override: bool = MansionTuningScript.has_cmdline_override(cmdline_args)
 
-	if loaded != null and not has_override:
-		save_data = loaded
+	if loaded_save != null and not has_override:
+		save_data = loaded_save
 		loaded_from_save = true
 		current_layout = MansionBuilderScript.build_layout(save_data.tuning)
 		_reconcile_progress_with_layout()
 	else:
 		var base_tuning: MansionTuning = (
-			loaded.tuning if loaded != null else MansionTuningScript.new()
-		)
-		var effective_tuning: MansionTuning = MansionTuningScript.from_cmdline_args(
-			cmdline_args,
-			base_tuning,
+			loaded_save.tuning if loaded_save != null else MansionTuningScript.new()
 		)
 		loaded_from_save = false
-		_create_fresh_save(effective_tuning)
+		_create_fresh_save(MansionTuningScript.from_cmdline_args(cmdline_args, base_tuning))
 	mansion_rebuilt.emit(current_layout)
 	state_changed.emit()
 
 
 ## 現在の調整値を使って新しい屋敷・進行データを作り直し、保存する
 func start_new_game(custom_tuning: MansionTuning = null) -> void:
-	var target_tuning: MansionTuning = (
-		custom_tuning.clamped()
-		if custom_tuning != null
-		else get_tuning().clamped()
-	)
 	loaded_from_save = false
-	_create_fresh_save(target_tuning)
+	_create_fresh_save(
+		custom_tuning.clamped() if custom_tuning != null else get_tuning().clamped()
+	)
 	save_current_state()
 	mansion_rebuilt.emit(current_layout)
 	state_changed.emit()
@@ -131,6 +131,7 @@ func get_surface_hair_count(surface_id: StringName) -> int:
 	return surface.total_count() if surface != null else 0
 
 
+## 指定の調整値から新しいレイアウトと初期 SaveData を生成する
 func _create_fresh_save(target_tuning: MansionTuning) -> void:
 	var safe_tuning: MansionTuning = target_tuning.clamped()
 	current_layout = MansionBuilderScript.build_layout(safe_tuning)
@@ -143,24 +144,24 @@ func _create_fresh_save(target_tuning: MansionTuning) -> void:
 	)
 
 
-## 読み込んだセーブデータの面一覧と現在のレイアウトの面一覧が一致しない場合は補完する
+## 読み込んだセーブデータの面一覧と現在のレイアウトの面一覧が一致しない場合は進行を作り直す
 func _reconcile_progress_with_layout() -> void:
 	if save_data == null or save_data.building_progress == null or current_layout == null:
 		return
-	var expected_ids: Dictionary = {}
+	var expected_surface_ids: Dictionary = {}
 	for surface: MansionLayout.SurfaceDef in current_layout.surfaces:
-		expected_ids[surface.surface_id] = true
-	var actual_ids: Dictionary = {}
+		expected_surface_ids[surface.surface_id] = true
+	var actual_surface_ids: Dictionary = {}
 	for entry: SurfaceHair in save_data.building_progress.surface_hairs:
-		actual_ids[entry.surface_id] = true
-	if expected_ids.size() != actual_ids.size():
+		actual_surface_ids[entry.surface_id] = true
+	if expected_surface_ids.size() != actual_surface_ids.size():
 		save_data.building_progress = MansionBuilderScript.build_initial_progress(
 			current_layout,
 			save_data.tuning,
 		)
 		return
-	for sid: Variant in expected_ids.keys():
-		if not actual_ids.has(sid):
+	for expected_surface_id: Variant in expected_surface_ids.keys():
+		if not actual_surface_ids.has(expected_surface_id):
 			save_data.building_progress = MansionBuilderScript.build_initial_progress(
 				current_layout,
 				save_data.tuning,
@@ -168,6 +169,7 @@ func _reconcile_progress_with_layout() -> void:
 			return
 
 
+## 起動時のユーザー引数とエンジン引数をまとめて返す
 static func _collect_cmdline_args() -> PackedStringArray:
 	var combined: PackedStringArray = PackedStringArray()
 	for arg: String in OS.get_cmdline_user_args():

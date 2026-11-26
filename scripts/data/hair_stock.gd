@@ -2,7 +2,7 @@ class_name HairStock
 extends Resource
 ## 取ってまだ売っていない毛、または加工した物の在庫 1 種類。
 
-## 加工の形 (毛のまま・毛玉・フェルト・人形)
+## 加工の形 (毛のまま・毛玉・フェルト・人形。PROJECT.md「道具」の毛の加工機に対応)
 const FORM_RAW: StringName = &"raw"
 const FORM_BALL: StringName = &"hairball"
 const FORM_FELT: StringName = &"felt"
@@ -29,22 +29,22 @@ func to_dict() -> Dictionary:
 
 
 ## 辞書から復元する。不正な構造の場合は null を返す
-static func from_dict(data: Variant) -> HairStock:
-	if not (data is Dictionary):
+static func from_dict(raw_stock_dict: Variant) -> HairStock:
+	if not (raw_stock_dict is Dictionary):
 		return null
-	var dict: Dictionary = data
+	var stock_dict: Dictionary = raw_stock_dict
 	if (
-		not (dict.get("hair_color") is String)
-		or not (dict.get("rare_hair_id") is String)
-		or not (dict.get("form") is String)
+		not (stock_dict.get("hair_color") is String)
+		or not (stock_dict.get("rare_hair_id") is String)
+		or not (stock_dict.get("form") is String)
 	):
 		return null
-	var raw_count: Variant = dict.get("count")
+	var raw_count: Variant = stock_dict.get("count")
 	if not (raw_count is int or raw_count is float):
 		return null
 	var stock: HairStock = HairStock.new()
-	stock.hair_color = StringName(dict["hair_color"])
-	stock.rare_hair_id = StringName(dict["rare_hair_id"])
-	stock.form = StringName(dict["form"])
+	stock.hair_color = StringName(stock_dict["hair_color"])
+	stock.rare_hair_id = StringName(stock_dict["rare_hair_id"])
+	stock.form = StringName(stock_dict["form"])
 	stock.count = maxi(0, int(raw_count))
 	return stock
