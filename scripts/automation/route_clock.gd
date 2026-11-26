@@ -69,7 +69,7 @@ static func ticks_between(route: Dictionary, t0: float, t1: float, interval: flo
 			var low: float = clampf(t0 - stop_start, 0.0, seconds)
 			var high: float = clampf(t1 - stop_start, 0.0, seconds)
 			stop_start += seconds
-			var count: int = floori((high - low) / interval)
+			var count: int = floori(high / interval) - floori(low / interval)
 			if count > 0:
 				result[index] = int(result.get(index, 0)) + count
 	return result

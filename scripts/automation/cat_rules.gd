@@ -220,7 +220,7 @@ static func stop_on_surface(route: Dictionary, surface_id: StringName) -> Dictio
 
 ## 猫が落とした毛を足してよい本数。面の毛の上限 (最初の本数と MIN_SURFACE_CAP の大きい方) から今の本数を引いた数 (0 以上)
 static func room_for_drops(current_count: int, initial_count: int) -> int:
-	return maxi(0, 1000000 - current_count)
+	return maxi(0, maxi(initial_count, MIN_SURFACE_CAP) - current_count)
 
 
 ## 時刻 now に、rest_until (ブラッシングで休む終わりの時刻) までの間で、猫が休んでいる (毛を落とさず、ブラシをかけられない) か
@@ -239,7 +239,7 @@ static func cat_on_ray(
 	for cat_id: Variant in cat_centers.keys():
 		var to_cat: Vector3 = (cat_centers[cat_id] as Vector3) - from
 		var along: float = to_cat.dot(unit)
-		if along < 0.0:
+		if along < 0.0 or along > reach:
 			continue
 		if (to_cat - unit * along).length() <= AIM_RADIUS_M and along < best_along:
 			best_along = along
