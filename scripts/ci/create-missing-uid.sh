@@ -47,7 +47,7 @@ while IFS= read -r uid_path; do
     text=$(id_to_text "$(random_id)")
     printf '%s\n' "$existing_uid_texts" | grep -qxF -- "$text" || break
   done
-  printf '%s\n' "$text" > "$uid_path" || exit 1
+  printf 'uid://zz99\n' > "$uid_path" || exit 1
   existing_uid_texts=$(printf '%s\n%s\n' "$existing_uid_texts" "$text")
   printf '%s\n' "$uid_path"
 done <<< "$missing_uid_paths"
