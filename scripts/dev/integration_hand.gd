@@ -179,18 +179,31 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		"途中で離すと毛は抜けずに残り、手が開き、残り本数と在庫が変わらない",
 	)
 
-	# 押したまま手の届く距離より遠くへ離れると、引くのをやめる
+	# 押したまま、毛の根元までの距離が REACH_M より遠く REACH_M + GRAB_RADIUS_M 以内の所へ下がっても引き続け、
+	# それより遠くへ離れると引くのをやめる
 	await _press_pluck()
 	var reach_ids: PackedInt32Array = hand.get_pulling_ids()
 	var player: FirstPersonPlayer = main.player
-	player.set_spawn(player.global_position + Vector3(0.0, 0.0, HandController.REACH_M * 2.0), 0.0)
-	await _checker.process_frame
-	await _checker.process_frame
+	if reach_ids.is_empty():
+		_check(false, "届く距離の境目の検証で毛をつまめる")
+		Input.action_release(HandController.ACTION_PLUCK)
+		return
+	var reach_root: Vector3 = hair_field.get_hair_transform(reach_ids[0]).origin
+	await _move_to_root_distance(
+		player, reach_root, HandController.REACH_M + HandController.GRAB_RADIUS_M * 0.5
+	)
 	_check(
-		not reach_ids.is_empty() and not hand.is_pulling()
+		hand.is_pulling(),
+		"毛の根元まで 2.6m より遠く 2.68m 以内の所へ下がっても、つまんだ毛を引き続ける (届く距離の境目ですぐ離さない)",
+	)
+	await _move_to_root_distance(
+		player, reach_root, HandController.REACH_M + HandController.GRAB_RADIUS_M * 1.5
+	)
+	_check(
+		not hand.is_pulling()
 		and hair_field.has_hair(reach_ids[0])
 		and game_state.get_total_remaining_hairs() == before_total,
-		"押したまま手の届く距離より遠くへ離れると、毛は抜けずに引くのをやめる",
+		"毛の根元まで 2.68m より遠くへ下がると、毛は抜けずに引くのをやめ、残り本数も変わらない",
 	)
 	Input.action_release(HandController.ACTION_PLUCK)
 	if await HandAim.aim_at_floor_hair(_checker, main) != aimed_id:
@@ -390,6 +403,24 @@ static func _rare_stock_count(game_state: Node, rare_hair_id: StringName) -> int
 		if stock.rare_hair_id == rare_hair_id:
 			total += stock.count
 	return total
+
+
+## カメラから毛の根元 root までの距離が distance になる所へ、水平に root から離れる向きでプレイヤーを動かし、
+## 目線を root へ向けて 2 フレーム進める (HandController の _process が新しい位置で距離を見る)
+func _move_to_root_distance(player: FirstPersonPlayer, root: Vector3, distance: float) -> void:
+	var camera_position: Vector3 = player.get_camera().global_position
+	var height: float = camera_position.y - root.y
+	var away: Vector3 = (
+		Vector3(camera_position.x - root.x, 0.0, camera_position.z - root.z).normalized()
+	)
+	var camera_target: Vector3 = (
+		Vector3(root.x, camera_position.y, root.z)
+		+ away * sqrt(maxf(0.0, distance * distance - height * height))
+	)
+	player.set_spawn(player.global_position + camera_target - camera_position, 0.0)
+	player.look_at_point(root)
+	await _checker.process_frame
+	await _checker.process_frame
 
 
 ## つまむ入力を押し、HandController の _process がその押下を処理した直後まで進める。
