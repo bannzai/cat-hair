@@ -1,0 +1,21 @@
+name: human-verification-check
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  human-verification:
+    # ci.yml と同じく ubuntu-24.04 に固定する (ubuntu-latest は 2026-10-19 から Ubuntu 26 へ移る)
+    runs-on: ubuntu-24.04
+    # PR body の文字列を検査するだけで数秒で終わるため、既定の 360 分ではなく短く打ち切る
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: 「## 人間が確認」の未チェック項目を検出する
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: bash scripts/ci/check-human-verification.sh

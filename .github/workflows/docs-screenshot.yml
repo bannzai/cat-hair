@@ -1,0 +1,82 @@
+name: docs-screenshot
+
+# 紹介ページと法務ドキュメント (docs/) を、GitHub Pages と同じ Jekyll で組み立てて検査し、見た目を撮影する。
+# 開発マシンのブラウザを使わずに確かめるためのもの (AGENTS.md「検証方法」)。docs/ を変えた PR でだけ動く
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs-screenshot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  screenshot:
+    # ci.yml と同じく ubuntu-24.04 に固定する (ランナーに入っている Chrome と apt のパッケージ名に依存するため)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # GitHub Pages が使うのと同じ Jekyll の構成で docs/ を tmp/site に組み立てる
+      - uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697 # v1.0.13
+        with:
+          source: ./docs
+          destination: ./tmp/site
+      # Pages は <名前>.html を拡張子なしの URL (/Terms-ja 等) でも配信するため、紹介ページのリンク先の HTML が
+      # 組み立てられていることと、ページごとの lang (日本語版は _config.yml の ja、英語版は front matter の en) を確かめる
+      - name: Check built pages
+        run: |
+          for page in index Terms-ja Terms-en PrivacyPolicy-ja PrivacyPolicy-en; do
+            test -s "tmp/site/$page.html"
+          done
+          grep -q '<html lang="ja">' tmp/site/Terms-ja.html
+          grep -q '<html lang="ja">' tmp/site/PrivacyPolicy-ja.html
+          grep -q '<html lang="en">' tmp/site/Terms-en.html
+          grep -q '<html lang="en">' tmp/site/PrivacyPolicy-en.html
+          grep -q '第1条' tmp/site/Terms-ja.html
+          ! grep -q '{{' tmp/site/Terms-ja.html
+      # ランナーには日本語のフォントが無く、入れないと文字が四角になる
+      - name: Install Japanese fonts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk
+      # 紹介ページは幅 1280 (デスクトップ) と 390 (モバイル) でページ全体を撮り、利用規約は組み立てた HTML の先頭を撮る。
+      # 高さはページの全体 (利用規約は先頭の数条) が入る値。撮影の出力先は、Jekyll の action が root の所有で作る tmp/ (書き込めない) と
+      # 分けて shots にする。レイアウトはテーマの CSS を、サイトの置き場所 (baseurl) から始まる URL で読むため、file:// では
+      # CSS が当たらない。baseurl は組み立てる環境が決める (この action は /pages/<owner>/<リポジトリ名>、Pages の配信では
+      # /<リポジトリ名>) ので、組み立てた HTML が指す CSS の URL から baseurl を読み、その下でサイトを HTTP で配って撮る。
+      # HTML が指す CSS の URL が実際に取れることも確かめる
+      - name: Screenshot built pages
+        run: |
+          stylesheet=$(grep -o 'href="[^"]*/assets/css/style\.css[^"]*"' tmp/site/Terms-ja.html | head -n 1 | cut -d'"' -f2 | cut -d'?' -f1)
+          echo "stylesheet: $stylesheet"
+          # CSS の URL を読めなかった時に、空の URL (サイトの先頭) が取れることで下の確認が通ってしまわないようにする
+          test -n "$stylesheet"
+          baseurl="${stylesheet%/assets/css/style.css}"
+          mkdir -p shots
+          if [ -n "$baseurl" ]; then
+            mkdir -p "$RUNNER_TEMP/serve$(dirname "$baseurl")"
+          fi
+          ln -s "$GITHUB_WORKSPACE/tmp/site" "$RUNNER_TEMP/serve$baseurl"
+          nohup python3 -m http.server 8000 --bind 127.0.0.1 --directory "$RUNNER_TEMP/serve" > "$RUNNER_TEMP/http.log" 2>&1 &
+          site="http://127.0.0.1:8000$baseurl"
+          for _ in $(seq 1 30); do
+            curl -sf -o /dev/null "$site/index.html" && break
+            sleep 1
+          done
+          curl -sf -o /dev/null "http://127.0.0.1:8000$stylesheet"
+          google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=1280,1800 \
+            --screenshot=shots/docs-desktop.png "$site/index.html"
+          google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=390,2600 \
+            --screenshot=shots/docs-mobile.png "$site/index.html"
+          google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=1280,1800 \
+            --screenshot=shots/docs-terms-ja.png "$site/Terms-ja.html"
+          ls -l shots
+      - name: Upload screenshots
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cat-hair-docs-screenshot
+          path: shots/
+          if-no-files-found: error
+          retention-days: 7

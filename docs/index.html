@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>cat-hair (仮称)｜猫の毛を 1 本ずつ取るところから始めるインクリメンタルゲーム</title>
+  <meta name="description" content="屋敷じゅうの猫の毛を手で 1 本ずつ取るところから始めて、粘着ローラー、掃除機、掃除ロボットで自動化していくインクリメンタルゲーム。PC (Steam) 向けに開発中。題名は未定。">
+  <link rel="canonical" href="https://bannzai.github.io/cat-hair/">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="cat-hair (仮称)">
+  <meta property="og:title" content="cat-hair (仮称)｜猫の毛を 1 本ずつ取るところから始めるインクリメンタルゲーム">
+  <meta property="og:description" content="残り数百万本の猫の毛を まず手で 1 本。道具と自動化で屋敷を片付けていくインクリメンタルゲーム。PC (Steam) 向けに開発中。">
+  <meta property="og:url" content="https://bannzai.github.io/cat-hair/">
+  <meta property="og:image" content="https://bannzai.github.io/cat-hair/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="ja_JP">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="cat-hair (仮称)">
+  <meta name="twitter:description" content="残り数百万本の猫の毛を まず手で 1 本。道具と自動化で屋敷を片付けていくインクリメンタルゲーム。">
+  <meta name="twitter:image" content="https://bannzai.github.io/cat-hair/og.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "cat-hair (仮称)",
+    "description": "屋敷じゅうの猫の毛を手で 1 本ずつ取るところから始めて、粘着ローラー、掃除機、掃除ロボットで自動化していくインクリメンタルゲーム。",
+    "genre": ["Incremental", "Simulation"],
+    "gamePlatform": "PC",
+    "operatingSystem": ["Windows", "macOS", "Linux"],
+    "inLanguage": "ja",
+    "url": "https://bannzai.github.io/cat-hair/",
+    "image": "https://bannzai.github.io/cat-hair/og.png",
+    "author": { "@type": "Person", "name": "bannzai" }
+  }
+  </script>
+  <style>
+    :root {
+      --suit: #16181d;
+      --suit-2: #1f2229;
+      --seam: #343842;
+      --hair: #f4f1ea;
+      --text: #f4f1ea;
+      --muted: #b4b7bf;
+      --tape: #e3c14b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+      line-height: 1.8;
+      color: var(--text);
+      background: var(--suit);
+    }
+    a { color: inherit; }
+    a:focus-visible { outline: 3px solid var(--tape); outline-offset: 3px; }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+    header { position: relative; overflow: hidden; padding: 72px 0 64px; }
+    .hairs { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .hairs path { fill: none; stroke: var(--hair); stroke-width: 1.2; stroke-linecap: round; opacity: 0.55; }
+    header .wrap { position: relative; }
+    .name { font-size: 1rem; font-weight: bold; margin: 0; color: var(--muted); }
+    h1 { font-size: clamp(2rem, 7vw, 3.6rem); margin: 12px 0 0; line-height: 1.25; }
+    .lead { font-size: 1.1rem; color: var(--muted); margin: 20px 0 0; max-width: 34em; }
+    .counter { margin: 40px 0 0; padding: 20px 24px; background: var(--suit-2); border-left: 6px solid var(--tape); max-width: 420px; }
+    .counter .label { margin: 0; font-size: 0.9rem; color: var(--muted); }
+    .counter .number { margin: 0; font-size: clamp(1.8rem, 6vw, 2.6rem); font-weight: bold; font-variant-numeric: tabular-nums; line-height: 1.3; }
+    .counter .delta { margin: 4px 0 0; color: var(--tape); font-weight: bold; }
+    .status { display: inline-block; margin: 32px 0 0; padding: 6px 14px; border: 2px solid var(--text); border-radius: 4px; font-weight: bold; }
+    section { padding: 56px 0; }
+    section h2 { font-size: 1.6rem; margin: 0 0 16px; line-height: 1.4; }
+    .band { background: var(--suit-2); }
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 24px; padding: 0; list-style: none; }
+    .steps li { border: 1px solid var(--seam); border-radius: 6px; padding: 20px; }
+    .steps h3 { margin: 0 0 8px; font-size: 1.1rem; }
+    .steps p { margin: 0; color: var(--muted); }
+    footer { border-top: 1px solid var(--seam); padding: 32px 0; font-size: 0.9rem; }
+    footer ul { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+  </style>
+</head>
+<body>
+  <header>
+    <svg class="hairs" viewBox="0 0 1200 520" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <path d="M90 60 q30 -18 52 6"/><path d="M260 130 q-12 30 14 48"/><path d="M430 40 q26 10 30 38"/>
+      <path d="M610 96 q-28 8 -40 34"/><path d="M780 52 q18 24 48 20"/><path d="M960 118 q-10 -30 -40 -34"/>
+      <path d="M1110 70 q-26 14 -22 44"/><path d="M150 260 q34 6 44 36"/><path d="M350 300 q-30 -10 -52 12"/>
+      <path d="M540 250 q8 30 38 36"/><path d="M720 310 q24 -20 54 -8"/><path d="M900 260 q-22 22 -8 50"/>
+      <path d="M1080 300 q-34 -4 -50 22"/><path d="M70 430 q20 -26 50 -22"/><path d="M290 460 q28 12 30 42"/>
+      <path d="M480 420 q-26 16 -24 46"/><path d="M670 470 q30 -12 54 6"/><path d="M860 430 q10 28 40 30"/>
+      <path d="M1040 460 q-18 -24 -48 -22"/><path d="M1150 400 q-8 30 16 48"/>
+    </svg>
+    <div class="wrap">
+      <p class="name">cat-hair (仮称)</p>
+      <h1>猫の毛を<br>まず手で 1 本</h1>
+      <p class="lead">屋敷じゅうに落ちた猫の毛を、指でつまんで 1 本ずつ取るところから始めるインクリメンタルゲーム。お金を貯めて粘着ローラー、掃除機、掃除ロボットを買い、最後は何もしなくても屋敷が片付いていく。</p>
+      <div class="counter" aria-label="ゲーム内の表示の例">
+        <p class="label">屋敷の残り</p>
+        <p class="number">3,482,116 本</p>
+        <p class="delta">1 本 取れた</p>
+      </div>
+      <p class="status">PC (Steam) 向けに開発中</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="band">
+      <div class="wrap">
+        <h2>みみっちい手作業から全自動まで</h2>
+        <ul class="steps">
+          <li>
+            <h3>手で取る</h3>
+            <p>床やソファに顔を近づけて、毛を 1 本つまんで引く。伸びて、抜ける。残りが 1 本減る。</p>
+          </li>
+          <li>
+            <h3>道具を買う</h3>
+            <p>どの道具も 1 回では取り切れない。道具を育てるほど取りこぼしが減る。粘着ローラーの紙はすぐ無くなる。</p>
+          </li>
+          <li>
+            <h3>猫がまた落とす</h3>
+            <p>きれいにした場所を猫が横切る。通り道と昼寝の場所を読んで、先回りする。</p>
+          </li>
+          <li>
+            <h3>自動化する</h3>
+            <p>掃除ロボットに回る順を教え、集めた毛を運び出すところまで機械に任せる。屋敷が終わったら、もっと大きい建物へ。</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="support">
+      <div class="wrap">
+        <h2>サポート・お問い合わせ</h2>
+        <p>ご質問や不具合の報告は、メールでお送りください。</p>
+        <p><a href="mailto:bannzai.app@gmail.com">bannzai.app@gmail.com</a></p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <ul>
+        <li><a href="./Terms-ja">利用規約</a></li>
+        <li><a href="./PrivacyPolicy-ja">プライバシーポリシー</a></li>
+        <li><a href="./Terms-en">Terms of Use</a></li>
+        <li><a href="./PrivacyPolicy-en">Privacy Policy</a></li>
+      </ul>
+      <p>&copy; 2026 bannzai</p>
+    </div>
+  </footer>
+</body>
+</html>

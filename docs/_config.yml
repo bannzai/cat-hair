@@ -1,0 +1,5 @@
+# GitHub Pages (Jekyll) の設定。利用規約・プライバシーポリシーの Markdown を HTML 化して
+# 拡張子なし URL (/Terms-ja) と .html の両方で配信するため .nojekyll は置かない
+title: cat-hair (仮称)
+description: 猫の毛を 1 本ずつ取るところから自動化まで進めるインクリメンタルゲーム
+lang: ja

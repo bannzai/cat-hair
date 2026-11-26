@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+{% comment %}
+利用規約・プライバシーポリシーの Markdown を包むレイアウト。Pages の既定テーマ (primer v0.6.0) の
+_layouts/default.html を元に、次の 2 点を変えた。
+- <html lang> で、ページの front matter の lang (英語版の lang: en) を site.lang より優先する (既定テーマは site.lang しか見ない)
+- 訪問者向けのページにリポジトリへの導線を出さないため、フッターの編集リンクを外した
+{% endcomment %}
+<html lang="{{ page.lang | default: site.lang | default: "en-US" }}">
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+{% seo %}
+    <link rel="stylesheet" href="{{ "/assets/css/style.css" | relative_url }}">
+  </head>
+  <body>
+    <div class="container-lg px-3 my-5 markdown-body">
+      {% if site.title and site.title != page.title %}
+      <h1><a href="{{ "/" | relative_url }}">{{ site.title }}</a></h1>
+      {% endif %}
+
+      {{ content }}
+    </div>
+  </body>
+</html>

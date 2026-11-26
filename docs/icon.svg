@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 紹介ページの favicon。スーツの生地の上の猫の毛 1 本 -->
+  <rect width="64" height="64" rx="8" fill="#16181d"/>
+  <path d="M14 44 q10 -26 22 -14 t14 -12" fill="none" stroke="#f4f1ea" stroke-width="3" stroke-linecap="round"/>
+</svg>
