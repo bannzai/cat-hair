@@ -38,12 +38,17 @@ const MAX_ROOM_COUNT: int = 16
 ## 2x2 グリッドで複数部屋のドア開口と隣室の見通しを確認できる初期値
 const DEFAULT_ROOM_COUNT: int = 4
 
-## コマンドライン引数のプレフィックス定義 (単一情報源)
+## 毛の総本数を上書きするコマンドライン引数プレフィックス
 const ARG_HAIR_COUNT: String = "--hair-count="
+## 埋める探し物の数を上書きするコマンドライン引数プレフィックス
 const ARG_FOUND_ITEM_COUNT: String = "--found-item-count="
+## 1 部屋の基準幅 (m) を上書きするコマンドライン引数プレフィックス
 const ARG_ROOM_SIZE: String = "--room-size="
+## 物の総数を上書きするコマンドライン引数プレフィックス
 const ARG_OBJECT_COUNT: String = "--object-count="
+## 部屋数を上書きするコマンドライン引数プレフィックス
 const ARG_ROOM_COUNT: String = "--room-count="
+## 調整値の上書きに使う全コマンドライン引数プレフィックス一覧 (単一情報源)
 const CMDLINE_ARG_PREFIXES: Array[String] = [
 	ARG_HAIR_COUNT,
 	ARG_FOUND_ITEM_COUNT,

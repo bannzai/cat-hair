@@ -82,15 +82,21 @@ func get_camera() -> Camera3D:
 	return _camera
 
 
+## 入力イベントがマウス捕捉を開始すべき左クリック押下かを判定する (純粋判定)
+static func should_capture_mouse(event: InputEvent) -> bool:
+	if not (event is InputEventMouseButton):
+		return false
+	var mouse_button_event: InputEventMouseButton = event
+	return mouse_button_event.button_index == MOUSE_BUTTON_LEFT and mouse_button_event.pressed
+
+
 ## プレイ中のマウス捕捉・視点回転・Esc 解放を処理する
 func _unhandled_input(event: InputEvent) -> void:
 	if not controls_enabled:
 		return
-	if event is InputEventMouseButton:
-		var mouse_button_event: InputEventMouseButton = event
-		if mouse_button_event.button_index == MOUSE_BUTTON_LEFT and mouse_button_event.pressed:
-			if DisplayServer.get_name() != "headless":
-				Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	if should_capture_mouse(event):
+		if DisplayServer.get_name() != "headless":
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	elif event is InputEventMouseMotion:
 		var mouse_motion_event: InputEventMouseMotion = event
 		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED or allow_uncaptured_look:

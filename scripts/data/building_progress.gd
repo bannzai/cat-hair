@@ -2,9 +2,13 @@ class_name BuildingProgress
 extends Resource
 ## 今いる建物の進行。お金と道具は建物ごとに持ち、次の建物へ進むと作り直す。
 
+## 面ごとの毛データ型スクリプト
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
+## 毛・加工品在庫データ型スクリプト
 const HairStockScript := preload("res://scripts/data/hair_stock.gd")
+## 所持道具データ型スクリプト
 const OwnedToolScript := preload("res://scripts/data/owned_tool.gd")
+## 探し物進捗データ型スクリプト
 const FoundItemProgressScript := preload("res://scripts/data/found_item_progress.gd")
 
 ## 最初の建物の id (屋敷)

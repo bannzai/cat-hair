@@ -45,8 +45,7 @@ static func from_dict(raw_tool_dict: Variant) -> OwnedTool:
 	owned_tool.tool_id = StringName(tool_dict["tool_id"])
 	owned_tool.level = maxi(1, int(raw_level))
 	owned_tool.consumable_count = maxi(0, int(raw_consumable))
-	var rooms_arr: Array = raw_rooms
-	for room_entry: Variant in rooms_arr:
+	for room_entry: Variant in raw_rooms:
 		if not (room_entry is String):
 			return null
 		owned_tool.robot_room_ids.append(StringName(room_entry))

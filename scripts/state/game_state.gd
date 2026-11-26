@@ -9,9 +9,13 @@ signal state_changed
 ## 調整値から屋敷レイアウトが組み立て直された時に発火し、3D 空間を再構築する
 signal mansion_rebuilt(layout: MansionLayout)
 
+## セーブデータ全体型スクリプト
 const SaveDataScript := preload("res://scripts/data/save_data.gd")
+## 開発者向け調整値型スクリプト
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
+## 屋敷ビルダーロジックスクリプト
 const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd")
+## JSON 保存ストレージスクリプト
 const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 
 ## セーブデータの保存先パス (テスト時に差し替え可能)
@@ -20,8 +24,10 @@ var save_path: String = SaveStorageScript.DEFAULT_SAVE_PATH
 var save_data: SaveData = null
 ## 現在の調整値から組み立てた屋敷レイアウト
 var current_layout: MansionLayout = null
-## 起動時に有効なセーブデータを読み込めたか
+## 起動時に有効なセーブデータを整合したまま読み込めたか
 var loaded_from_save: bool = false
+## コマンドライン引数で調整値を上書き起動したか (既存セーブの意図しない終了時上書きを防ぐ)
+var launched_with_cmdline_override: bool = false
 
 
 ## autoload 起動時に保存ファイルとコマンドライン引数から初期状態を構築する
@@ -31,35 +37,43 @@ func _ready() -> void:
 
 
 ## ウィンドウ終了要求時に現在の状態を保存する。
+## コマンドライン引数で調整値を上書きした試験起動では既存の進行を壊さないよう自動保存しない。
 ## 前提 (Godot 4 公式ドキュメント「Handling quit requests」):
 ## application/config/auto_accept_quit (既定 true) では終了直前に全ノードへ
 ## NOTIFICATION_WM_CLOSE_REQUEST が通知されるため、ここで保存を完了させる。
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_CLOSE_REQUEST and save_data != null:
+	if (
+		what == NOTIFICATION_WM_CLOSE_REQUEST
+		and save_data != null
+		and not launched_with_cmdline_override
+	):
 		save_current_state()
 
 
 ## 指定パスの保存データとコマンドライン引数から状態を初期化する。
-## コマンドライン引数で調整値が指定されている場合は、その値で屋敷を新しく組み立てる。
+## コマンドライン引数で調整値が指定されている場合は、その値で屋敷を新しく組み立て、
+## 終了時の自動保存による既存セーブ上書きを無効にする。
 func initialize_from_storage(
 	target_path: String = SaveStorageScript.DEFAULT_SAVE_PATH,
 	cmdline_args: PackedStringArray = PackedStringArray(),
 ) -> void:
 	save_path = target_path
 	var loaded_save: SaveData = SaveStorageScript.load_from_path(save_path)
-	var has_override: bool = MansionTuningScript.has_cmdline_override(cmdline_args)
+	launched_with_cmdline_override = MansionTuningScript.has_cmdline_override(cmdline_args)
 
-	if loaded_save != null and not has_override:
+	if loaded_save != null and not launched_with_cmdline_override:
 		save_data = loaded_save
 		loaded_from_save = true
 		current_layout = MansionBuilderScript.build_layout(save_data.tuning)
 		_reconcile_progress_with_layout()
 	else:
-		var base_tuning: MansionTuning = (
-			loaded_save.tuning if loaded_save != null else MansionTuningScript.new()
-		)
 		loaded_from_save = false
-		_create_fresh_save(MansionTuningScript.from_cmdline_args(cmdline_args, base_tuning))
+		_create_fresh_save(
+			MansionTuningScript.from_cmdline_args(
+				cmdline_args,
+				loaded_save.tuning if loaded_save != null else MansionTuningScript.new(),
+			)
+		)
 	mansion_rebuilt.emit(current_layout)
 	state_changed.emit()
 
@@ -67,6 +81,7 @@ func initialize_from_storage(
 ## 現在の調整値を使って新しい屋敷・進行データを作り直し、保存する
 func start_new_game(custom_tuning: MansionTuning = null) -> void:
 	loaded_from_save = false
+	launched_with_cmdline_override = false
 	_create_fresh_save(
 		custom_tuning.clamped() if custom_tuning != null else get_tuning().clamped()
 	)
@@ -90,6 +105,7 @@ func apply_tuning_and_rebuild(new_tuning: MansionTuning, persist: bool = true) -
 			safe_tuning,
 		)
 	if persist:
+		launched_with_cmdline_override = false
 		save_current_state()
 	mansion_rebuilt.emit(current_layout)
 	state_changed.emit()
@@ -144,29 +160,61 @@ func _create_fresh_save(target_tuning: MansionTuning) -> void:
 	)
 
 
-## 読み込んだセーブデータの面一覧と現在のレイアウトの面一覧が一致しない場合は進行を作り直す
+## 読み込んだ進行の面・探し物・住人の ID 一覧が現在レイアウトと一致しない場合は
+## 進行を作り直し、タイトルで「続きから」を出さないよう loaded_from_save を降ろす
 func _reconcile_progress_with_layout() -> void:
 	if save_data == null or save_data.building_progress == null or current_layout == null:
 		return
-	var expected_surface_ids: Dictionary = {}
-	for surface: MansionLayout.SurfaceDef in current_layout.surfaces:
-		expected_surface_ids[surface.surface_id] = true
-	var actual_surface_ids: Dictionary = {}
-	for entry: SurfaceHair in save_data.building_progress.surface_hairs:
-		actual_surface_ids[entry.surface_id] = true
-	if expected_surface_ids.size() != actual_surface_ids.size():
+	if (
+		not _surface_ids_match_layout()
+		or not _found_item_ids_match_layout()
+		or not _resident_ids_match_layout()
+	):
 		save_data.building_progress = MansionBuilderScript.build_initial_progress(
 			current_layout,
 			save_data.tuning,
 		)
-		return
-	for expected_surface_id: Variant in expected_surface_ids.keys():
-		if not actual_surface_ids.has(expected_surface_id):
-			save_data.building_progress = MansionBuilderScript.build_initial_progress(
-				current_layout,
-				save_data.tuning,
-			)
-			return
+		loaded_from_save = false
+
+
+## 保存データの surface_hairs の件数と ID 集合が現在レイアウトの surfaces と完全一致するか
+func _surface_ids_match_layout() -> bool:
+	var expected_ids: Dictionary = {}
+	for surface: MansionLayout.SurfaceDef in current_layout.surfaces:
+		expected_ids[surface.surface_id] = true
+	var actual_ids: Dictionary = {}
+	for entry: SurfaceHair in save_data.building_progress.surface_hairs:
+		actual_ids[entry.surface_id] = true
+	return _id_sets_equal(expected_ids, actual_ids)
+
+
+## 保存データの found_items の件数と ID 集合が現在レイアウトの found_item_spots と完全一致するか
+func _found_item_ids_match_layout() -> bool:
+	var expected_ids: Dictionary = {}
+	for spot: MansionLayout.FoundItemSpotDef in current_layout.found_item_spots:
+		expected_ids[spot.found_item_id] = true
+	var actual_ids: Dictionary = {}
+	for item: FoundItemProgress in save_data.building_progress.found_items:
+		actual_ids[item.found_item_id] = true
+	return _id_sets_equal(expected_ids, actual_ids)
+
+
+## 保存データの resident_moods の件数と住人 ID 集合が現在レイアウトの rooms と完全一致するか
+func _resident_ids_match_layout() -> bool:
+	var expected_ids: Dictionary = {}
+	for room: MansionLayout.RoomDef in current_layout.rooms:
+		expected_ids[StringName("resident_%s" % String(room.room_id))] = true
+	return _id_sets_equal(expected_ids, save_data.building_progress.resident_moods)
+
+
+## 2 つの辞書のキー集合が件数・要素ともに一致するか
+static func _id_sets_equal(expected_keys: Dictionary, actual_keys: Dictionary) -> bool:
+	if expected_keys.size() != actual_keys.size():
+		return false
+	for expected_key: Variant in expected_keys.keys():
+		if not actual_keys.has(expected_key):
+			return false
+	return true
 
 
 ## 起動時のユーザー引数とエンジン引数をまとめて返す

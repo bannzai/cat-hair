@@ -8,7 +8,9 @@ extends SceneTree
 const HeadlessCheck := preload("res://scripts/dev/headless_check.gd")
 ## 撮影するメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
+## 状態管理 autoload スクリプト
 const GameStateScript := preload("res://scripts/state/game_state.gd")
+## JSON 保存ストレージスクリプト
 const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 
 ## screenshot 専用のセーブパス

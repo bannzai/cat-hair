@@ -2,8 +2,11 @@ class_name SaveData
 extends Resource
 ## セーブデータ全体。建物をまたいで残る物と、今いる建物の進行・開発者向けの調整値を持つ。
 
+## 終えた建物成績データ型スクリプト
 const BuildingRecordScript := preload("res://scripts/data/building_record.gd")
+## 建物進行データ型スクリプト
 const BuildingProgressScript := preload("res://scripts/data/building_progress.gd")
+## 開発者向け調整値データ型スクリプト
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 
 ## 現在の保存スキーマ版 (初版 = 1)

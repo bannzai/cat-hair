@@ -2,12 +2,17 @@ class_name MansionWorld
 extends Node3D
 ## MansionLayout と BuildingProgress を受け取り、屋敷 1 階の 3D 空間と仮の毛を構築する。
 
+## 屋敷レイアウト型スクリプト
 const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
+## 屋敷ビルダーロジックスクリプト
 const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd")
+## 面ごとの毛データ型スクリプト
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 
 ## 1 つの表面に仮描画する毛片の上限本数 (面ごとの分布を視認しつつソフトウェア描画負荷を抑える値)
 const MAX_VISUAL_HAIRS_PER_SURFACE: int = 45
+## 面数が多い屋敷でも各面に毛の存在が見える仮描画の下限本数
+const MIN_VISUAL_HAIRS_PER_SURFACE: int = 4
 ## 屋敷全体で仮描画する毛片の上限本数 (CI の Mesa llvmpipe で数秒以内に完了させる上限)
 const MAX_VISUAL_HAIRS_TOTAL: int = 900
 ## 室内補助ライト (OmniLight3D) を置く部屋数の上限。
@@ -16,10 +21,20 @@ const MAX_VISUAL_HAIRS_TOTAL: int = 900
 ## (rendering/limits/opengl/max_lights_per_object = 8、DirectionalLight3D は別枠)。
 ## 隣室のライトが境界メッシュへ重なっても上限 8 を超えない安全余裕として 6 灯に制限する。
 const MAX_ROOM_LIGHTS: int = 6
+## 室内補助ライトの強度 (アンビエント 0.78 + 平行光 0.75 に重ねて床と家具の立体感を出す値)
+const ROOM_LIGHT_ENERGY: float = 1.6
+## 室内補助ライトの到達距離倍率 (部屋幅の対角距離 sqrt(2) ≈ 1.41 まで届く値)
+const ROOM_LIGHT_RANGE_MULTIPLIER: float = 1.4
 ## 部屋の壁の厚み (m)。隣接部屋との Z-fighting を防ぐ内側オフセットの単一情報源
 const WALL_THICKNESS_M: float = 0.14
 ## 隣接部屋の壁どうしが重ならないよう各部屋の壁を内側へ寄せる距離 (壁厚の半分)
 const WALL_HALF_THICKNESS_M: float = WALL_THICKNESS_M * 0.5
+## ドア開口の両脇に最低 0.3m ずつの壁柱を残すための最小合計余白 (m)
+const DOOR_SIDE_WALL_MIN_TOTAL_M: float = 0.6
+## 仮の毛片を表面の端 6% を避けて内側へ散らす半幅比率
+const VISUAL_HAIR_EXTENT_HALF_RATIO: float = 0.44
+## 一人称視点 2〜4m 先から細い線として視認できる仮毛片の寸法 (m)
+const VISUAL_HAIR_MESH_SIZE: Vector3 = Vector3(0.014, 0.006, 0.11)
 ## 仮の毛片を再現性高く散らすための固定シード
 const VISUAL_HAIR_RNG_SEED: int = 20261126
 
@@ -34,22 +49,37 @@ var _lights_root: Node3D = null
 ## 現在描画している仮の毛片インスタンスの総数
 var _rendered_hair_count: int = 0
 
-## 各部位の仮見た目用マテリアル (見た目の試作 #19 の前段階として形と材質種別を区別する色)
+## 床メッシュ用マテリアル (フローリング調)
 var _material_floor: StandardMaterial3D = null
+## 内壁メッシュ用マテリアル (淡い生成り色)
 var _material_wall: StandardMaterial3D = null
+## 巾木メッシュ用マテリアル (濃い木色)
 var _material_baseboard: StandardMaterial3D = null
+## 天井メッシュ用マテリアル (白漆喰調)
 var _material_ceiling: StandardMaterial3D = null
+## ドア枠メッシュ用マテリアル (濃い木枠)
 var _material_door_frame: StandardMaterial3D = null
+## 天井照明シェード用マテリアル (温白色発光)
 var _material_lamp: StandardMaterial3D = null
+## カーペット本体用マテリアル (臙脂色)
 var _material_carpet: StandardMaterial3D = null
+## カーペット縁取り用マテリアル (金色系)
 var _material_carpet_trim: StandardMaterial3D = null
+## ソファ布地用マテリアル (深緑系)
 var _material_sofa: StandardMaterial3D = null
+## 木製家具用マテリアル (テーブル・椅子・キャビネット)
 var _material_wood: StandardMaterial3D = null
+## 住人のスーツ用マテリアル (黒地で白い毛が見えやすい色)
 var _material_suit: StandardMaterial3D = null
+## ハンガーラック支柱用マテリアル (金属調)
 var _material_metal: StandardMaterial3D = null
+## ニット布地用マテリアル (マスタード系)
 var _material_knit: StandardMaterial3D = null
+## 仮描画の白い毛用マテリアル
 var _material_hair_white: StandardMaterial3D = null
+## 仮描画の黒い毛用マテリアル
 var _material_hair_black: StandardMaterial3D = null
+## 仮描画の三毛用マテリアル
 var _material_hair_calico: StandardMaterial3D = null
 
 
@@ -96,6 +126,11 @@ func get_room_node_count() -> int:
 ## 構築済みの物ノード数を返す
 func get_object_node_count() -> int:
 	return _objects_root.get_child_count() if _objects_root != null else 0
+
+
+## 構築済みの室内補助ライト数を返す
+func get_room_light_count() -> int:
+	return _lights_root.get_child_count() if _lights_root != null else 0
 
 
 ## 仮描画している毛片のインスタンス総数を返す
@@ -189,8 +224,8 @@ func _build_room_node(room: MansionLayout.RoomDef, room_idx: int) -> void:
 		room_light.name = "RoomLight_%d" % room_idx
 		room_light.position = room.center + Vector3(0.0, room_height - 0.35, 0.0)
 		room_light.light_color = Color(1.0, 0.94, 0.84)
-		room_light.light_energy = 1.6
-		room_light.omni_range = maxf(room_width, room_depth) * 1.4
+		room_light.light_energy = ROOM_LIGHT_ENERGY
+		room_light.omni_range = maxf(room_width, room_depth) * ROOM_LIGHT_RANGE_MULTIPLIER
 		room_light.shadow_enabled = false
 		_lights_root.add_child(room_light)
 
@@ -268,7 +303,10 @@ func _build_wall(
 		)
 		return
 
-	var door_width: float = minf(MansionLayoutScript.DOOR_WIDTH_M, wall_span - 0.6)
+	var door_width: float = minf(
+		MansionLayoutScript.DOOR_WIDTH_M,
+		wall_span - DOOR_SIDE_WALL_MIN_TOTAL_M,
+	)
 	var door_height: float = minf(MansionLayoutScript.DOOR_HEIGHT_M, wall_height - 0.3)
 	var side_width: float = maxf(0.15, (wall_span - door_width) * 0.5)
 	var side_offset: float = (door_width + side_width) * 0.5
@@ -533,7 +571,7 @@ func _build_visual_hairs(layout: MansionLayout, progress: BuildingProgress) -> v
 	}
 	var per_surface_cap: int = clampi(
 		MAX_VISUAL_HAIRS_TOTAL / maxi(1, layout.surfaces.size()),
-		4,
+		MIN_VISUAL_HAIRS_PER_SURFACE,
 		MAX_VISUAL_HAIRS_PER_SURFACE,
 	)
 
@@ -572,13 +610,24 @@ func _build_visual_hairs(layout: MansionLayout, progress: BuildingProgress) -> v
 			elif pick_ratio < float(white_count + black_count):
 				color_id = SurfaceHairScript.COLOR_BLACK
 
-			var hair_pos: Vector3 = Vector3(
-				surface.center.x + rng.randf_range(-surface.extents.x * 0.44, surface.extents.x * 0.44),
-				surface.center.y + 0.008,
-				surface.center.z + rng.randf_range(-surface.extents.y * 0.44, surface.extents.y * 0.44),
+			transforms_by_color[color_id].append(
+				Transform3D(
+					Basis(Vector3.UP, rng.randf_range(0.0, TAU)),
+					Vector3(
+						surface.center.x
+						+ rng.randf_range(
+							-surface.extents.x * VISUAL_HAIR_EXTENT_HALF_RATIO,
+							surface.extents.x * VISUAL_HAIR_EXTENT_HALF_RATIO,
+						),
+						surface.center.y + 0.008,
+						surface.center.z
+						+ rng.randf_range(
+							-surface.extents.y * VISUAL_HAIR_EXTENT_HALF_RATIO,
+							surface.extents.y * VISUAL_HAIR_EXTENT_HALF_RATIO,
+						),
+					),
+				)
 			)
-			var color_transforms: Array = transforms_by_color[color_id]
-			color_transforms.append(Transform3D(Basis(Vector3.UP, rng.randf_range(0.0, TAU)), hair_pos))
 			_rendered_hair_count += 1
 
 	_spawn_hair_multimesh(
@@ -607,7 +656,7 @@ func _spawn_hair_multimesh(
 	if hair_transforms.is_empty():
 		return
 	var hair_mesh: BoxMesh = BoxMesh.new()
-	hair_mesh.size = Vector3(0.014, 0.006, 0.11)
+	hair_mesh.size = VISUAL_HAIR_MESH_SIZE
 	var multi_mesh: MultiMesh = MultiMesh.new()
 	multi_mesh.transform_format = MultiMesh.TRANSFORM_3D
 	multi_mesh.mesh = hair_mesh

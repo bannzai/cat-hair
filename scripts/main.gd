@@ -6,6 +6,7 @@ extends Node3D
 const BOOT_MESSAGE: String = "cat-hair boot"
 ## プロジェクト全体の既定フォント (日本語の字形を持つ。出典は assets/CREDITS.md)
 const FONT: Font = preload("res://assets/fonts/NotoSansJP[wght].ttf")
+## 状態管理 autoload スクリプト (headless 検証時のフォールバック生成に使用)
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 
 ## 参照中の GameState ノード (autoload または検証時のフォールバック)

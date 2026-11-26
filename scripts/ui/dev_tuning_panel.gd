@@ -8,6 +8,7 @@ signal apply_requested(tuning: MansionTuning)
 ## 「閉じる」押下時にパネル終了要求を通知する
 signal close_requested
 
+## 開発者向け調整値データ型スクリプト
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 
 ## 毛の本数 SpinBox の増減刻み (千〜万単位を調整しやすい 100 本刻み)

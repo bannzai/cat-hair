@@ -74,13 +74,19 @@ selfcheck: import
 	tail -n 1 $(LOG_DIR)/selfcheck.log | grep -q '^exit=0$$'
 	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/selfcheck.log
 
-# メインシーンを tree に置いて動かす入力統合テスト (headless。検証の一覧は scripts/dev/integration.gd)
+# メインシーンを tree に置いて動かす入力統合テスト (headless。検証の一覧は scripts/dev/integration.gd)。
+# 後半では実プロセスの OS コマンドライン引数 (-- --verify-cmdline ...) による調整値上書き起動も検証する
 integration: import
 	"$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/integration.gd > $(LOG_DIR)/integration.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/integration.log; \
 	grep -q '^integration OK$$' $(LOG_DIR)/integration.log
 	tail -n 1 $(LOG_DIR)/integration.log | grep -q '^exit=0$$'
 	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/integration.log
+	"$(GODOT)" --headless --log-file "$(CURDIR)/$(LOG_DIR)/integration-cmdline.godot.log" --path . $(SCRIPT_FLAGS) --script res://scripts/dev/integration.gd -- --verify-cmdline --room-count=2 --hair-count=321 --object-count=4 --found-item-count=1 --room-size=5.0 > $(LOG_DIR)/integration-cmdline.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/integration-cmdline.log; \
+	grep -q '^integration OK$$' $(LOG_DIR)/integration-cmdline.log
+	tail -n 1 $(LOG_DIR)/integration-cmdline.log | grep -q '^exit=0$$'
+	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/integration-cmdline.log
 
 # 検証の土台 (scripts/dev/headless_check.gd) の失敗の経路の検証。わざと失敗する検証を動かし、exit code 1・FAIL の行・
 # 完了の行が出ないことを確かめる (土台が常に OK を返すようになると selfcheck / integration では気づけないため)
@@ -161,7 +167,7 @@ build-all: build-macos build-windows build-linux
 # ディレクトリごとや *.log をまとめては消さない)。ログは target ごとの <target>.log と、ENGINE_LOG の <target>.godot.log
 clean:
 	rm -rf build
-	rm -f $(foreach target,import check selfcheck integration failure-path screenshot movie run build-macos build-windows build-linux,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
+	rm -f $(foreach target,import check selfcheck integration integration-cmdline failure-path screenshot movie run build-macos build-windows build-linux,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
 	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4
 
 # 引数なしの make で run を実行する (人が手で動作確認するための入口。検査・テストは CI が行う)

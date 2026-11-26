@@ -4,6 +4,7 @@ extends RefCounted
 ## 壊れたファイルや存在しないファイルを読み込んでもエンジンの ERROR ログを出さずに
 ## null を返し、呼び出し側で新規開始へ安全にフォールバックできる。
 
+## セーブデータ全体型スクリプト
 const SaveDataScript := preload("res://scripts/data/save_data.gd")
 
 ## 既定の保存先パス (Godot のユーザーデータ領域 user:// 直下の単一 JSON)
@@ -14,11 +15,10 @@ const DEFAULT_SAVE_PATH: String = "user://save_data.json"
 static func save_to_path(save_data: SaveData, path: String = DEFAULT_SAVE_PATH) -> Error:
 	if save_data == null:
 		return ERR_INVALID_PARAMETER
-	var json_text: String = JSON.stringify(save_data.to_dict(), "\t")
 	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		return FileAccess.get_open_error()
-	file.store_string(json_text)
+	file.store_string(JSON.stringify(save_data.to_dict(), "\t"))
 	file.close()
 	return OK
 

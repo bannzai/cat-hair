@@ -3,23 +3,57 @@ extends RefCounted
 ## 調整値 (MansionTuning) を入力にして、屋敷 1 階のレイアウトと初期進行状態を
 ## 決定論的に組み立てる純粋ロジック。
 
+## 開発者向け調整値型スクリプト
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
+## 屋敷レイアウト型スクリプト
 const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
+## 建物進行データ型スクリプト
 const BuildingProgressScript := preload("res://scripts/data/building_progress.gd")
+## 面ごとの毛データ型スクリプト
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
+## 探し物進捗データ型スクリプト
 const FoundItemProgressScript := preload("res://scripts/data/found_item_progress.gd")
 
-## 床の毛分配重み。部屋全面を占める最大面積のため家具・布 (1.0〜2.2) より大きく設定
+## 床の毛分配重み。部屋全面を占める最大面積のため家具・布より大きく設定
 const FLOOR_HAIR_WEIGHT: float = 2.5
 ## 住人の初期機嫌 (0.0 不機嫌 〜 1.0 ご機嫌の中間値。開始時点で増減の余地を残す)
 const INITIAL_RESIDENT_MOOD: float = 0.5
-## ソファ表面 (座面) の高さ比率。MansionWorld の座面メッシュ高さ (size.y * 0.56) と一致させる
+## ソファ表面 (座面) の高さ比率。MansionWorld の座面メッシュ高さ比率の単一情報源
 const SOFA_SEAT_HEIGHT_RATIO: float = 0.56
 ## 3 色分配で面インデックスに応じて主色・次点色へ割り振る比率 (3 色すべてが混ざりつつ偏りが見える値)
 const PRIMARY_COLOR_RATIO_STANDARD: float = 0.50
+## 3 色分配で標準パターンの次点色へ割り振る比率
 const SECONDARY_COLOR_RATIO_STANDARD: float = 0.30
+## 3 色分配で三毛主色パターンの主色へ割り振る比率
 const PRIMARY_COLOR_RATIO_CALICO: float = 0.45
+## 3 色分配で三毛主色パターンの次点色へ割り振る比率
 const SECONDARY_COLOR_RATIO_CALICO: float = 0.35
+## 家具 1 個の水平サイズを部屋幅の約 1/3 以下に収め、歩ける通路を残すための上限比率
+const OBJECT_MAX_FOOTPRINT_RATIO: float = 0.34
+## 1 部屋に 9 個目以降の家具を置く時に内側リングへ寄せる縮小比率 (周回ごとの重なりを避ける)
+const RING_SHRINK_FACTOR: float = 0.75
+## 内側リング配置時に X 軸へ交互にずらす距離 (m。家具どうしの完全一致を避ける)
+const RING_STAGGER_X_M: float = 0.28
+## 内側リング配置時に Z 軸へ交互にずらす距離 (m。家具どうしの完全一致を避ける)
+const RING_STAGGER_Z_M: float = 0.22
+## 家具と壁の間に確保する最小の余白 (m。壁の厚みとプレイヤー接触のゆとり)
+const WALL_CLEARANCE_M: float = 0.20
+## 家具サイズに関わらず壁際から離す下限距離 (m)
+const MIN_WALL_MARGIN_M: float = 0.35
+## 家具天面の縁から毛がはみ出さないよう表面範囲を絞る比率
+const SURFACE_HAIR_EXTENT_RATIO: float = 0.85
+## 探し物の置き場所を同一面内で均等分散させる黄金角 (ラジアン。約 137.5 度)
+const GOLDEN_ANGLE_RAD: float = 2.3999632
+## 探し物 1 周目の配置半径比率 (表面中央寄りに収める)
+const SPOT_RADIUS_FIRST_PASS: float = 0.25
+## 探し物 2 周目以降の配置半径比率 (1 周目と重ならない外周寄り)
+const SPOT_RADIUS_OVERFLOW: float = 0.38
+## 探し物置き場所を表面からわずかに浮かせて埋没を防ぐ高さオフセット (m)
+const SPOT_HEIGHT_OFFSET_M: float = 0.05
+## 初期スポーンを部屋中心から南側 (+Z) へ寄せる比率 (南壁を避けつつ部屋中央を見渡せる位置)
+const SPAWN_BACK_OFFSET_RATIO: float = 0.36
+## 最小部屋幅でも部屋中央から離して視界を確保するスポーン後方オフセット下限 (m)
+const MIN_SPAWN_BACK_OFFSET_M: float = 0.9
 
 ## 屋敷 1 階の部屋名プリセット (先頭から順に使用し、9 部屋目以降は連番)
 const ROOM_PRESETS: Array[Dictionary] = [
@@ -187,20 +221,26 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		var raw_size: Vector3 = preset["size"]
 		var fit_scale: float = minf(
 			1.0,
-			maxf(0.5, room.size.x * 0.34) / maxf(raw_size.x, raw_size.z),
+			maxf(0.5, room.size.x * OBJECT_MAX_FOOTPRINT_RATIO) / maxf(raw_size.x, raw_size.z),
 		)
 		obj.size = Vector3(raw_size.x * fit_scale, raw_size.y, raw_size.z * fit_scale)
 
 		var slot: Dictionary = ROOM_SLOTS[local_idx % ROOM_SLOTS.size()]
 		var ring: int = local_idx / ROOM_SLOTS.size()
-		var ring_shrink: float = pow(0.75, float(ring))
+		var ring_shrink: float = pow(RING_SHRINK_FACTOR, float(ring))
 		var offset_x: float = float(slot["rx"]) * room.size.x * ring_shrink
 		var offset_z: float = float(slot["rz"]) * room.size.z * ring_shrink
 		if ring > 0:
-			offset_x += (0.28 if (ring % 2 == 1) else -0.28)
-			offset_z += (0.22 if ((local_idx % 2) == 0) else -0.22)
-		var limit_x: float = maxf(0.1, room.size.x * 0.5 - maxf(0.35, obj.size.x * 0.5 + 0.2))
-		var limit_z: float = maxf(0.1, room.size.z * 0.5 - maxf(0.35, obj.size.z * 0.5 + 0.2))
+			offset_x += RING_STAGGER_X_M if (ring % 2 == 1) else -RING_STAGGER_X_M
+			offset_z += RING_STAGGER_Z_M if ((local_idx % 2) == 0) else -RING_STAGGER_Z_M
+		var limit_x: float = maxf(
+			0.1,
+			room.size.x * 0.5 - maxf(MIN_WALL_MARGIN_M, obj.size.x * 0.5 + WALL_CLEARANCE_M),
+		)
+		var limit_z: float = maxf(
+			0.1,
+			room.size.z * 0.5 - maxf(MIN_WALL_MARGIN_M, obj.size.z * 0.5 + WALL_CLEARANCE_M),
+		)
 		offset_x = clampf(offset_x, -limit_x, limit_x)
 		offset_z = clampf(offset_z, -limit_z, limit_z)
 
@@ -212,11 +252,16 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		surface.surface_id = StringName("%s_surface" % String(obj.object_id))
 		surface.room_id = room.room_id
 		surface.surface_type = obj.surface_type
-		var surface_height: float = (
-			obj.size.y * SOFA_SEAT_HEIGHT_RATIO if obj.object_kind == &"sofa" else obj.size.y
+		surface.center = Vector3(
+			obj.position.x,
+			(obj.size.y * SOFA_SEAT_HEIGHT_RATIO if obj.object_kind == &"sofa" else obj.size.y)
+			+ 0.01,
+			obj.position.z,
 		)
-		surface.center = Vector3(obj.position.x, surface_height + 0.01, obj.position.z)
-		surface.extents = Vector2(maxf(0.3, obj.size.x * 0.85), maxf(0.3, obj.size.z * 0.85))
+		surface.extents = Vector2(
+			maxf(0.3, obj.size.x * SURFACE_HAIR_EXTENT_RATIO),
+			maxf(0.3, obj.size.z * SURFACE_HAIR_EXTENT_RATIO),
+		)
 		surface.hair_weight = float(preset["weight"])
 		layout.surfaces.append(surface)
 
@@ -240,11 +285,15 @@ static func _build_found_item_spots(layout: MansionLayout, tuning: MansionTuning
 		spot.found_item_id = StringName("found_item_%d" % spot_idx)
 		spot.room_id = surface.room_id
 		spot.surface_id = surface.surface_id
-		var angle_rad: float = float(spot_idx) * 2.3999632
-		var radius_scale: float = 0.25 if spot_idx < candidate_surfaces.size() else 0.38
+		var angle_rad: float = float(spot_idx) * GOLDEN_ANGLE_RAD
+		var radius_scale: float = (
+			SPOT_RADIUS_FIRST_PASS
+			if spot_idx < candidate_surfaces.size()
+			else SPOT_RADIUS_OVERFLOW
+		)
 		spot.position = Vector3(
 			surface.center.x + cos(angle_rad) * surface.extents.x * radius_scale,
-			surface.center.y + 0.05,
+			surface.center.y + SPOT_HEIGHT_OFFSET_M,
 			surface.center.z + sin(angle_rad) * surface.extents.y * radius_scale,
 		)
 		layout.found_item_spots.append(spot)
@@ -260,7 +309,8 @@ static func _configure_spawn(layout: MansionLayout, tuning: MansionTuning) -> vo
 	layout.spawn_position = Vector3(
 		first_room.center.x,
 		0.05,
-		first_room.center.z + maxf(0.9, tuning.room_size_m * 0.36),
+		first_room.center.z
+		+ maxf(MIN_SPAWN_BACK_OFFSET_M, tuning.room_size_m * SPAWN_BACK_OFFSET_RATIO),
 	)
 	layout.spawn_yaw = 0.0
 
@@ -283,7 +333,10 @@ static func _distribute_hairs(
 	var assigned_sum: int = 0
 	for surface_idx: int in range(layout.surfaces.size()):
 		var share: int = int(
-			floor(float(safe_total) * (maxf(0.01, layout.surfaces[surface_idx].hair_weight) / total_weight))
+			floor(
+				float(safe_total)
+				* (maxf(0.01, layout.surfaces[surface_idx].hair_weight) / total_weight)
+			)
 		)
 		allocated[surface_idx] = share
 		assigned_sum += share
