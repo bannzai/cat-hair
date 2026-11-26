@@ -152,6 +152,7 @@ func stop_all() -> void:
 	for player: AudioStreamPlayer in _sfx_players:
 		if player != null:
 			player.stop()
+	_next_sfx_index = 0
 	_needs_exit_release_wait = false
 
 
