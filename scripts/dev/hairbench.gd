@@ -25,7 +25,7 @@ const WARMUP_FRAMES_FIRST: int = 4
 const WARMUP_FRAMES_NEXT: int = 2
 ## 通常時のフレーム時間計測フレーム数 (CI 実行時間と平均値の安定のバランスで 5 フレーム)
 const MEASURE_FRAMES_MAX: int = 5
-## 重い条件を判定する 1 フレーム所要時間の閾値 (ms。CI の 100 万本実測 ~1.8 秒に対し 2.0 秒超で短縮)
+## 重い条件を判定する 1 フレーム所要時間の閾値 (ms。CI の 100 万本実測 1.0〜1.8 秒に対し 2.0 秒超で短縮)
 const SLOW_FRAME_THRESHOLD_MS: float = 2000.0
 ## 重い条件 (SLOW_FRAME_THRESHOLD_MS 以上) での計測フレーム数 (平均と最小・最大を取る最小 2)
 const MEASURE_FRAMES_SLOW: int = 2

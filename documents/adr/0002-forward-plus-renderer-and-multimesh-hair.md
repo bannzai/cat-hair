@@ -31,7 +31,7 @@ Accepted
 
 1. **レンダラは Forward+ (`forward_plus` / Vulkan) を採用する**
    - 写実寄りの一人称 3D に必要な SSR・ボリュメトリックフォグ・SDFGI・デカールがすべて使える唯一のレンダラである (出典: Godot 公式レンダラ比較表 https://docs.godotengine.org/en/stable/tutorials/rendering/renderers.html )
-   - GPU の無い CI ランナーでも Mesa lavapipe (`mesa-vulkan-drivers` + `/usr/share/vulkan/icd.d/lvp_icd.json`) で WARNING / ERROR 0 件で起動し、100 万本まで描画でき、1 フレームの描画時間も GL Compatibility と同等以上であることを実測した
+   - GPU の無い CI ランナーでも Mesa lavapipe (`mesa-vulkan-drivers` + `/usr/share/vulkan/icd.d/lvp_icd.json`) で WARNING / ERROR 0 件で起動し、100 万本まで描画でき、10,000 本以上では 1 フレームの描画時間も GL Compatibility と同等以上であることを実測した (1,000 本のみ初回シェーダコンパイルを含み平均 154.02 ms・最小 58.78 ms)
    - PC (Steam) 専用タイトルであり、Web / モバイル向け互換性 (GL Compatibility / Mobile) を優先する理由が無い
    - CI の `screenshot-and-movie` job と `Makefile` の既定描画オプションを `vulkan` + `forward_plus` に切り替え、`screenshot`・`movie`・`hairbench` のすべてを Forward+ で検証する
 2. **毛の描画方式は「表面ごとの `MultiMeshInstance3D` (`MultiMesh`)」を採用する**

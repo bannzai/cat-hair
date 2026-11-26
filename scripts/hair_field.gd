@@ -471,7 +471,7 @@ func _create_surface_bucket(
 			rng.randf_range(0.0, TAU),
 			rng.randf_range(-0.18, 0.18)
 		))
-		basis = basis.scaled(Vector3(rng.randf_range(0.85, 1.25), scale_len, scale_len))
+		basis = basis.scaled_local(Vector3(rng.randf_range(0.85, 1.25), scale_len, scale_len))
 		# 回転・スケール後に先端や根元が表面の下へ潜らないよう最小 Y 分だけ持ち上げる。
 		# 重なり合う毛同士の Z ファイトを避けるため高さに最大 1.8 mm の微差を付ける
 		var xform: Transform3D = Transform3D(basis, Vector3(
