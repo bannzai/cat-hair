@@ -266,7 +266,7 @@ func remove_hair(hair_id: int) -> bool:
 	active_count -= 1
 	bucket["active_count"] = active_count
 	bucket["hair_ids"] = hair_ids
-	mm.visible_instance_count = active_count
+	# テスト破壊確認用: visible_instance_count の更新を意図的に外す
 	_id_to_slot[hair_id] = -1
 	_id_to_surface[hair_id] = -1
 	_remaining_count -= 1
