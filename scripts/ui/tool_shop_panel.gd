@@ -118,7 +118,11 @@ func refresh(game_state: Node, near_trader: bool) -> void:
 static func describe_tool(tool_id: StringName, owned: OwnedTool) -> String:
 	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
 	var parts: PackedStringArray = PackedStringArray([str(tool_def["name"])])
-	parts.append("Lv %d" % owned.level if owned != null else "未購入")
+	if owned != null:
+		parts.append("Lv %d" % owned.level)
+	elif tool_id != ToolCatalogScript.TOOL_HAND:
+		# 手は最初から持っていて owned_tools に入れないため、買っていない印を出さない
+		parts.append("未購入")
 	if tool_def["kind"] == ToolCatalogScript.KIND_SWEEP:
 		parts.append(
 			"取りこぼし %d%%" % roundi(

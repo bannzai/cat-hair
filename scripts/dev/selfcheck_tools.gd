@@ -628,6 +628,11 @@ func _check_tool_shop_panel() -> void:
 	var roller_text: String = ToolShopPanelScript.describe_tool(roller, state.find_owned_tool(roller))
 	var vacuum_text: String = ToolShopPanelScript.describe_tool(ToolCatalogScript.TOOL_VACUUM, null)
 	_check(
+		ToolShopPanelScript.describe_tool(ToolCatalogScript.TOOL_HAND, null) == "手",
+		"最初から持っている手の説明には「未購入」を出さない (実際: %s)"
+		% ToolShopPanelScript.describe_tool(ToolCatalogScript.TOOL_HAND, null),
+	)
+	_check(
 		roller_text.contains("Lv 1") and roller_text.contains("得意: スーツ")
 		and roller_text.contains("不得意: 床") and roller_text.contains("紙: 20 枚")
 		and vacuum_text.contains("未購入") and vacuum_text.contains("探し物を傷める"),
