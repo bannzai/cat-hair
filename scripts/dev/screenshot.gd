@@ -14,6 +14,10 @@ const MainScript := preload("res://scripts/main.gd")
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 ## JSON 保存ストレージスクリプト
 const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
+## 目線を床の毛へ向ける手順
+const HandAim := preload("res://scripts/dev/hand_aim.gd")
+## 引いている途中を撮る時の進み具合 (毛が伸びて手が閉じかけた所)
+const PULL_SNAPSHOT_PROGRESS: float = 0.7
 
 ## screenshot 専用のセーブパス
 const TEST_SAVE_PATH: String = "user://screenshot_save_data.json"
@@ -68,15 +72,10 @@ func _capture_scenes() -> bool:
 		_cleanup(main, game_state, created_state)
 		return false
 
-	# 屋敷の中の一人称プレイ画面 (部屋・家具・布・仮の毛・残り本数の HUD)
-	main.enter_mansion()
-	if not await _capture("tmp/screenshot-mansion.png"):
-		_cleanup(main, game_state, created_state)
-		return false
-
-	# 開発者向け調整画面を開いた状態
-	main.open_dev_panel()
-	if not await _capture("tmp/screenshot-dev-panel.png"):
+	# 屋敷の中の一人称プレイ画面・床の毛を引いている途中・抜いた直後・図鑑・開発者向け調整画面
+	var mansion_error: String = await _capture_mansion_scenes(main)
+	if not mansion_error.is_empty():
+		push_error("screenshot FAIL: " + mansion_error)
 		_cleanup(main, game_state, created_state)
 		return false
 
@@ -138,6 +137,51 @@ func _verify_windowed_mouse_capture(main: Node3D) -> bool:
 		push_error("windowed mouse check FAIL: 開発者画面を開いても MOUSE_MODE_VISIBLE に戻らない")
 		return false
 	return true
+
+
+## 屋敷に入った一人称プレイ画面 (部屋・家具・布・毛・画面の手・照準・残り本数と在庫の HUD)、毛を引く場面、
+## 図鑑、開発者向け調整画面を順に撮る。撮れたら空文字、失敗したら理由を返す
+func _capture_mansion_scenes(main: Node3D) -> String:
+	main.enter_mansion()
+	if not await _capture("tmp/screenshot-mansion.png"):
+		return "屋敷の画面を保存できない"
+	var pluck_error: String = await _capture_pluck(main)
+	if not pluck_error.is_empty():
+		return pluck_error
+	main.open_hair_book()
+	var book_ok: bool = await _capture("tmp/screenshot-hair-book.png")
+	main.close_hair_book()
+	if not book_ok:
+		return "図鑑を保存できない"
+	main.open_dev_panel()
+	return "" if await _capture("tmp/screenshot-dev-panel.png") else "開発者向け調整画面を保存できない"
+
+
+## 床の毛を狙って引いている途中 (伸びた毛と閉じかけた手) と、抜いた直後 (「+1 本」) を撮る。
+## 引いている途中と「+1 本」が撮る間に進んだり消えたりしないよう、撮る間はメインシーンの処理を止める。
+## 撮れたら空文字、失敗したら理由を返す
+func _capture_pluck(main: Node3D) -> String:
+	var hand: HandController = main.hand
+	if await HandAim.aim_at_floor_hair(self, main) < 0:
+		return "床の毛を狙える位置が見つからない"
+	if not hand.begin_pull():
+		return "狙った床の毛をつまめない"
+	hand.advance_pull(hand.get_pull_duration() * PULL_SNAPSHOT_PROGRESS)
+	if not await _capture_frozen(main, "tmp/screenshot-pluck.png"):
+		return "引いている途中を保存できない"
+	if hand.advance_pull(hand.get_pull_duration()) < 1:
+		return "引き終えても毛が抜けない"
+	if not await _capture_frozen(main, "tmp/screenshot-plucked.png"):
+		return "抜いた直後を保存できない"
+	return ""
+
+
+## メインシーンの処理を止めたまま現在の画面を path に保存する。保存できたら true
+func _capture_frozen(main: Node3D, path: String) -> bool:
+	main.process_mode = Node.PROCESS_MODE_DISABLED
+	var ok: bool = await _capture(path)
+	main.process_mode = Node.PROCESS_MODE_INHERIT
+	return ok
 
 
 ## 撮影に使ったメインシーン・自前生成 GameState・一時セーブファイルを片付ける
