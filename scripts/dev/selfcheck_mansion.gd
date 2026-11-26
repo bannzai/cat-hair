@@ -34,8 +34,6 @@ const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 ## 状態管理 autoload スクリプト
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 
-## プロジェクト設定のメインシーンに入っているべきパス
-const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
 ## selfcheck が使う一時セーブファイルパス
 const TEST_SAVE_PATH: String = "user://selfcheck_save_data.json"
 
@@ -208,6 +206,25 @@ func _check_mansion_builder_changes_and_large_scale() -> void:
 		and dense_layout.objects[8].position.distance_to(dense_layout.objects[0].position) > 0.1,
 		"最小幅の 12 個配置で全家具外縁が壁内に収まり ring > 0 が 1 周目と重ならない",
 	)
+	var door_tuning: MansionTuning = MansionTuningScript.new()
+	door_tuning.room_count = 3
+	door_tuning.room_size_m = MansionTuningScript.MIN_ROOM_SIZE_M
+	door_tuning.object_count = 24
+	var door_layout: MansionLayout = MansionBuilderScript.build_layout(door_tuning)
+	var north_door_clear: bool = true
+	for obj: MansionLayout.ObjectDef in door_layout.objects:
+		if obj.room_id != &"hall" or obj.object_kind == MansionLayoutScript.OBJECT_CARPET:
+			continue
+		var c_rot: float = absf(cos(obj.rotation_y))
+		var s_rot: float = absf(sin(obj.rotation_y))
+		var hx: float = (c_rot * obj.size.x + s_rot * obj.size.z) * 0.5
+		var hz: float = (s_rot * obj.size.x + c_rot * obj.size.z) * 0.5
+		if (
+			obj.position.z - hz < -half_room + MansionBuilderScript.DOOR_CORRIDOR_DEPTH_M - 0.01
+			and absf(obj.position.x) < MansionBuilderScript.DOOR_CORRIDOR_HALF_WIDTH_M + hx - 0.01
+		):
+			north_door_clear = false
+	_check(north_door_clear, "room_count=3/room_size=4m/object=24 で北ドア正面通路が衝突家具に塞がれない")
 
 
 ## 境界値 (最小・最大・下限未満・上限超過) で組み立てとクランプが正しく動くか検証する
@@ -375,15 +392,15 @@ func _check_dev_tuning_panel_preserves_unaligned_values() -> void:
 	var panel: DevTuningPanel = DevTuningPanelScript.new()
 	var custom_tuning: MansionTuning = MansionTuningScript.new()
 	custom_tuning.hair_count = 321
-	custom_tuning.room_size_m = 5.3
+	custom_tuning.room_size_m = 5.375
 	custom_tuning.found_item_count = 7
 	custom_tuning.object_count = 11
 	custom_tuning.room_count = 3
 	panel.load_from_tuning(custom_tuning)
 	var roundtripped: MansionTuning = panel.build_tuning_from_inputs()
 	_check(
-		roundtripped.hair_count == 321 and is_equal_approx(roundtripped.room_size_m, 5.3),
-		"DevTuningPanel が刻み外の値 (321 本・5.3m) を丸めず保持する (実際: %d, %.2f)"
+		roundtripped.hair_count == 321 and is_equal_approx(roundtripped.room_size_m, 5.375),
+		"DevTuningPanel が刻み外の値 (321 本・5.375m) を丸めず保持する (実際: %d, %.3f)"
 		% [roundtripped.hair_count, roundtripped.room_size_m],
 	)
 	panel.free()
@@ -392,73 +409,55 @@ func _check_dev_tuning_panel_preserves_unaligned_values() -> void:
 ## MansionWorld の仮毛描画数上限と室内ライト数上限の境界を検証する
 func _check_visual_hair_and_light_limits() -> void:
 	var world: MansionWorld = MansionWorldScript.new()
-
-	var default_tuning: MansionTuning = MansionTuningScript.new()
-	var default_layout: MansionLayout = MansionBuilderScript.build_layout(default_tuning)
-	world.rebuild(
-		default_layout,
-		MansionBuilderScript.build_initial_progress(default_layout, default_tuning),
-	)
+	_rebuild_world_case(world, 4, 16, 12000)
 	_check(
 		world.get_rendered_hair_instance_count() > 0
 		and world.get_rendered_hair_instance_count()
 		<= MansionWorldScript.MAX_VISUAL_HAIRS_TOTAL,
 		"既定屋敷の仮毛描画数が全体上限内に収まる",
 	)
-
-	var single_surface_tuning: MansionTuning = MansionTuningScript.new()
-	single_surface_tuning.room_count = 1
-	single_surface_tuning.object_count = 0
-	single_surface_tuning.hair_count = 100
-	var single_layout: MansionLayout = MansionBuilderScript.build_layout(single_surface_tuning)
-	world.rebuild(
-		single_layout,
-		MansionBuilderScript.build_initial_progress(single_layout, single_surface_tuning),
-	)
+	_rebuild_world_case(world, 1, 0, 100)
 	_check(
 		world.get_rendered_hair_instance_count()
 		== MansionWorldScript.MAX_VISUAL_HAIRS_PER_SURFACE,
 		"1 面 100 本の仮毛描画数が面あたり上限と一致する",
 	)
-
-	var zero_tuning: MansionTuning = MansionTuningScript.new()
-	zero_tuning.room_count = 1
-	zero_tuning.object_count = 0
-	zero_tuning.hair_count = 0
-	var zero_layout: MansionLayout = MansionBuilderScript.build_layout(zero_tuning)
-	world.rebuild(
-		zero_layout,
-		MansionBuilderScript.build_initial_progress(zero_layout, zero_tuning),
-	)
+	_rebuild_world_case(world, 1, 0, 0)
 	_check(world.get_rendered_hair_instance_count() == 0, "毛 0 本の屋敷では仮毛描画数が 0")
-
-	# 室内ライト数上限境界: 部屋数 6 で 6 灯、部屋数 7 でも MAX_ROOM_LIGHTS 灯
-	var six_rooms: MansionTuning = MansionTuningScript.new()
-	six_rooms.room_count = MansionWorldScript.MAX_ROOM_LIGHTS
-	six_rooms.object_count = 0
-	var six_layout: MansionLayout = MansionBuilderScript.build_layout(six_rooms)
-	world.rebuild(six_layout, MansionBuilderScript.build_initial_progress(six_layout, six_rooms))
+	_rebuild_world_case(world, MansionWorldScript.MAX_ROOM_LIGHTS, 0, 100)
 	_check(
 		world.get_room_light_count() == MansionWorldScript.MAX_ROOM_LIGHTS,
 		"上限ちょうど部屋数でライト数が上限値と一致する",
 	)
-
-	var seven_rooms: MansionTuning = MansionTuningScript.new()
-	seven_rooms.room_count = MansionWorldScript.MAX_ROOM_LIGHTS + 1
-	seven_rooms.object_count = 0
-	var seven_layout: MansionLayout = MansionBuilderScript.build_layout(seven_rooms)
-	world.rebuild(
-		seven_layout,
-		MansionBuilderScript.build_initial_progress(seven_layout, seven_rooms),
+	var seven_layout: MansionLayout = _rebuild_world_case(
+		world,
+		MansionWorldScript.MAX_ROOM_LIGHTS + 1,
+		0,
+		100,
 	)
 	_check(
 		world.get_room_light_count() == MansionWorldScript.MAX_ROOM_LIGHTS,
 		"上限 + 1 部屋でもライト数が MAX_ROOM_LIGHTS に抑えられる",
 	)
-	# progress == null でも安全に仮毛 0 本として再構築できる
 	world.rebuild(seven_layout, null)
 	_check(world.get_rendered_hair_instance_count() == 0, "progress=null で仮毛描画数が 0")
 	world.free()
+
+
+## 指定パラメータで MansionWorld を再構築してレイアウトを返す (上限境界テスト用ヘルパー)
+func _rebuild_world_case(
+	world: MansionWorld,
+	rooms: int,
+	objects: int,
+	hairs: int,
+) -> MansionLayout:
+	var t: MansionTuning = MansionTuningScript.new()
+	t.room_count = rooms
+	t.object_count = objects
+	t.hair_count = hairs
+	var l: MansionLayout = MansionBuilderScript.build_layout(t)
+	world.rebuild(l, MansionBuilderScript.build_initial_progress(l, t))
+	return l
 
 
 ## FirstPersonPlayer のマウス捕捉・視点適用・Esc 解放の各純粋判定を検証する
@@ -513,14 +512,20 @@ func _check_save_and_load_roundtrip() -> void:
 	_check(loaded.building_progress.money == 4321, "所持金が一致する (4321)")
 	_check(is_equal_approx(loaded.building_progress.elapsed_seconds, 123.5), "経過時間が一致する")
 	_check(loaded.tuning.equals(save_fixture.tuning), "保存した調整値が一致する")
-	var first_surface: SurfaceHair = loaded.building_progress.surface_hairs[0]
 	_check(
-		first_surface.surface_id == save_fixture.building_progress.surface_hairs[0].surface_id
-		and first_surface.count_for_color(SurfaceHairScript.COLOR_WHITE) == 42
-		and first_surface.count_for_color(SurfaceHairScript.COLOR_BLACK) == 17
-		and first_surface.count_for_color(SurfaceHairScript.COLOR_CALICO) == 9,
-		"先頭の面 id と 3 色の毛本数がすべて一致する",
+		loaded.building_progress.surface_hairs.size()
+		== save_fixture.building_progress.surface_hairs.size(),
+		"復元後の表面配列件数が一致する",
 	)
+	if not loaded.building_progress.surface_hairs.is_empty():
+		var first_surface: SurfaceHair = loaded.building_progress.surface_hairs[0]
+		_check(
+			first_surface.surface_id == save_fixture.building_progress.surface_hairs[0].surface_id
+			and first_surface.count_for_color(SurfaceHairScript.COLOR_WHITE) == 42
+			and first_surface.count_for_color(SurfaceHairScript.COLOR_BLACK) == 17
+			and first_surface.count_for_color(SurfaceHairScript.COLOR_CALICO) == 9,
+			"先頭の面 id と 3 色の毛本数がすべて一致する",
+		)
 	_check(
 		loaded.building_progress.hair_stocks.size() == 1
 		and loaded.building_progress.hair_stocks[0].hair_color == SurfaceHairScript.COLOR_WHITE
@@ -558,10 +563,12 @@ func _check_save_and_load_roundtrip() -> void:
 		"住人の機嫌の値が一致する",
 	)
 	_check(
-		loaded.building_progress.found_items[0].condition
+		loaded.building_progress.found_items.size()
+		== save_fixture.building_progress.found_items.size()
+		and loaded.building_progress.found_items[0].condition
 		== FoundItemProgressScript.Condition.CLEAN
 		and loaded.building_progress.found_items[0].is_returned,
-		"探し物の状態と返却フラグが一致する",
+		"探し物の件数・状態・返却フラグが一致する",
 	)
 
 
@@ -581,8 +588,12 @@ func _check_save_missing_corrupted_and_clamping() -> void:
 
 	for bad_payload: String in ["{broken json", "", "[1,2]", "null", "123"]:
 		var file: FileAccess = FileAccess.open(TEST_SAVE_PATH, FileAccess.WRITE)
-		file.store_string(bad_payload)
+		_check(file != null, "破損テスト用ファイル (%s) を開ける" % bad_payload)
+		if file == null:
+			continue
+		var wrote_bad: bool = file.store_string(bad_payload)
 		file.close()
+		_check(wrote_bad, "破損テスト用ペイロード (%s) を書き込める" % bad_payload)
 		var corrupted_save_state: Node = GameStateScript.new()
 		corrupted_save_state.initialize_from_storage(TEST_SAVE_PATH)
 		_check(
@@ -595,8 +606,8 @@ func _check_save_missing_corrupted_and_clamping() -> void:
 
 	var valid_dict: Dictionary = _create_rich_save_fixture().to_dict()
 
-	# 有効辞書で schema_version を 0 / 2 / 文字列 / 欠損に変更 (未対応・不正スキーマ判定を通す)
-	for bad_version: Variant in [0, 2, "1"]:
+	# 有効辞書で schema_version を 0 / 1.5 / 2 / 文字列 / 欠損に変更 (未対応・不正スキーマ判定を通す)
+	for bad_version: Variant in [0, 1.5, 2, "1"]:
 		var bad_ver_dict: Dictionary = valid_dict.duplicate(true)
 		bad_ver_dict["schema_version"] = bad_version
 		_check(SaveDataScript.from_dict(bad_ver_dict) == null, "不正 schema_version で null")
@@ -781,7 +792,15 @@ func _check_game_state_override_reconcile_and_notifications() -> void:
 		and SaveStorageScript.load_from_path(TEST_SAVE_PATH).building_progress.money == 5555,
 		"引数上書き後の persist=false 再構築は自動保存抑止を維持する",
 	)
-	state_override.apply_tuning_and_rebuild(null, true)
+	var persist_tuning: MansionTuning = MansionTuningScript.new()
+	persist_tuning.room_count = 3
+	persist_tuning.hair_count = 456
+	state_override.apply_tuning_and_rebuild(persist_tuning, true)
+	var after_persist_rebuild: SaveData = SaveStorageScript.load_from_path(TEST_SAVE_PATH)
+	_check(
+		after_persist_rebuild != null and after_persist_rebuild.tuning.hair_count == 456,
+		"persist=true 再構築が終了通知より前に新しい調整値を保存ファイルへ書き出す",
+	)
 	state_override.save_data.building_progress.money = 7777
 	state_override.notification(Node.NOTIFICATION_WM_CLOSE_REQUEST)
 	_check(
@@ -814,18 +833,18 @@ func _check_game_state_override_reconcile_and_notifications() -> void:
 
 	# 5. _reconcile_progress_with_layout: 面の件数過多 / 面 ID 不一致 / 探し物不一致 / 住人不一致
 	var extra_surface_save: SaveData = _create_rich_save_fixture()
-	var extra_surface: SurfaceHair = SurfaceHairScript.new()
-	extra_surface.surface_id = &"extra_surface"
-	extra_surface_save.building_progress.surface_hairs.append(extra_surface)
-	_assert_reconcile_resets("面に余分な要素あり", extra_surface_save)
+	var dup_surface: SurfaceHair = SurfaceHairScript.new()
+	dup_surface.surface_id = extra_surface_save.building_progress.surface_hairs[0].surface_id
+	extra_surface_save.building_progress.surface_hairs.append(dup_surface)
+	_assert_reconcile_resets("面 ID 重複あり", extra_surface_save)
 	var wrong_surface_id_save: SaveData = _create_rich_save_fixture()
 	wrong_surface_id_save.building_progress.surface_hairs[0].surface_id = &"unknown_surface"
 	_assert_reconcile_resets("面 ID 不一致", wrong_surface_id_save)
 	var extra_item_save: SaveData = _create_rich_save_fixture()
-	var extra_item: FoundItemProgress = FoundItemProgressScript.new()
-	extra_item.found_item_id = &"extra_item"
-	extra_item_save.building_progress.found_items.append(extra_item)
-	_assert_reconcile_resets("探し物件数過多", extra_item_save)
+	var dup_item: FoundItemProgress = FoundItemProgressScript.new()
+	dup_item.found_item_id = extra_item_save.building_progress.found_items[0].found_item_id
+	extra_item_save.building_progress.found_items.append(dup_item)
+	_assert_reconcile_resets("探し物 ID 重複あり", extra_item_save)
 	var wrong_item_id_save: SaveData = _create_rich_save_fixture()
 	wrong_item_id_save.building_progress.found_items[0].found_item_id = &"unknown_item"
 	_assert_reconcile_resets("探し物 ID 不一致", wrong_item_id_save)
@@ -841,7 +860,10 @@ func _check_game_state_override_reconcile_and_notifications() -> void:
 ## 不整合な保存データを読み込んだ時に進行が作り直され loaded_from_save=false になることを検証する
 func _assert_reconcile_resets(case_label: String, broken_save: SaveData) -> void:
 	broken_save.building_progress.money = 888
-	SaveStorageScript.save_to_path(broken_save, TEST_SAVE_PATH)
+	_check(
+		SaveStorageScript.save_to_path(broken_save, TEST_SAVE_PATH) == OK,
+		"不整合フィクスチャ (%s) の保存が成功する" % case_label,
+	)
 	var state_reconciled: Node = GameStateScript.new()
 	state_reconciled.initialize_from_storage(TEST_SAVE_PATH)
 	_check(
@@ -936,13 +958,13 @@ func _check_format_hair_count() -> void:
 
 ## 全フィールドに検証用の値を入れた SaveData のテストフィクスチャを生成する
 func _create_rich_save_fixture() -> SaveData:
+	# 全フィールドのフィクスチャ構築
 	var tuning: MansionTuning = MansionTuningScript.new()
 	tuning.room_count = 2
 	tuning.object_count = 4
 	tuning.hair_count = 250
 	tuning.found_item_count = 2
 	tuning.room_size_m = 7.0
-
 	var layout: MansionLayout = MansionBuilderScript.build_layout(tuning)
 	var progress: BuildingProgress = MansionBuilderScript.build_initial_progress(layout, tuning)
 	progress.money = 4321
@@ -951,29 +973,24 @@ func _create_rich_save_fixture() -> SaveData:
 	progress.surface_hairs[0].hair_counts[SurfaceHairScript.COLOR_BLACK] = 17
 	progress.surface_hairs[0].hair_counts[SurfaceHairScript.COLOR_CALICO] = 9
 	progress.resident_moods[&"resident_hall"] = 0.75
-
 	var stock: HairStock = HairStockScript.new()
 	stock.hair_color = SurfaceHairScript.COLOR_WHITE
 	stock.rare_hair_id = &"golden_hair"
 	stock.form = HairStockScript.FORM_FELT
 	stock.count = 3
 	progress.hair_stocks.append(stock)
-
 	var tool: OwnedTool = OwnedToolScript.new()
 	tool.tool_id = &"cleaning_robot"
 	tool.level = 2
 	tool.consumable_count = 4
 	tool.robot_room_ids = [&"hall", &"living"]
 	progress.owned_tools.append(tool)
-
 	progress.found_items[0].condition = FoundItemProgressScript.Condition.CLEAN
 	progress.found_items[0].is_returned = true
-
 	var record: BuildingRecord = BuildingRecordScript.new()
 	record.building_id = &"mansion"
 	record.clear_seconds = 3600.0
 	record.returned_found_item_count = 5
-
 	var save: SaveData = SaveDataScript.new()
 	save.hand_upgrade_levels = {&"dexterity": 3, &"pinch_count": 2}
 	save.found_rare_hair_ids = [&"whisker", &"golden_hair"]

@@ -42,6 +42,10 @@ const RING_STAGGER_Z_M: float = 0.22
 const WALL_CLEARANCE_M: float = 0.20
 ## 家具サイズに関わらず壁際から離す下限距離 (m)
 const MIN_WALL_MARGIN_M: float = 0.35
+## 開口ドア正面の通路として空ける半幅 (m。プレイヤー半径 0.35m + 通行余裕 0.10m)
+const DOOR_CORRIDOR_HALF_WIDTH_M: float = 0.45
+## 開口ドア壁面から部屋内側へ確保する進入通路の奥行 (m。プレイヤー直径 0.70m 以上を確保)
+const DOOR_CORRIDOR_DEPTH_M: float = 1.0
 ## 家具天面の縁から毛がはみ出さないよう表面範囲を絞る比率
 const SURFACE_HAIR_EXTENT_RATIO: float = 0.85
 ## 探し物の置き場所を同一面内で均等分散させる黄金角 (ラジアン。約 137.5 度)
@@ -272,6 +276,17 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		)
 		offset_x = clampf(offset_x, -limit_x, limit_x)
 		offset_z = clampf(offset_z, -limit_z, limit_z)
+		if obj.object_kind != MansionLayoutScript.OBJECT_CARPET:
+			var clear_offset: Vector2 = _keep_clear_of_open_doors(
+				room,
+				Vector2(offset_x, offset_z),
+				rotated_size_x * 0.5,
+				rotated_size_z * 0.5,
+				limit_x,
+				limit_z,
+			)
+			offset_x = clear_offset.x
+			offset_z = clear_offset.y
 
 		obj.position = Vector3(room.center.x + offset_x, 0.0, room.center.z + offset_z)
 		obj.rotation_y = rot_y
@@ -293,6 +308,47 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		)
 		surface.hair_weight = float(preset["weight"])
 		layout.surfaces.append(surface)
+
+
+## 衝突あり家具が各方向の開口ドア正面通路を塞がない位置へ補正する
+static func _keep_clear_of_open_doors(
+	room: MansionLayout.RoomDef,
+	offset: Vector2,
+	half_x: float,
+	half_z: float,
+	limit_x: float,
+	limit_z: float,
+) -> Vector2:
+	var pos: Vector2 = offset
+	var half_room_x: float = room.size.x * 0.5
+	var half_room_z: float = room.size.z * 0.5
+	var clear_x: float = DOOR_CORRIDOR_HALF_WIDTH_M + half_x
+	var clear_z: float = DOOR_CORRIDOR_HALF_WIDTH_M + half_z
+	if room.open_north and pos.y - half_z < -half_room_z + DOOR_CORRIDOR_DEPTH_M:
+		if absf(pos.x) < clear_x:
+			if limit_x >= clear_x:
+				pos.x = clear_x if pos.x >= 0.0 else -clear_x
+			else:
+				pos.y = clampf(-half_room_z + DOOR_CORRIDOR_DEPTH_M + half_z, -limit_z, limit_z)
+	if room.open_south and pos.y + half_z > half_room_z - DOOR_CORRIDOR_DEPTH_M:
+		if absf(pos.x) < clear_x:
+			if limit_x >= clear_x:
+				pos.x = clear_x if pos.x >= 0.0 else -clear_x
+			else:
+				pos.y = clampf(half_room_z - DOOR_CORRIDOR_DEPTH_M - half_z, -limit_z, limit_z)
+	if room.open_east and pos.x + half_x > half_room_x - DOOR_CORRIDOR_DEPTH_M:
+		if absf(pos.y) < clear_z:
+			if limit_z >= clear_z:
+				pos.y = clear_z if pos.y >= 0.0 else -clear_z
+			else:
+				pos.x = clampf(half_room_x - DOOR_CORRIDOR_DEPTH_M - half_x, -limit_x, limit_x)
+	if room.open_west and pos.x - half_x < -half_room_x + DOOR_CORRIDOR_DEPTH_M:
+		if absf(pos.y) < clear_z:
+			if limit_z >= clear_z:
+				pos.y = clear_z if pos.y >= 0.0 else -clear_z
+			else:
+				pos.x = clampf(-half_room_x + DOOR_CORRIDOR_DEPTH_M + half_x, -limit_x, limit_x)
+	return pos
 
 
 ## 調整値で指定された数だけ、探し物の置き場所を決定論的に割り当てる

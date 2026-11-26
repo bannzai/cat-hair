@@ -1,6 +1,7 @@
 class_name SaveStorage
 extends RefCounted
 ## セーブデータの JSON ファイル永続化。
+## 一時ファイルへ書き出して検証してから置換することで、書き込み途中の失敗時に既存セーブを保護する。
 ## 壊れたファイルや存在しないファイルを読み込んでもエンジンの ERROR ログを出さずに
 ## null を返し、呼び出し側で新規開始へ安全にフォールバックできる。
 
@@ -11,15 +12,27 @@ const SaveDataScript := preload("res://scripts/data/save_data.gd")
 const DEFAULT_SAVE_PATH: String = "user://save_data.json"
 
 
-## SaveData を JSON として path に書き出す。成功時は OK を返す
+## SaveData を一時ファイル経由で JSON として path に書き出す。成功時は OK を返す
 static func save_to_path(save_data: SaveData, path: String = DEFAULT_SAVE_PATH) -> Error:
-	if save_data == null:
+	if save_data == null or path.is_empty():
 		return ERR_INVALID_PARAMETER
-	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	var tmp_path: String = "%s.tmp" % path
+	var file: FileAccess = FileAccess.open(tmp_path, FileAccess.WRITE)
 	if file == null:
 		return FileAccess.get_open_error()
-	file.store_string(JSON.stringify(save_data.to_dict(), "\t"))
+	var wrote: bool = file.store_string(JSON.stringify(save_data.to_dict(), "\t"))
+	var write_err: Error = file.get_error()
 	file.close()
+	if not wrote or write_err != OK:
+		delete_save_file(tmp_path)
+		return write_err if write_err != OK else ERR_FILE_CANT_WRITE
+	var rename_err: Error = DirAccess.rename_absolute(
+		ProjectSettings.globalize_path(tmp_path),
+		ProjectSettings.globalize_path(path),
+	)
+	if rename_err != OK:
+		delete_save_file(tmp_path)
+		return rename_err
 	return OK
 
 

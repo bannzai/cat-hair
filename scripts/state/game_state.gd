@@ -181,6 +181,8 @@ func _reconcile_progress_with_layout() -> void:
 
 ## 保存データの surface_hairs の件数と ID 集合が現在レイアウトの surfaces と完全一致するか
 func _surface_ids_match_layout() -> bool:
+	if save_data.building_progress.surface_hairs.size() != current_layout.surfaces.size():
+		return false
 	var expected_ids: Dictionary = {}
 	for surface: MansionLayout.SurfaceDef in current_layout.surfaces:
 		expected_ids[surface.surface_id] = true
@@ -192,6 +194,8 @@ func _surface_ids_match_layout() -> bool:
 
 ## 保存データの found_items の件数と ID 集合が現在レイアウトの found_item_spots と完全一致するか
 func _found_item_ids_match_layout() -> bool:
+	if save_data.building_progress.found_items.size() != current_layout.found_item_spots.size():
+		return false
 	var expected_ids: Dictionary = {}
 	for spot: MansionLayout.FoundItemSpotDef in current_layout.found_item_spots:
 		expected_ids[spot.found_item_id] = true

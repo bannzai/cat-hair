@@ -60,7 +60,7 @@ static func from_dict(raw_save_dict: Variant) -> SaveData:
 	var raw_version: Variant = save_dict.get("schema_version")
 	if not (raw_version is int or raw_version is float):
 		return null
-	if int(raw_version) != SCHEMA_VERSION:
+	if float(raw_version) != float(SCHEMA_VERSION):
 		return null
 	var parsed_progress: BuildingProgress = BuildingProgressScript.from_dict(
 		save_dict.get("building_progress")

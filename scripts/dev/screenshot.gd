@@ -129,6 +129,9 @@ func _verify_windowed_mouse_capture(main: Node3D) -> bool:
 	# 再度捕捉した状態から開発者調整画面を開くと MOUSE_MODE_VISIBLE に解放されることも検証
 	Input.parse_input_event(click_event)
 	await process_frame
+	if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
+		push_error("windowed mouse check FAIL: 再クリックで MOUSE_MODE_CAPTURED にならない")
+		return false
 	main.open_dev_panel()
 	await process_frame
 	if Input.get_mouse_mode() != Input.MOUSE_MODE_VISIBLE:

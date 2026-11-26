@@ -35,6 +35,10 @@ var close_button: Button = null
 
 ## UI 構築済みフラグ (遅延構築の重複実行を防ぐ)
 var _built: bool = false
+## load_from_tuning 時の元の部屋幅 (SpinBox 未編集時に小数第 3 位以降も丸めず保持する)
+var _loaded_room_size_m: float = MansionTuningScript.DEFAULT_ROOM_SIZE_M
+## load_from_tuning 直後に SpinBox が保持した値 (未編集判定に使用)
+var _loaded_room_size_spin_value: float = MansionTuningScript.DEFAULT_ROOM_SIZE_M
 
 
 ## シーンツリー参加時にパネル内のフォーム UI を構築する
@@ -51,6 +55,8 @@ func load_from_tuning(tuning: MansionTuning) -> void:
 	hair_count_spin.value = float(safe_tuning.hair_count)
 	found_item_count_spin.value = float(safe_tuning.found_item_count)
 	room_size_spin.value = safe_tuning.room_size_m
+	_loaded_room_size_m = safe_tuning.room_size_m
+	_loaded_room_size_spin_value = float(room_size_spin.value)
 	object_count_spin.value = float(safe_tuning.object_count)
 	room_count_spin.value = float(safe_tuning.room_count)
 
@@ -61,7 +67,11 @@ func build_tuning_from_inputs() -> MansionTuning:
 	var tuning: MansionTuning = MansionTuningScript.new()
 	tuning.hair_count = int(round(hair_count_spin.value))
 	tuning.found_item_count = int(round(found_item_count_spin.value))
-	tuning.room_size_m = float(room_size_spin.value)
+	tuning.room_size_m = (
+		_loaded_room_size_m
+		if is_equal_approx(float(room_size_spin.value), _loaded_room_size_spin_value)
+		else float(room_size_spin.value)
+	)
 	tuning.object_count = int(round(object_count_spin.value))
 	tuning.room_count = int(round(room_count_spin.value))
 	return tuning.clamped()
