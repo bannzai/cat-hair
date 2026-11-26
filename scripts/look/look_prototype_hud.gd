@@ -17,6 +17,8 @@ const SAMPLE_GUIDE_TEXT: String = "玄関ホールの床の毛を、手で 1 本
 const SCREEN_MARGIN_PX: float = 18.0
 ## 道具の枠 1 つの大きさ (px)。最も長い道具の名前 (粘着ローラー、16 px で 6 文字) が 1 行で収まる大きさ
 const TOOL_SLOT_SIZE_PX: Vector2 = Vector2(112.0, 44.0)
+## ラベル 1 行の高さ (px)。20 px の文字の行の高さに上下の余白を足し、所持金と案内の両方で使う
+const LABEL_LINE_HEIGHT_PX: float = 30.0
 ## 道具の枠どうしの間隔 (px)
 const TOOL_SLOT_GAP_PX: int = 6
 ## 文字の色。写実寄りの部屋の上で白く浮きすぎない、わずかに暖かい白
@@ -66,7 +68,7 @@ func _init() -> void:
 	_money_label = _make_label("MoneyLabel", 20, HORIZONTAL_ALIGNMENT_RIGHT)
 	# 道具の枠の上に 8 px 空けて置く (所持金は道具を買うためのお金なので道具の並びの上に添える)。
 	# 大きさは 20 px の文字で「所持金 999,999,999 円」が 1 行に収まる幅と、1 行の高さ
-	_anchor_bottom_right(_money_label, Vector2(320.0, 30.0), TOOL_SLOT_SIZE_PX.y + 8.0)
+	_anchor_bottom_right(_money_label, Vector2(320.0, LABEL_LINE_HEIGHT_PX), TOOL_SLOT_SIZE_PX.y + 8.0)
 	add_child(_money_label)
 
 	_guide_label = _make_label("GuideLabel", 18, HORIZONTAL_ALIGNMENT_LEFT)
@@ -76,7 +78,7 @@ func _init() -> void:
 	_guide_label.anchor_bottom = 1.0
 	_guide_label.offset_left = SCREEN_MARGIN_PX
 	_guide_label.offset_right = SCREEN_MARGIN_PX + 560.0
-	_guide_label.offset_top = -SCREEN_MARGIN_PX - 30.0
+	_guide_label.offset_top = -SCREEN_MARGIN_PX - LABEL_LINE_HEIGHT_PX
 	_guide_label.offset_bottom = -SCREEN_MARGIN_PX
 	add_child(_guide_label)
 
@@ -132,6 +134,7 @@ static func _make_label(
 	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_color", TEXT_COLOR)
 	label.add_theme_color_override("font_shadow_color", TEXT_SHADOW_COLOR)
+	# 影を右下へ 1・2 px ずらす。上から照らした時の影の向きで、16 px の文字でも影と文字が重なって潰れない最小のずれ
 	label.add_theme_constant_override("shadow_offset_x", 1)
 	label.add_theme_constant_override("shadow_offset_y", 2)
 	return label

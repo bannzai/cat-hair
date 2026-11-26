@@ -27,13 +27,13 @@ const ROBOT_CLEAR_MAX_Y_M: float = 0.1
 const ROBOT_RADIUS_M: float = 0.17
 ## 掃除ロボットの高さ (m)。家具の下に入れる家庭用の標準 (9 cm 前後)
 const ROBOT_HEIGHT_M: float = 0.085
-## 掃除ロボットが毛を取りながら走った帯 (部屋の幅に対する比率)。rz は帯の Z 位置、rx_end はロボットが今いる X 位置。
+## 掃除ロボットが毛を取りながら走った帯 (部屋の幅に対する比率)。z_ratio は帯の Z 位置、end_x_ratio はロボットが今いる X 位置。
 ## 一人称の初期位置 (部屋の中心から +Z へ 0.36 の比率。MansionBuilder.SPAWN_BACK_OFFSET_RATIO) から少し見下ろした時に、
 ## 3 台が手前から奥へ重ならずに画面に入る Z と、台ごとに違う進み具合に見える X を選んだ
 const ROBOT_LANES: Array[Dictionary] = [
-	{"rz": -0.20, "rx_end": -0.05},
-	{"rz": 0.0, "rx_end": 0.17},
-	{"rz": 0.10, "rx_end": -0.12},
+	{"z_ratio": -0.20, "end_x_ratio": -0.05},
+	{"z_ratio": 0.0, "end_x_ratio": 0.17},
+	{"z_ratio": 0.10, "end_x_ratio": -0.12},
 ]
 ## 掃除ロボットが走り始めた壁からの距離 (m)。充電台の前から走り出した見た目にする
 const ROBOT_LANE_START_MARGIN_M: float = 0.45
@@ -196,8 +196,8 @@ func show_automation_props() -> int:
 	var removed: int = 0
 	for lane_index: int in range(ROBOT_LANES.size()):
 		var lane: Dictionary = ROBOT_LANES[lane_index]
-		var lane_z: float = _room.center.z + float(lane["rz"]) * _room.size.z
-		var robot_x: float = _room.center.x + float(lane["rx_end"]) * _room.size.x
+		var lane_z: float = _room.center.z + float(lane["z_ratio"]) * _room.size.z
+		var robot_x: float = _room.center.x + float(lane["end_x_ratio"]) * _room.size.x
 		_add_robot(_robots_root, "Robot%d" % lane_index, Vector3(robot_x, 0.0, lane_z))
 		removed += _remove_hairs_in_lane(lane_start_x, robot_x, lane_z)
 	_add_dock(_robots_root)
@@ -418,7 +418,7 @@ func _build_window(window_root: Node3D) -> void:
 	glass.emission = DAYLIGHT_COLOR
 	# 外の昼の明るさが室内より明るく見え、ACES の色調で白く飛びすぎない強さ
 	glass.emission_energy_multiplier = 2.2
-	# 窓は壁の内側の面 (z = 0) から外 (+z は部屋の外) へ少し奥に置く。ガラスを 5 mm、枠と桟を 1.5〜3 cm 奥にし、
+	# 窓の部品は壁の内側の面 (z = 0) から部屋の内側 (-z) へ少し出して置く。ガラスを 5 mm、枠と桟を 1.5〜3 cm 出し、
 	# 壁の面と重なってちらつかない最小の差にする。窓の下の枠は窓台として幅を 20 cm 広く・奥行を 9 cm にした
 	_add_box(
 		window_root,
@@ -427,7 +427,7 @@ func _build_window(window_root: Node3D) -> void:
 		Vector3(WINDOW_SIZE_M.x, WINDOW_SIZE_M.y, 0.01),
 		glass,
 	)
-	var frame: StandardMaterial3D = _materials[&"dark_wood"]
+	var frame_material: StandardMaterial3D = _materials[&"dark_wood"]
 	# 窓枠の太さ 7 cm・桟の太さ 4 cm (洋館の木製の窓の標準)
 	var frame_width: float = 0.07
 	var bar_width: float = 0.04
@@ -445,7 +445,7 @@ func _build_window(window_root: Node3D) -> void:
 		# 横の桟は窓の中心より 1 割上 (上下の窓の高さが 4:6 の、洋館の上げ下げ窓の比率)
 		["BarHorizontal", Vector3(0.0, half.y * 0.2, -0.015), Vector3(WINDOW_SIZE_M.x, bar_width, 0.03)],
 	]:
-		_add_box(window_root, frame_def[0], frame_def[1], frame_def[2], frame)
+		_add_box(window_root, frame_def[0], frame_def[1], frame_def[2], frame_material)
 
 
 ## MansionWorld が置いた部屋の天井の灯りに影を付ける (光の当たり方だけを変え、灯りの数と位置は変えない)
@@ -538,14 +538,16 @@ func _add_robot(parent_node: Node3D, robot_name: String, floor_position: Vector3
 	# 本体は艶を抑えた濃い灰色、上蓋は明るい灰色 (実在の製品の配色と意匠を避けた無地)。
 	# 各部の比率は、家庭用の円盤型の掃除ロボットの一般的な形 (本体の上に一回り小さい蓋、後ろ寄りの小さなセンサーの突起、
 	# 前の縁の緩衝材) を、本体の半径と高さに対する割合で置いたもの
-	var body: StandardMaterial3D = FirstPersonHandScript.make_material(Color(0.15, 0.15, 0.16), 0.55)
+	var body_material: StandardMaterial3D = FirstPersonHandScript.make_material(
+		Color(0.15, 0.15, 0.16), 0.55
+	)
 	_add_cylinder(
 		robot,
 		"Body",
 		ROBOT_RADIUS_M,
 		ROBOT_HEIGHT_M * 0.8,
 		Vector3(0.0, ROBOT_HEIGHT_M * 0.4, 0.0),
-		body,
+		body_material,
 	)
 	_add_cylinder(
 		robot,
@@ -561,14 +563,14 @@ func _add_robot(parent_node: Node3D, robot_name: String, floor_position: Vector3
 		ROBOT_RADIUS_M * 0.22,
 		ROBOT_HEIGHT_M * 0.25,
 		Vector3(-ROBOT_RADIUS_M * 0.45, ROBOT_HEIGHT_M * 1.1, 0.0),
-		body,
+		body_material,
 	)
 	_add_box(
 		robot,
 		"Bumper",
 		Vector3(ROBOT_RADIUS_M * 0.82, ROBOT_HEIGHT_M * 0.35, 0.0),
 		Vector3(0.06, ROBOT_HEIGHT_M * 0.4, ROBOT_RADIUS_M * 1.3),
-		body,
+		body_material,
 	)
 
 
@@ -581,9 +583,10 @@ func _add_dock(parent_node: Node3D) -> void:
 		Vector3(
 			_room.center.x - _room.size.x * 0.5 + MansionWorldScript.WALL_THICKNESS_M + 0.07,
 			0.06,
-			_room.center.z + float(ROBOT_LANES[1]["rz"]) * _room.size.z,
+			_room.center.z + float(ROBOT_LANES[1]["z_ratio"]) * _room.size.z,
 		),
 		Vector3(0.14, 0.12, 0.32),
+		# 色はロボットの本体と同じ系統の濃い灰色で、本体より 1 段明るくして形の境目を見せる。粗さは本体と同じ艶消し
 		FirstPersonHandScript.make_material(Color(0.18, 0.18, 0.19), 0.6),
 	)
 
@@ -659,6 +662,7 @@ func _ensure_materials() -> void:
 	_materials[&"carpet"] = _make_textured_material(
 		Color(0.42, 0.10, 0.11), 0.98, fine_noise, fine_noise, 2.5, FABRIC_TEXTURE_REPEAT_M
 	)
+	# カーペットの縁: くすんだ金茶の房。臙脂の本体との明暗差でカーペットの輪郭が見える色
 	_materials[&"carpet_trim"] = _make_textured_material(
 		Color(0.58, 0.46, 0.24), 0.95, fine_noise, fine_noise, 1.5, FABRIC_TEXTURE_REPEAT_M
 	)
@@ -671,9 +675,11 @@ func _ensure_materials() -> void:
 	sofa.rim = 0.45
 	sofa.rim_tint = 0.6
 	_materials[&"sofa"] = sofa
+	# ニット: からし色の毛糸。猫の毛が付くと目立つ明るさで、部屋の暗い色の中で目に入る
 	_materials[&"knit"] = _make_textured_material(
 		Color(0.66, 0.46, 0.20), 0.97, coarse_noise, coarse_noise, 3.0, FABRIC_TEXTURE_REPEAT_M
 	)
+	# スーツ: ほぼ黒の紺。白い猫の毛が付くと最も目立つ色
 	_materials[&"suit"] = _make_textured_material(
 		Color(0.08, 0.085, 0.10), 0.9, fine_noise, fine_noise, 0.8, FABRIC_TEXTURE_REPEAT_M
 	)

@@ -200,6 +200,8 @@ func _check_automation_props() -> void:
 	)
 	var kept_outside_lanes: bool = true
 	var outside_lane_count: int = 0
+	var cleared_inside_lanes: bool = true
+	var inside_lane_count: int = 0
 	# 帯の Z 幅に入る床の毛のうち、ロボットがまだ走っていない先 (ロボットの位置より +X) にあるもの。X の上限の境界の側
 	var ahead_of_robot_count: int = 0
 	for hair_id: int in range(origins.size()):
@@ -207,10 +209,10 @@ func _check_automation_props() -> void:
 		var in_any_lane: bool = false
 		for lane: Dictionary in LookPrototypeRoomScript.ROBOT_LANES:
 			var in_lane_z: bool = (
-				absf(origin.z - (room.center.z + float(lane["rz"]) * room.size.z))
+				absf(origin.z - (room.center.z + float(lane["z_ratio"]) * room.size.z))
 				<= LookPrototypeRoomScript.ROBOT_RADIUS_M
 			)
-			var robot_x: float = room.center.x + float(lane["rx_end"]) * room.size.x
+			var robot_x: float = room.center.x + float(lane["end_x_ratio"]) * room.size.x
 			if origin.y <= LookPrototypeRoomScript.ROBOT_CLEAR_MAX_Y_M and in_lane_z:
 				if origin.x >= lane_start_x and origin.x <= robot_x:
 					in_any_lane = true
@@ -219,6 +221,13 @@ func _check_automation_props() -> void:
 		if not in_any_lane:
 			outside_lane_count += 1
 			kept_outside_lanes = kept_outside_lanes and hair_field.has_hair(hair_id)
+		else:
+			inside_lane_count += 1
+			cleared_inside_lanes = cleared_inside_lanes and not hair_field.has_hair(hair_id)
+	_check(
+		inside_lane_count == removed and cleared_inside_lanes,
+		"帯の中の床とカーペットの毛 %d 本は 1 本残らず消え、消えた本数 %d と同じ" % [inside_lane_count, removed],
+	)
 	_check(
 		outside_lane_count > 0 and ahead_of_robot_count > 0 and kept_outside_lanes,
 		(
@@ -258,17 +267,35 @@ func _check_apply_edges() -> void:
 	)
 
 	var room: MansionLayout.RoomDef = layout.rooms[0]
-	var window: Node3D = look_room.get_window_node()
-	_check(
-		window != null
-		and LookPrototypeRoomScript.window_wall_side(room) == &"west"
-		and is_equal_approx(
-			window.position.x,
-			room.center.x - room.size.x * 0.5 + MansionWorldScript.WALL_THICKNESS_M,
+	# 4 面それぞれで、ドアの無い壁がその面だけの時に、窓がその壁の内側の面 (壁の中心線から壁の厚み分内側)・
+	# 床から WINDOW_CENTER_HEIGHT_M の高さに、部屋の内側を向いて (ローカルの +Z が部屋の外) 付くことを確かめる
+	var half_x: float = room.size.x * 0.5 - MansionWorldScript.WALL_THICKNESS_M
+	var half_z: float = room.size.z * 0.5 - MansionWorldScript.WALL_THICKNESS_M
+	var expected_by_side: Dictionary = {
+		&"west": [Vector3(-half_x, 0.0, 0.0), Vector3.LEFT],
+		&"east": [Vector3(half_x, 0.0, 0.0), Vector3.RIGHT],
+		&"south": [Vector3(0.0, 0.0, half_z), Vector3.BACK],
+		&"north": [Vector3(0.0, 0.0, -half_z), Vector3.FORWARD],
+	}
+	for side: StringName in expected_by_side:
+		room.open_west = side != &"west"
+		room.open_south = side != &"south"
+		room.open_east = side != &"east"
+		room.open_north = side != &"north"
+		look_room.apply(layout, progress, null)
+		var window: Node3D = look_room.get_window_node()
+		var expected_position: Vector3 = (
+			room.center
+			+ expected_by_side[side][0]
+			+ Vector3(0.0, LookPrototypeRoomScript.WINDOW_CENTER_HEIGHT_M, 0.0)
 		)
-		and window.basis.z.is_equal_approx(Vector3.LEFT),
-		"西の壁にドアが無い時は、窓を西の壁の内側の面に部屋の内側へ向けて付ける",
-	)
+		_check(
+			window != null
+			and window.position.is_equal_approx(expected_position)
+			and window.basis.z.is_equal_approx(expected_by_side[side][1]),
+			"%s の壁だけにドアが無い時は、窓をその壁の内側の面に部屋の内側へ向けて付ける (%s)"
+			% [side, window.position if window != null else null],
+		)
 
 	look_room.apply(layout, null, null)
 	_check(
@@ -284,6 +311,19 @@ func _check_apply_edges() -> void:
 	room.open_north = true
 	look_room.apply(layout, progress, null)
 	_check(look_room.get_window_node() == null, "4 面ともドアの部屋には窓を付けない")
+
+	# 毛が 0 本の屋敷: 部屋は重ねるが、毛は 1 本も描かない
+	tuning.hair_count = 0
+	var empty_layout: MansionLayout = MansionBuilderScript.build_layout(tuning)
+	look_room.apply(
+		empty_layout, MansionBuilderScript.build_initial_progress(empty_layout, tuning), null
+	)
+	_check(
+		look_room.get_target_room_id() == empty_layout.rooms[0].room_id
+		and look_room.get_visual_hair_count() == 0
+		and look_room.get_placed_hair_count() == 0,
+		"毛が 0 本の屋敷では部屋を重ね、毛は描かない (%d)" % look_room.get_visual_hair_count(),
+	)
 
 	look_room.apply(MansionLayoutScript.new(), progress, null)
 	_check(
@@ -345,6 +385,21 @@ func _check_hud_samples() -> void:
 		and look_hud.get_tool_slot_count() == LookPrototypeHudScript.SAMPLE_TOOL_NAMES.size()
 		and look_hud.get_guide_text() == LookPrototypeHudScript.SAMPLE_GUIDE_TEXT,
 		"画面の表示は所持金・道具の枠 %d 個・案内を出す" % look_hud.get_tool_slot_count(),
+	)
+	# 道具の枠は「手・ピンセット・ガムテープ・粘着ローラー」の順で、手を持っている印 (2 px の明るい線) は手の枠だけに付く
+	var names: Array = []
+	var marked: Array = []
+	for slot: Node in look_hud.get_node("ToolSlots").get_children():
+		names.append((slot.get_node("ToolName") as Label).text)
+		var style: StyleBoxFlat = (slot as PanelContainer).get_theme_stylebox("panel") as StyleBoxFlat
+		marked.append(
+			style.border_width_left == 2
+			and style.border_color == LookPrototypeHudScript.SELECTED_SLOT_BORDER_COLOR
+		)
+	_check(
+		names == ["手", "ピンセット", "ガムテープ", "粘着ローラー"]
+		and marked == [true, false, false, false],
+		"道具の枠の名前 %s と、手を持っている印 %s" % [names, marked],
 	)
 	look_hud.free()
 

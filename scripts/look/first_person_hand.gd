@@ -136,6 +136,7 @@ func _update_stretched_hair() -> void:
 		return
 	var up: Vector3 = axis / length
 	var side: Vector3 = up.cross(Vector3.FORWARD)
+	# 毛がほぼ前後 (Z) を向く時は外積が 0 に近く向きが定まらないため、別の軸で作り直す。0.0001 は長さ 0.01 (角度約 0.6 度)
 	if side.length_squared() < 0.0001:
 		side = up.cross(Vector3.RIGHT)
 	side = side.normalized()

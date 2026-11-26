@@ -43,6 +43,22 @@ static func verify_look_prototype_room(checker: SceneTree, main: Node3D, game_st
 		"隣の部屋に移ると試作の見た目が消え、環境が既定 (家具の陰なし) に戻る",
 	)
 
+	# 試作の見た目を出していない時に setup を呼ぶと、その時の環境を既定の環境として取り込み直す
+	var original_environment: Environment = environment_node.environment
+	var replaced_environment: Environment = Environment.new()
+	environment_node.environment = replaced_environment
+	look_room.setup(player, environment_node)
+	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
+	await checker.process_frame
+	player.global_position = Vector3(0.0, 0.05, -MansionTuningScript.DEFAULT_ROOM_SIZE_M)
+	await checker.process_frame
+	checker._check(
+		environment_node.environment == replaced_environment,
+		"試作の見た目を出していない時の setup は、その時の環境を部屋の外の環境として取り込む",
+	)
+	environment_node.environment = original_environment
+	look_room.setup(player, environment_node)
+
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	look_room.set_pinch_pose(true)
 	# 手の毛は _process で張り直し、プレイヤーは _physics_process で床へ降りる。降りている間は毛の張り直しが 1 フレーム
