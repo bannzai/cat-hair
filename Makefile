@@ -131,7 +131,7 @@ verify: test build-all
 # pass しないため)
 screenshot: import
 	rm -f $(LOG_DIR)/screenshot-*.png
-	"$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) $(SCRIPT_FLAGS) --script res://scripts/dev/screenshot.gd > $(LOG_DIR)/screenshot.log 2>&1; \
+	"$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) $(SCRIPT_FLAGS) --verbose --script res://scripts/dev/screenshot.gd > $(LOG_DIR)/screenshot.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/screenshot.log; \
 	grep -q '^screenshot OK$$' $(LOG_DIR)/screenshot.log
 	tail -n 1 $(LOG_DIR)/screenshot.log | grep -q '^exit=0$$'
