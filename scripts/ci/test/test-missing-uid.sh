@@ -189,6 +189,11 @@ check "create: 置き換えに失敗した時は .uid も一時ファイルも�
   "$([ -e "$work/m.gd.uid" ] && echo uid) $([ -e "$work/m.gd.uid.tmp" ] && echo tmp)" " "
 rm -rf "$fail_mv_bin"
 
+reset_work
+printf 'extends Node\n' > "$work/-x.gd"
+check "create: リポジトリの直下の - で始まる名前の .gd の .uid を作れる" \
+  "$(run_in_work "$create" 2> /dev/null) $([ -e "$work/-x.gd.uid.tmp" ] && echo tmp)" "-x.gd.uid "
+
 # make check-generated: 一時リポジトリに Makefile と scripts/ci のスクリプトを写して実行する
 # 一時リポジトリ (または $1 のディレクトリ) に Makefile と scripts/ci を写す
 copy_make_files() {
