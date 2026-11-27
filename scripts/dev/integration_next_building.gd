@@ -13,8 +13,8 @@ const GameStateScript := preload("res://scripts/state/game_state.gd")
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
 ## 道具の定義 (置いていく道具の id)
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
-## 道具と手の強化を買えるよう持たせる所持金
-const PLENTY_OF_MONEY: int = 1000000
+## 住人全員をご機嫌にする処理と、道具を買えるよう持たせる所持金
+const SelfcheckNextBuildingScript := preload("res://scripts/dev/selfcheck_next_building.gd")
 ## bot の取りこぼしと珍しい毛の抽選のシード (結果を毎回同じにする)
 const BOT_SEED: int = 16
 ## 進む前に屋敷で遊んだことにする秒 (成績の知らせで 60 分と出る)
@@ -55,8 +55,7 @@ func _verify_bot_advances(main: Node3D, game_state: Node) -> void:
 	bot.setup(main, BOT_SEED)
 	var progress: BuildingProgress = game_state.save_data.building_progress
 	progress.elapsed_seconds = PLAYED_SECONDS
-	for resident_key: Variant in progress.resident_moods.keys():
-		progress.resident_moods[resident_key] = 1.0
+	SelfcheckNextBuildingScript.make_everyone_happy(game_state)
 	# 次の建物へ進む前に他の 3 つの節目に着いていても、bot の遊びは終わらない (simulate が進むまでの分を測れる)
 	for milestone: String in [
 		PlaytestBotScript.MILESTONE_FIRST_TOOL,
@@ -68,8 +67,13 @@ func _verify_bot_advances(main: Node3D, game_state: Node) -> void:
 		not bot.all_milestones_reached(),
 		"次の建物へ進む前は、他の 3 つの節目に着いていても bot の節目はそろわない",
 	)
+	bot._last_room_id = game_state.current_layout.rooms[0].room_id
 	var action: Dictionary = bot.step()
 	_check(bot.all_milestones_reached(), "次の建物へ進むと、bot の 4 つの節目がそろう")
+	_check(
+		bot._last_room_id == &"",
+		"次の建物へ進むと、bot は最後に掃除した部屋を忘れる (次の建物の最初の掃除に移動の秒を足さない)",
+	)
 	var report: Dictionary = bot.report()
 	_check(
 		action["kind"] == PlaytestBotScript.ACTION_ADVANCE
@@ -81,8 +85,22 @@ func _verify_bot_advances(main: Node3D, game_state: Node) -> void:
 		and (report["building_records"] as Array).size() == 1
 		and is_equal_approx(bot.elapsed_seconds(), PLAYED_SECONDS)
 		and game_state.save_data.building_progress.elapsed_seconds == 0.0,
-		"bot は住人全員がご機嫌なら次の建物へ進み、進む直前の秒 (%d 秒) で節目を付け、成績を集計に入れ、通しの秒は続ける (実際: %s)"
+		"bot はご機嫌なら次の建物へ進み、進む直前の秒 (%d 秒) で節目を付け、成績を集計に入れ、通しの秒は続ける (実際: %s)"
 		% [int(PLAYED_SECONDS), str(report["milestone_seconds"])],
+	)
+	# 2 つ目の建物でも遊んでから進むと、節目は 1 回目の秒のまま、通しの秒は 2 つの建物の遊んだ時間の和になる
+	game_state.save_data.building_progress.elapsed_seconds = PLAYED_SECONDS / 2.0
+	SelfcheckNextBuildingScript.make_everyone_happy(game_state)
+	bot.step()
+	_check(
+		game_state.save_data.building_progress.building_id == BuildingRulesScript.BUILDING_CAT_ISLAND
+		and is_equal_approx(
+			float(bot.report()["milestone_seconds"][PlaytestBotScript.MILESTONE_NEXT_BUILDING]),
+			PLAYED_SECONDS
+		)
+		and is_equal_approx(bot.elapsed_seconds(), PLAYED_SECONDS * 1.5),
+		"2 回目に進んでも次の建物の節目は 1 回目の秒のままで、通しの秒は 2 つの建物の遊んだ時間の和 (実際: %.1f 秒)"
+		% bot.elapsed_seconds(),
 	)
 	await _checker.process_frame
 
@@ -111,7 +129,7 @@ func _verify_advance_from_shop(
 	main: Node3D, game_state: Node, base_tuning: MansionTuning
 ) -> void:
 	var progress: BuildingProgress = game_state.save_data.building_progress
-	progress.money = PLENTY_OF_MONEY
+	progress.money = SelfcheckNextBuildingScript.PLENTY_OF_MONEY
 	_check(
 		game_state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_PACKING_TAPE)
 		and game_state.purchase(GameStateScript.PURCHASE_HAND_UPGRADE, HandRulesScript.UPGRADE_DEXTERITY),
@@ -151,8 +169,7 @@ func _verify_advance_from_shop(
 	progress.elapsed_seconds = PLAYED_SECONDS
 	progress.found_items[0].is_returned = true
 
-	for resident_key: Variant in progress.resident_moods.keys():
-		progress.resident_moods[resident_key] = 1.0
+	SelfcheckNextBuildingScript.make_everyone_happy(game_state)
 	main.close_tool_shop()
 	main.open_tool_shop()
 	await _checker.process_frame

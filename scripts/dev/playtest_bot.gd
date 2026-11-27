@@ -91,7 +91,7 @@ func elapsed_seconds() -> float:
 	return _finished_buildings_seconds + _game_state.save_data.building_progress.elapsed_seconds
 
 
-## 4 つの節目 (最初の道具・最初の掃除ロボット・住人全員のご機嫌・次の建物へ進む) にすべて着いたか
+## 測る節目 (MILESTONE_*) にすべて着いたか
 func all_milestones_reached() -> bool:
 	return _milestones.has_all([
 		MILESTONE_FIRST_TOOL, MILESTONE_FIRST_ROBOT, MILESTONE_ALL_HAPPY, MILESTONE_NEXT_BUILDING
@@ -426,7 +426,7 @@ func _record_sample() -> void:
 	_next_sample_seconds = elapsed_seconds() + SAMPLE_INTERVAL_SECONDS
 
 
-## 今の経過 (建物・秒・お金・在庫の額・残りの毛・部屋ごとの機嫌・掃除ロボットの台数・手の強化の段・道具の数)
+## 今の経過 (集計の samples の 1 件)
 func _sample() -> Dictionary:
 	var moods: Dictionary = {}
 	for room: MansionLayout.RoomDef in _game_state.current_layout.rooms:

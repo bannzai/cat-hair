@@ -313,7 +313,7 @@ func get_sell_button() -> Button:
 	return _sell_button
 
 
-## 見出し・売る・運ぶ・次の建物へ進む・道具の行・手の強化・閉じるボタンを組み立てる
+## 道具を買う画面の部品を組み立てる
 func _build() -> void:
 	var background: StyleBoxFlat = StyleBoxFlat.new()
 	background.bg_color = Color(0.16, 0.12, 0.09, 0.96)

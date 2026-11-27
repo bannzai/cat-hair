@@ -33,7 +33,7 @@ const TEST_SAVE_PATH: String = "user://selfcheck_next_building_save_data.json"
 const TEST_HAIR_COUNT: int = 400
 ## 検証の屋敷の部屋の数。2 にしたのは、住人が 2 人以上いて「1 人でもご機嫌でなければ進めない」を確かめられる最小の数のため
 const TEST_ROOM_COUNT: int = 2
-## 道具を買えるよう持たせる所持金
+## 道具を買えるよう持たせる所持金 (integration からも使う)
 const PLENTY_OF_MONEY: int = 1000000
 
 ## 検証結果を記録する selfcheck の SceneTree 参照
@@ -259,10 +259,10 @@ func _check_game_state_advance() -> void:
 		and state.save_data.building_records.is_empty(),
 		"進めない時は何も変えない",
 	)
-	_make_everyone_happy(state)
+	make_everyone_happy(state)
 	progress.resident_moods[progress.resident_moods.keys()[0]] = EconomyRulesScript.HAPPY_MOOD - 0.01
 	_check(not state.next_building.can_advance(), "1 人でもご機嫌でなければ進めない")
-	_make_everyone_happy(state)
+	make_everyone_happy(state)
 	_check(state.next_building.can_advance(), "住人全員がご機嫌なら進める")
 
 	var record: BuildingRecord = state.next_building.advance()
@@ -355,7 +355,7 @@ func _check_room_cleanliness(state: Node, when: String) -> void:
 ## 保存データはあるが今いる建物の進行が無い時は、進めず何も変えない
 func _check_advance_without_progress() -> void:
 	var state: Node = _new_state()
-	_make_everyone_happy(state)
+	make_everyone_happy(state)
 	state.save_data.building_progress = null
 	_check(
 		not state.next_building.can_advance()
@@ -380,7 +380,7 @@ func _check_advance_without_progress() -> void:
 func _check_last_building_and_new_game() -> void:
 	var state: Node = _new_state()
 	for _index: int in range(BuildingRulesScript.BUILDING_ORDER.size() - 1):
-		_make_everyone_happy(state)
+		make_everyone_happy(state)
 		if state.next_building.advance() == null:
 			break
 	_check(
@@ -388,7 +388,7 @@ func _check_last_building_and_new_game() -> void:
 		and state.save_data.building_records.size() == 3,
 		"屋敷からホテル・猫島を経て街全体まで進める",
 	)
-	_make_everyone_happy(state)
+	make_everyone_happy(state)
 	_check(
 		not state.next_building.can_advance() and state.next_building.advance() == null,
 		"最後の建物 (街全体) では全員がご機嫌でも次へは進まない",
@@ -420,8 +420,8 @@ func _new_state() -> Node:
 	return state
 
 
-## 住人全員の機嫌を 1.0 (ご機嫌) にする
-func _make_everyone_happy(state: Node) -> void:
+## state の今いる建物の住人全員の機嫌を 1.0 (ご機嫌) にする (integration・screenshot からも使う)
+static func make_everyone_happy(state: Node) -> void:
 	var moods: Dictionary = state.save_data.building_progress.resident_moods
 	for resident_key: Variant in moods.keys():
 		moods[resident_key] = 1.0
