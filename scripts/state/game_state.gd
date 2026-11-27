@@ -533,9 +533,7 @@ func _recompute_initial_room_hairs() -> void:
 	_initial_room_hairs.clear()
 	var initial_surface_hairs: Dictionary = {}
 	if current_layout != null:
-		var initial: BuildingProgress = MansionBuilderScript.build_initial_progress(
-			MansionBuilderScript.build_layout(get_tuning()), get_tuning()
-		)
+		var initial: BuildingProgress = _build_progress()
 		for surface_def: MansionLayout.SurfaceDef in current_layout.surfaces:
 			var surface: SurfaceHair = initial.find_surface_hair(surface_def.surface_id)
 			var count: int = surface.total_count() if surface != null else 0

@@ -885,7 +885,7 @@ func _on_advance_requested() -> void:
 				_game_state.save_data.building_progress.building_id
 			),
 			BuildingRulesScript.building_name(record.building_id),
-			floori(record.clear_seconds),
+			floori(record.clear_seconds / 60.0),
 			record.returned_found_item_count,
 		]
 	)
