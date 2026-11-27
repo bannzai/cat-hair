@@ -669,6 +669,9 @@ func _verify_title_and_blocked_inputs(main: Node3D) -> void:
 	var panel: DevTuningPanel = main.get_node("UILayer/UI/DevTuningPanel")
 	_check(not panel.visible, "タイトル表示中は F1 を押しても開発者向け画面が開かない")
 
+	await _press_physical_key(KEY_F3)
+	_check(not main.perf_overlay.visible, "タイトル表示中は F3 を押しても fps の表示が出ない")
+
 	await _press_physical_key(KEY_F5)
 	_check(
 		not SaveStorageScript.has_save_file(TEST_SAVE_PATH),
@@ -684,8 +687,8 @@ func _verify_enter_movement_and_look(main: Node3D) -> void:
 	var hair_label: Label = main.get_node("UILayer/UI/HUD/RemainingHairPanel/RemainingHairLabel")
 	_check(main.get_node("UILayer/UI/HUD").visible, "はじめる押下で HUD が表示される")
 	_check(
-		hair_label.text.contains("12,000"),
-		"残り毛本数の表示に既定値 12,000 が出ている (実際: %s)" % hair_label.text,
+		hair_label.text.contains(MainScript.format_hair_count(MansionTuningScript.DEFAULT_HAIR_COUNT)),
+		"残り毛本数の表示に既定の本数が出ている (実際: %s)" % hair_label.text,
 	)
 
 	var player: FirstPersonPlayer = main.get_node("Player")
@@ -782,6 +785,16 @@ func _verify_dev_panel_keys_and_rebuild(main: Node3D, game_state: Node) -> void:
 		"作り直し前の物ノード数が既定値と一致する",
 	)
 
+	# F3 キーで fps と 1 フレームの時間の表示が出て、もう一度押すと隠れる (歩く操作は止めない)
+	await _press_physical_key(KEY_F3)
+	_check(
+		main.perf_overlay.visible and main.perf_overlay.text.contains("fps")
+		and player.controls_enabled,
+		"F3 キー入力で fps と 1 フレームの時間の表示が出て、歩く操作は続けられる",
+	)
+	await _press_physical_key(KEY_F3)
+	_check(not main.perf_overlay.visible, "F3 キーの再入力で fps と 1 フレームの時間の表示が隠れる")
+
 	# F1 キーで開く → F1 キーで閉じるトグル分岐を検証
 	await _press_physical_key(KEY_F1)
 	_check(panel.visible and not player.controls_enabled, "F1 キー入力で開発者向け画面が開く")
@@ -796,6 +809,15 @@ func _verify_dev_panel_keys_and_rebuild(main: Node3D, game_state: Node) -> void:
 		< 0.01,
 		"開発者向け画面が開いている間は前進入力しても移動しない",
 	)
+
+	# 画面を開いている間も F3 は効き、開いている画面は閉じない
+	await _press_physical_key(KEY_F3)
+	_check(
+		main.perf_overlay.visible and panel.visible,
+		"開発者向け画面を開いたまま F3 キー入力で fps の表示が出て、画面は開いたまま",
+	)
+	await _press_physical_key(KEY_F3)
+	_check(not main.perf_overlay.visible, "開発者向け画面を開いたまま F3 の再入力で fps の表示が隠れる")
 
 	await _press_physical_key(KEY_F1)
 	_check(not panel.visible and player.controls_enabled, "開いた状態で F1 再押下すると閉じる")

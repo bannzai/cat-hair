@@ -56,7 +56,14 @@ const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
 const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room.gd")
 ## 見た目の試作の画面の表示 (所持金・道具の枠・案内) のスクリプト
 const LookPrototypeHudScript := preload("res://scripts/look/look_prototype_hud.gd")
+## fps と 1 フレームの時間の表示を出し入れするキー (開発者調整画面の F1・手動セーブの F5 と同じ F キーの列で、
+## 押し間違えても遊ぶ操作に触れないキー)
+const TOGGLE_PERF_KEY: Key = KEY_F3
+## fps と 1 フレームの時間の表示のスクリプト
+const PerfOverlayScript := preload("res://scripts/ui/perf_overlay.gd")
 
+## fps と 1 フレームの時間の表示 (_ready で HUD の子に作る)
+var perf_overlay: PerfOverlay = null
 ## 見た目の試作を屋敷の最初の部屋に重ねるノード (_ready で作る)
 var look_room: LookPrototypeRoom = null
 ## 見た目の試作の画面の表示 (_ready で HUD の子に作る)
@@ -168,6 +175,8 @@ func _ready() -> void:
 	hud.add_child(look_hud)
 	play_guide = PlayGuideHudScript.new()
 	hud.add_child(play_guide)
+	perf_overlay = PerfOverlayScript.new()
+	hud.add_child(perf_overlay)
 
 	_game_state = _resolve_game_state()
 	_build_hand_ui()
@@ -201,10 +210,13 @@ func _exit_tree() -> void:
 
 
 ## プレイ中の F1 (開発者調整画面開閉)・B (図鑑開閉)・T (道具を買う画面の開閉)・R (掃除ロボットの回る順の画面の開閉)・
-## F5 (手動セーブ)・H (操作の案内の開閉。画面を開いていない時だけ) を処理する。画面は 1 つずつしか開かない
-## (開いている画面と別の画面のキーは何もしない)
+## F5 (手動セーブ)・F3 (fps と 1 フレームの時間の表示の出し入れ)・H (操作の案内の開閉。画面を開いていない時だけ) を処理する。
+## 画面は 1 つずつしか開かない (開いている画面と別の画面のキーは何もしない)。F3 は画面を開いていても効く (画面を開いた時の重さも読めるように)
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("toggle_dev_panel"):
+	if _is_key_press(event, TOGGLE_PERF_KEY):
+		if _is_playing:
+			perf_overlay.toggle()
+	elif event.is_action_pressed("toggle_dev_panel"):
 		if _is_playing and _no_panel_open_except(dev_tuning_panel):
 			toggle_dev_panel()
 	elif event.is_action_pressed("toggle_hair_book"):

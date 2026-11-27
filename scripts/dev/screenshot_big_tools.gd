@@ -60,7 +60,7 @@ static func capture_all(shooter: SceneTree, main: Node3D) -> String:
 		return "吸引車の運転席を保存できない"
 	if not main.tools.select_tool(ToolCatalogScript.TOOL_ADHESIVE_SHEET):
 		return "粘着シートを選べない"
-	shooter._set_pitch(main.player, ROOM_PITCH)
+	shooter.set_pitch(main.player, ROOM_PITCH)
 	var sheet_result: Dictionary = main.tools.use_selected_tool()
 	if not bool(sheet_result["used"]) or main.tools.get_trace() == null:
 		return "粘着シートを敷けない (%s)" % str(sheet_result)
