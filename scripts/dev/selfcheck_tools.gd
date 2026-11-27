@@ -198,11 +198,11 @@ func _check_miss_ratio() -> void:
 func _check_prices_and_consumables() -> void:
 	var roller: StringName = ToolCatalogScript.TOOL_LINT_ROLLER
 	_check(
-		ToolRulesScript.level_up_price(roller, 1) == 150
-		and ToolRulesScript.level_up_price(roller, 4) == 600
+		ToolRulesScript.level_up_price(roller, 1) == 750
+		and ToolRulesScript.level_up_price(roller, 4) == 3000
 		and ToolRulesScript.level_up_price(roller, ToolRulesScript.MAX_TOOL_LEVEL) == -1
 		and ToolRulesScript.level_up_price(roller, 0) == -1,
-		"粘着ローラーのレベル上げは 1→2 が 150 円・4→5 が 600 円で、上限と 0 では上げられない",
+		"粘着ローラーのレベル上げは 1→2 が 750 円・4→5 が 3000 円で、上限と 0 では上げられない",
 	)
 	_check(
 		ToolRulesScript.level_up_price(ToolCatalogScript.TOOL_HAND, 1) == -1
@@ -226,11 +226,11 @@ func _check_prices_and_consumables() -> void:
 		"所持金が値段以上なら買え、1 円でも足りなければ買えず、値段が負 (買えない物) は買えない",
 	)
 	_check(
-		ToolRulesScript.hand_upgrade_price(0) == 40
-		and ToolRulesScript.hand_upgrade_price(ToolRulesScript.MAX_HAND_UPGRADE_LEVEL - 1) == 360
+		ToolRulesScript.hand_upgrade_price(0) == 300
+		and ToolRulesScript.hand_upgrade_price(ToolRulesScript.MAX_HAND_UPGRADE_LEVEL - 1) == 2700
 		and ToolRulesScript.hand_upgrade_price(ToolRulesScript.MAX_HAND_UPGRADE_LEVEL) == -1
 		and ToolRulesScript.hand_upgrade_price(-1) == -1,
-		"手の強化は段 0→1 が 40 円・8→9 が 360 円で、上限の段 9 と負の段では買えない",
+		"手の強化は段 0→1 が 300 円・8→9 が 2700 円で、上限の段 9 と負の段では買えない",
 	)
 
 
@@ -324,18 +324,18 @@ func _check_game_state_purchase() -> void:
 		and notified[0] == 0,
 		"はじめからの 0 円では粘着ローラーを買えず、持ち物・お金・通知が変わらない",
 	)
-	state.save_data.building_progress.money = 149
+	state.save_data.building_progress.money = 749
 	_check(
-		not state.purchase(GameStateScript.PURCHASE_TOOL, roller) and state.get_money() == 149,
-		"値段 150 円に 1 円足りない時は買えない",
+		not state.purchase(GameStateScript.PURCHASE_TOOL, roller) and state.get_money() == 749,
+		"値段 750 円に 1 円足りない時は買えない",
 	)
-	state.save_data.building_progress.money = 150
+	state.save_data.building_progress.money = 750
 	var bought: bool = state.purchase(GameStateScript.PURCHASE_TOOL, roller)
 	var owned: OwnedTool = state.find_owned_tool(roller)
 	_check(
 		bought and owned != null and owned.level == 1 and owned.consumable_count == 20
 		and state.get_money() == 0 and notified[0] == 1,
-		"ちょうど 150 円で粘着ローラーを買うと 0 円になり、レベル 1・紙 20 枚で持ち物に入り、1 回知らせる",
+		"ちょうど 750 円で粘着ローラーを買うと 0 円になり、レベル 1・紙 20 枚で持ち物に入り、1 回知らせる",
 	)
 	state.save_data.building_progress.money = 10000
 	_check(
@@ -348,14 +348,14 @@ func _check_game_state_purchase() -> void:
 	)
 	_check(
 		state.purchase(GameStateScript.PURCHASE_LEVEL_UP, roller) and owned.level == 2
-		and state.get_money() == 10000 - 150,
-		"レベル上げを買うとレベル 2 になり 150 円減る",
+		and state.get_money() == 10000 - 750,
+		"レベル上げを買うとレベル 2 になり 750 円減る",
 	)
 	for _step: int in range(10):
 		state.purchase(GameStateScript.PURCHASE_LEVEL_UP, roller)
 	_check(
 		owned.level == ToolRulesScript.MAX_TOOL_LEVEL
-		and state.get_money() == 10000 - 150 - 300 - 450 - 600,
+		and state.get_money() == 10000 - 750 - 1500 - 2250 - 3000,
 		"レベルは上限 5 で止まり、上限からは買えずお金が減らない (実際: Lv %d・%d 円)"
 		% [owned.level, state.get_money()],
 	)
@@ -391,20 +391,20 @@ func _check_game_state_purchase() -> void:
 		not state.purchase(GameStateScript.PURCHASE_CONSUMABLE, roller) and owned.consumable_count == 20,
 		"お金が足りない時は紙を買い足せない",
 	)
-	state.save_data.building_progress.money = 40
+	state.save_data.building_progress.money = 300
 	_check(
 		state.purchase(GameStateScript.PURCHASE_HAND_UPGRADE, HandRulesScript.UPGRADE_DEXTERITY)
 		and state.get_hand_upgrade_level(HandRulesScript.UPGRADE_DEXTERITY) == 1
 		and state.get_money() == 0
 		and not state.purchase(GameStateScript.PURCHASE_HAND_UPGRADE, HandRulesScript.UPGRADE_DEXTERITY),
-		"手の強化 (器用さ) を 40 円で 1 段上げ、0 円では次の段 (80 円) を買えない",
+		"手の強化 (器用さ) を 300 円で 1 段上げ、0 円では次の段 (600 円) を買えない",
 	)
-	state.save_data.building_progress.money = 40
+	state.save_data.building_progress.money = 300
 	_check(
 		state.purchase(GameStateScript.PURCHASE_HAND_UPGRADE, HandRulesScript.UPGRADE_GRAB_COUNT)
 		and state.get_hand_upgrade_level(HandRulesScript.UPGRADE_GRAB_COUNT) == 1
 		and state.get_money() == 0,
-		"手の強化 (一度につまめる本数) も 40 円で 1 段上がる",
+		"手の強化 (一度につまめる本数) も 300 円で 1 段上がる",
 	)
 	state.save_data.building_progress.money = 1000
 	_check(
@@ -431,7 +431,7 @@ func _check_game_state_tool_sweep_and_sell() -> void:
 		and surface.count_for_color(color_id) == before_color,
 		"持っていない道具はかけられず、毛が減らない",
 	)
-	state.save_data.building_progress.money = 150
+	state.save_data.building_progress.money = 750
 	state.purchase(GameStateScript.PURCHASE_TOOL, roller)
 	var owned: OwnedTool = state.find_owned_tool(roller)
 	var notified: Array[int] = [0]
@@ -612,12 +612,12 @@ func _check_tool_shop_panel() -> void:
 	var roller: StringName = ToolCatalogScript.TOOL_LINT_ROLLER
 	_check(
 		panel.get_tool_button(roller).disabled
-		and panel.get_tool_button(roller).text == "買う (150 円)"
+		and panel.get_tool_button(roller).text == "買う (750 円)"
 		and not panel.get_refill_button(roller).visible
 		and panel.get_sell_button().disabled,
 		"0 円では道具を買えず、持っていない粘着ローラーの紙は出さず、買取業者から離れていると売れない",
 	)
-	state.save_data.building_progress.money = 150
+	state.save_data.building_progress.money = 750
 	state.purchase(GameStateScript.PURCHASE_TOOL, roller)
 	state.pluck_hair(
 		state.save_data.building_progress.surface_hairs[0].surface_id,
@@ -625,12 +625,12 @@ func _check_tool_shop_panel() -> void:
 	)
 	panel.refresh(state, true)
 	_check(
-		panel.get_tool_button(roller).text == "レベルを上げる (150 円)"
+		panel.get_tool_button(roller).text == "レベルを上げる (750 円)"
 		and panel.get_refill_button(roller).visible
 		and not panel.get_sell_button().disabled,
 		"買った道具はレベルを上げるボタンになり、紙の買い足しが出て、買取業者の近くで在庫があれば売れる",
 	)
-	state.save_data.building_progress.money = 100
+	state.save_data.building_progress.money = 500
 	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_BRUSH)
 	panel.refresh(state, true)
 	_check(
@@ -667,21 +667,21 @@ func _check_tool_shop_limits(state: Node, panel: PanelContainer) -> void:
 	panel.purchase_requested.connect(
 		func(kind: StringName, item_id: StringName) -> void: requested.append([kind, item_id])
 	)
-	state.save_data.building_progress.money = 39
+	state.save_data.building_progress.money = 299
 	panel.refresh(state, true)
 	_check(
-		panel.get_hand_upgrade_button(dexterity).text.contains("段 0 → 1 (40 円)")
+		panel.get_hand_upgrade_button(dexterity).text.contains("段 0 → 1 (300 円)")
 		and panel.get_hand_upgrade_button(dexterity).disabled,
 		"手の強化のボタンは段と値段を出し、1 円足りないと押せない (実際: %s)"
 		% panel.get_hand_upgrade_button(dexterity).text,
 	)
-	state.save_data.building_progress.money = 40
+	state.save_data.building_progress.money = 300
 	panel.refresh(state, true)
 	panel.get_hand_upgrade_button(dexterity).pressed.emit()
 	_check(
 		not panel.get_hand_upgrade_button(dexterity).disabled
 		and requested == [[GameStateScript.PURCHASE_HAND_UPGRADE, dexterity]],
-		"40 円あれば手の強化のボタンが押せ、押すと手の強化を買う操作を出す (実際: %s)" % str(requested),
+		"300 円あれば手の強化のボタンが押せ、押すと手の強化を買う操作を出す (実際: %s)" % str(requested),
 	)
 	state.save_data.hand_upgrade_levels[dexterity] = ToolRulesScript.MAX_HAND_UPGRADE_LEVEL
 	state.find_owned_tool(ToolCatalogScript.TOOL_LINT_ROLLER).level = ToolRulesScript.MAX_TOOL_LEVEL

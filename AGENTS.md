@@ -36,6 +36,8 @@
 | 人の操作なしで終わる検査・テスト・ビルドの一括実行 (test → build-all) | `make verify` | exit 0 |
 | スクリーンショット (代表画面。headless の検証では見た目の崩れを検出できない) | `make screenshot` | exit 0 かつ `tmp/screenshot.log` に `screenshot OK` が出力され、WARNING / ERROR 行がなく、`tmp/screenshot-*.png` が生成される |
 | 起動の録画 (操作なしの起動〜メインシーンの表示。起動直後の描画崩れ・真っ黒を検出する) | `make movie` | exit 0 かつ `tmp/movie.mp4` が生成され、末尾のフレームの輝度平均が基準以上 (ffmpeg が必要) |
+| 自動テストプレイ (bot が屋敷をはじめから遊び、最初の道具を買う・最初の掃除ロボットを置く・住人全員がご機嫌になるまでのゲーム内の分を測る。bot は `scripts/dev/playtest_bot.gd`、1 手の選び方と人の操作の秒の見積もりは `scripts/dev/playtest_bot_policy.gd`。CI の check-and-export が実行し、結果を artifact `cat-hair-simulate` に上げる。値段・本数・秒数を変えたら結果を見て、DIRECTION.md「判定基準」の所要時間に収まるかを確かめる) | `make simulate` | exit 0 かつ `tmp/simulate.log` に `simulate OK` が出力され、WARNING / ERROR 行がなく、`tmp/simulate.json` が生成される |
+| 自動テストプレイの録画 (同じ bot が 1 フレームに数手ずつ早送りで遊び、道具を買い掃除ロボットを置く様子を撮る。CI の screenshot-and-movie が実行し、artifact `cat-hair-screenshot-and-movie` に入る) | `make playtest` | exit 0 かつ `tmp/playtest.log` に `playtest OK` が出力され、WARNING / ERROR 行がなく、`tmp/playtest.mp4` の末尾のフレームの輝度平均が基準以上 |
 | 毛の描画ベンチマーク (1,000〜1,000,000 本の描画可否・1 フレームの描画時間・1 本削除・本数ごとの PNG) | `make hairbench` | exit 0 かつ `tmp/hairbench.log` に `hairbench OK` が出力され、WARNING / ERROR 行がなく、`tmp/hairbench.json` と `tmp/hairbench-*.png` が生成される |
 | ゲームをエディタなしで起動 (人が遊んで確かめる。アセットのインポートを含む)。引数なしの `make` の実行対象 | `make run` (= `make`) | ウィンドウが開きメインシーンが表示される |
 | デスクトップエクスポート | `make build-macos` / `make build-windows` / `make build-linux` / `make build-all` | exit 0 で `build/<platform>/` に成果物が生成され、`tmp/build-<platform>.godot.log` に WARNING / ERROR 行がない |

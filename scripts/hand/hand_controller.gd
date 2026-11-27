@@ -172,9 +172,14 @@ static func failure_message(reason: StringName) -> String:
 
 ## 画面中央の狙いの先にある毛をつまんで引き始める。つまめたら true
 func begin_pull() -> bool:
+	return begin_pull_at(aim_target())
+
+
+## 狙った点 target ({"surface_index", "point"}。aim_target の戻り値と同じ形) の近くの毛をつまんで引き始める。
+## つまめたら true。自動テストプレイの bot は、画面中央の光線を使わずに狙う毛の根元を渡す
+func begin_pull_at(target: Dictionary) -> bool:
 	if is_pulling() or _camera == null or _world == null or _game_state == null:
 		return false
-	var target: Dictionary = aim_target()
 	if target.is_empty():
 		return false
 	var surface_index: int = target["surface_index"]
