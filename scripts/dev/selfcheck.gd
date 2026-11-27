@@ -41,6 +41,8 @@ const SelfcheckTools := preload("res://scripts/dev/selfcheck_tools.gd")
 const SelfcheckAutomation := preload("res://scripts/dev/selfcheck_automation.gd")
 ## 大型の道具 (吸引車・粘着シート・アンドロイド・加工機・ダンプカー) と加工の検証スイート
 const SelfcheckBigTools := preload("res://scripts/dev/selfcheck_big_tools.gd")
+## 人の形 (画面の手と腕・買取業者の体) の検証スイート
+const SelfcheckHuman := preload("res://scripts/dev/selfcheck_human.gd")
 
 
 ## 検証をすべて実行して終える
@@ -65,6 +67,7 @@ func _initialize() -> void:
 	SelfcheckTools.run_all(self)
 	SelfcheckAutomation.run_all(self)
 	SelfcheckBigTools.run_all(self)
+	SelfcheckHuman.run_all(self)
 	_finish()
 
 

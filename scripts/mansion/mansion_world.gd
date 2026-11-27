@@ -10,6 +10,8 @@ const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd"
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 ## 毛を 1 本ずつ持って描くノードのスクリプト
 const HairFieldScript := preload("res://scripts/hair_field.gd")
+## 人の体の部品を作る関数 (買取業者の体)
+const HumanParts := preload("res://scripts/human/human_parts.gd")
 
 ## 上に物が重なり得る、床の高さの表面の種類 (物の真下に毛を置かない)
 const FLOOR_LIKE_SURFACE_TYPES: Array[StringName] = [
@@ -64,10 +66,9 @@ const TRADER_WEST_OFFSET_M: float = 0.8
 ## 買取業者を立たせる所の、最初の部屋の南の壁 (屋敷の外に面した裏口の側) からの距離 (m)。
 ## 床の毛を置かない壁際の帯 (MansionBuilder.FLOOR_HAIR_INSET_M の半分) に収め、真下の毛が取れなくならないようにする
 const TRADER_SOUTH_OFFSET_M: float = 0.22
-## 買取業者の体の半径 (m)。人の胴の太さの見当
-const TRADER_BODY_RADIUS_M: float = 0.12
-## 買取業者の体の高さ (m)。人の背の高さの見当で、札がプレイヤーの目線より少し上に来る高さ
-const TRADER_BODY_HEIGHT_M: float = 1.6
+## 買取業者の背の高さ (m。帽子を除く頭の上まで)。人の背の高さの見当で、札がプレイヤーの目線より少し上に来る高さ。
+## _build_trader_body の各部の位置と大きさは、この背の高さの大人の体の釣り合いで置いた値
+const TRADER_HEIGHT_M: float = 1.6
 
 ## 部屋ノード群の親コンテナ
 var _rooms_root: Node3D = null
@@ -163,16 +164,7 @@ func _build_trader(layout: MansionLayout) -> void:
 	_trader.position = room.center + Vector3(
 		-room.size.x * 0.5 + TRADER_WEST_OFFSET_M, 0.0, room.size.z * 0.5 - TRADER_SOUTH_OFFSET_M
 	)
-	var body: MeshInstance3D = MeshInstance3D.new()
-	body.name = "Body"
-	var capsule: CapsuleMesh = CapsuleMesh.new()
-	capsule.radius = TRADER_BODY_RADIUS_M
-	capsule.height = TRADER_BODY_HEIGHT_M
-	body.mesh = capsule
-	# 作業着の焦げ茶で、明るい壁紙と床の前で人の形が見分けられ、光沢の無い布に見える粗さ
-	body.material_override = _make_material(Color(0.32, 0.27, 0.2), 0.8)
-	body.position = Vector3(0.0, TRADER_BODY_HEIGHT_M * 0.5, 0.0)
-	_trader.add_child(body)
+	_build_trader_body(_trader)
 	var sign_label: Label3D = Label3D.new()
 	sign_label.name = "Sign"
 	sign_label.text = "買取業者 (裏口)"
@@ -186,8 +178,86 @@ func _build_trader(layout: MansionLayout) -> void:
 	# 明るい壁紙の前でも白い字が埋もれない。札は頭の上 25 cm に置き、体と重ならない
 	sign_label.font_size = 48
 	sign_label.outline_size = 12
-	sign_label.position = Vector3(0.0, TRADER_BODY_HEIGHT_M + 0.25, 0.0)
+	sign_label.position = Vector3(0.0, TRADER_HEIGHT_M + 0.25, 0.0)
 	_trader.add_child(sign_label)
+
+
+## 買取業者の体 (靴・脚・腰・胴・腕・手・首・頭・顔・髪・帽子) を、足元を原点に、顔を部屋の中 (北。局所の -Z) へ
+## 向けて trader の子に組み立てる。札と同じ向きにし、部屋の中から近づくプレイヤーに正面が見えるようにする
+func _build_trader_body(trader: Node3D) -> void:
+	var body: Node3D = Node3D.new()
+	body.name = "Body"
+	trader.add_child(body)
+	# 作業着の焦げ茶で、明るい壁紙と床の前で人の形が見分けられ、光沢の無い布に見える粗さ
+	var jacket: StandardMaterial3D = _make_material(Color(0.32, 0.27, 0.2), 0.8)
+	# ズボンは作業着より暗い灰色で、上着との境 (腰) が見分けられる
+	var trousers: StandardMaterial3D = _make_material(Color(0.18, 0.18, 0.2), 0.85)
+	var shoes: StandardMaterial3D = _make_material(Color(0.07, 0.06, 0.06), 0.5)
+	var skin: StandardMaterial3D = _make_material(Color(0.86, 0.68, 0.55), 0.75)
+	var hair: StandardMaterial3D = _make_material(Color(0.12, 0.09, 0.07), 0.9)
+	var eyes: StandardMaterial3D = _make_material(Color(0.05, 0.04, 0.04), 0.4)
+	# 帽子は作業着と同じ系統の、一段暗い色
+	var cap: StandardMaterial3D = _make_material(Color(0.22, 0.18, 0.13), 0.85)
+	for side: float in [-1.0, 1.0]:
+		var label: String = "Left" if side < 0.0 else "Right"
+		HumanParts.add_box(
+			body, label + "Shoe", Vector3(0.09 * side, 0.035, -0.03), Vector3(0.1, 0.07, 0.25), shoes,
+			true,
+		)
+		HumanParts.add_limb(
+			body, label + "Leg", Vector3(0.09 * side, 0.1, 0.0), Vector3(0.095 * side, 0.84, 0.0), 0.065,
+			trousers, true,
+		)
+		# 腕は肩から少し外へ開いて下ろし、肘から先をわずかに前へ出す
+		HumanParts.add_limb(
+			body, label + "UpperArm", Vector3(0.2 * side, 1.3, 0.0), Vector3(0.23 * side, 1.02, 0.01),
+			0.048, jacket, true,
+		)
+		HumanParts.add_limb(
+			body, label + "Forearm", Vector3(0.23 * side, 1.02, 0.01), Vector3(0.22 * side, 0.78, -0.03),
+			0.042, jacket, true,
+		)
+		HumanParts.add_sphere(
+			body, label + "Hand", Vector3(0.22 * side, 0.72, -0.035), 0.5, Vector3(0.05, 0.1, 0.08), skin,
+			true,
+		)
+		HumanParts.add_sphere(
+			body, label + "Eye", Vector3(0.035 * side, 1.51, -0.086), 0.012, Vector3.ONE, eyes, false
+		)
+		HumanParts.add_sphere(
+			body, label + "Ear", Vector3(0.086 * side, 1.49, 0.0), 0.5, Vector3(0.02, 0.05, 0.035), skin,
+			false,
+		)
+	# 半径 0.5 の球を伸ばす部品は、倍率がそのまま幅・高さ・奥行 (m) になる
+	HumanParts.add_sphere(
+		body, "Hips", Vector3(0.0, 0.87, 0.0), 0.5, Vector3(0.32, 0.18, 0.2), trousers, true
+	)
+	HumanParts.add_sphere(
+		body, "Torso", Vector3(0.0, 1.1, 0.0), 0.5, Vector3(0.38, 0.52, 0.23), jacket, true
+	)
+	HumanParts.add_limb(
+		body, "Shoulders", Vector3(-0.17, 1.3, 0.0), Vector3(0.17, 1.3, 0.0), 0.062, jacket, true
+	)
+	HumanParts.add_limb(
+		body, "Neck", Vector3(0.0, 1.32, 0.0), Vector3(0.0, 1.41, 0.0), 0.045, skin, true
+	)
+	HumanParts.add_sphere(
+		body, "Head", Vector3(0.0, 1.49, 0.0), 0.5, Vector3(0.17, 0.22, 0.19), skin, true
+	)
+	HumanParts.add_sphere(
+		body, "Nose", Vector3(0.0, 1.475, -0.093), 0.5, Vector3(0.028, 0.04, 0.03), skin, false
+	)
+	# 髪は頭の後ろ寄りに重ね、正面からは額の上と耳の後ろだけに見せる
+	HumanParts.add_sphere(
+		body, "Hair", Vector3(0.0, 1.5, 0.035), 0.5, Vector3(0.17, 0.19, 0.16), hair, true
+	)
+	# 作業帽は頭の上半分にかぶせ、つばを顔の側 (-Z) へ出す
+	HumanParts.add_sphere(
+		body, "Cap", Vector3(0.0, 1.555, 0.005), 0.5, Vector3(0.18, 0.1, 0.2), cap, true
+	)
+	HumanParts.add_box(
+		body, "CapBrim", Vector3(0.0, 1.56, -0.115), Vector3(0.15, 0.012, 0.08), cap, true
+	)
 
 
 ## 構築済みの部屋ノード数を返す
