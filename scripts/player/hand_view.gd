@@ -146,9 +146,10 @@ static func _add_finger_segments(
 		bent.rotation = joint_bend
 		joint.add_child(bent)
 		var length: float = segment_lengths[segment_idx]
-		var segment_radius: float = radius * (1.0 - 0.1 * float(segment_idx))
+		# 先の節ほど 1 割ずつ細くし、指先がすぼまって見えるようにする
 		HumanParts.add_limb(
-			bent, "Segment", Vector3.ZERO, Vector3(0.0, 0.0, -length), segment_radius, skin, false
+			bent, "Segment", Vector3.ZERO, Vector3(0.0, 0.0, -length),
+			radius * (1.0 - 0.1 * float(segment_idx)), skin, false,
 		)
 		var tip: Node3D = Node3D.new()
 		tip.name = "End"

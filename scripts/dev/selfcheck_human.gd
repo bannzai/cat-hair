@@ -10,6 +10,10 @@ const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd"
 const MansionWorldScript := preload("res://scripts/mansion/mansion_world.gd")
 ## 屋敷の生成パラメータのスクリプト
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
+## 人の体の部品を作る関数
+const HumanParts := preload("res://scripts/human/human_parts.gd")
+## 位置を同じとみなす誤差 (m)。部品の寸法 (mm 単位) より十分小さく、浮動小数の丸めより大きい値
+const POSITION_TOLERANCE_M: float = 0.0001
 ## 閉じた親指と人差し指の先の中心どうしの距離の上限 (m)。2 本の先の太さの和 (約 1.5 cm) より近ければ触れて見える
 const PINCH_CLOSED_MAX_M: float = 0.015
 ## 開いた親指と人差し指の先の中心どうしの距離の下限 (m)。毛をつまむ前に指の間が開いて見える幅 (約 4 cm)
@@ -23,6 +27,7 @@ var _checker: SceneTree = null
 static func run_all(checker: SceneTree) -> void:
 	var suite: RefCounted = load("res://scripts/dev/selfcheck_human.gd").new()
 	suite._checker = checker
+	suite._check_limb_ends_and_shadow()
 	suite._check_hand_view_shape_and_pinch()
 	suite._check_trader_body()
 
@@ -30,6 +35,61 @@ static func run_all(checker: SceneTree) -> void:
 ## 検証結果を selfcheck 本体へ記録する
 func _check(cond: bool, label: String) -> void:
 	_checker._check(cond, label)
+
+
+## add_limb のカプセルの両端の丸みの中心が、斜め・真下向きの 2 点に重なり、長さ 0 では回らず、
+## 影を落とすかが引数どおりになるか
+func _check_limb_ends_and_shadow() -> void:
+	var parent_node: Node3D = Node3D.new()
+	var ends_ok: bool = true
+	for points: Array[Vector3] in [
+		[Vector3(0.1, 0.2, -0.3), Vector3(-0.2, 0.5, 0.4)] as Array[Vector3],
+		[Vector3(0.0, 1.0, 0.0), Vector3(0.0, 0.0, 0.0)] as Array[Vector3],
+		[Vector3(0.3, 0.1, 0.0), Vector3(-0.1, -0.2, -0.5)] as Array[Vector3],
+	]:
+		var limb: MeshInstance3D = HumanParts.add_limb(
+			parent_node, "Limb", points[0], points[1], 0.05, null, true
+		)
+		var ends: Array[Vector3] = _limb_ends(limb)
+		var matches_forward: bool = (
+			ends[0].distance_to(points[0]) < POSITION_TOLERANCE_M
+			and ends[1].distance_to(points[1]) < POSITION_TOLERANCE_M
+		)
+		var matches_backward: bool = (
+			ends[0].distance_to(points[1]) < POSITION_TOLERANCE_M
+			and ends[1].distance_to(points[0]) < POSITION_TOLERANCE_M
+		)
+		if not (matches_forward or matches_backward):
+			ends_ok = false
+	_check(ends_ok, "add_limb のカプセルの両端の丸みの中心が、斜め・真下向き・下へ斜めの 2 点に重なる")
+	var zero_limb: MeshInstance3D = HumanParts.add_limb(
+		parent_node, "Zero", Vector3(0.1, 0.1, 0.1), Vector3(0.1, 0.1, 0.1), 0.02, null, false
+	)
+	_check(
+		zero_limb.quaternion.is_equal_approx(Quaternion.IDENTITY)
+		and zero_limb.position.is_equal_approx(Vector3(0.1, 0.1, 0.1)),
+		"add_limb は長さ 0 の 2 点では回さず、その点に置く",
+	)
+	var shadow_on: MeshInstance3D = HumanParts.add_sphere(
+		parent_node, "On", Vector3.ZERO, 0.1, Vector3.ONE, null, true
+	)
+	var shadow_off: MeshInstance3D = HumanParts.add_box(
+		parent_node, "Off", Vector3.ZERO, Vector3.ONE, null, false
+	)
+	_check(
+		shadow_on.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		and shadow_off.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		and zero_limb.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF,
+		"人の体の部品は、影を落とす引数が true の時だけ影を落とす",
+	)
+	parent_node.free()
+
+
+## カプセルの部品 limb の、両端の丸みの中心の位置 (親の局所座標) を返す
+static func _limb_ends(limb: MeshInstance3D) -> Array[Vector3]:
+	var capsule: CapsuleMesh = limb.mesh as CapsuleMesh
+	var half_axis: Vector3 = limb.quaternion * Vector3.UP * (capsule.height * 0.5 - capsule.radius)
+	return [limb.position + half_axis, limb.position - half_axis]
 
 
 ## 手が袖・前腕・手のひらと 3 節ずつの 5 本の指を持ち、引き始めは親指と人差し指の先が離れ、
@@ -51,10 +111,29 @@ func _check_hand_view_shape_and_pinch() -> void:
 		and hand.get_node_or_null("Palm") is MeshInstance3D,
 		"画面の手は袖・前腕・手のひらと、3 節ずつの 5 本の指 (親指・人差し指・中指・薬指・小指) を持つ",
 	)
+	var shadows_off: bool = true
+	for part: Node in hand.find_children("*", "MeshInstance3D", true, false):
+		if (part as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			shadows_off = false
+	_check(shadows_off, "画面の手の部品は、カメラの近くで画面を暗くしないよう影を落とさない")
+	var segments_reach_ends: bool = true
+	for segment: Node in hand.find_children("Segment", "MeshInstance3D", true, false):
+		var segment_end: Node3D = segment.get_parent().get_node("End")
+		if not _limb_ends(segment as MeshInstance3D).any(
+			func(point: Vector3) -> bool:
+				return point.distance_to(segment_end.position) < POSITION_TOLERANCE_M
+		):
+			segments_reach_ends = false
+	_check(segments_reach_ends, "画面の手の指の各節のカプセルは、指先の位置を測る End まで伸びている")
 	hand.set_pull_progress(0.0)
 	var open_distance: float = _pinch_distance(hand)
+	var open_index_tip: Vector3 = _finger_tip(hand, hand.get_node("IndexFinger"))
 	hand.set_pull_progress(1.0 / 3.0)
 	var closed_distance: float = _pinch_distance(hand)
+	_check(
+		open_index_tip.y > _finger_tip(hand, hand.get_node("IndexFinger")).y,
+		"毛をつまむ前は、人差し指の先を手の甲の側 (上) へ起こして開く",
+	)
 	hand.set_pull_progress(1.0)
 	var pulled_distance: float = _pinch_distance(hand)
 	_check(
@@ -123,8 +202,23 @@ func _check_trader_body() -> void:
 		_check(
 			head.position.y > body.get_node("Torso").position.y
 			and body.get_node("Torso").position.y > body.get_node("LeftLeg").position.y
-			and head.position.y < MansionWorldScript.TRADER_HEIGHT_M
+			and body.get_node("Torso").position.y > body.get_node("RightLeg").position.y
+			# 頭は半径 0.5 の球を伸ばした部品で、倍率の Y の半分が頭の上端までの高さ
+			and head.position.y + head.scale.y * 0.5 <= MansionWorldScript.TRADER_HEIGHT_M
 			and body.get_node("Nose").position.z < head.position.z,
-			"買取業者の頭は胴より上・背の高さより下、胴は脚より上にあり、顔を部屋の中 (-Z) へ向けている",
+			"買取業者の頭は胴より上で上端が背の高さ以下、胴は左右の脚より上にあり、顔を部屋の中 (-Z) へ向けている",
+		)
+		var sides_ok: bool = true
+		for part_name: String in ["UpperArm", "Forearm", "Hand", "Leg"]:
+			if not (
+				body.get_node("Left" + part_name).position.x < 0.0
+				and body.get_node("Right" + part_name).position.x > 0.0
+			):
+				sides_ok = false
+		_check(sides_ok, "買取業者の左の腕と脚は -X の側、右は +X の側に分かれて付いている")
+		_check(
+			body.get_node("Torso").cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			and body.get_node("Nose").cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF,
+			"買取業者の胴は影を落とし、顔の小さな部品 (鼻) は影を落とさない",
 		)
 	world.free()

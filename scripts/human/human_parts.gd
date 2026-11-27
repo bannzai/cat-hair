@@ -41,7 +41,7 @@ static func add_sphere(
 	return instance
 
 
-## 中心 center・大きさ box_size の直方体を parent_node の子に足す (靴・手のひら・帽子のつば)
+## 中心 center・大きさ box_size の直方体を parent_node の子に足す
 static func add_box(
 	parent_node: Node3D, node_name: String, center: Vector3, box_size: Vector3,
 	box_material: Material, casts_shadow: bool,

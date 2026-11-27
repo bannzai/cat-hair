@@ -192,40 +192,42 @@ func _build_trader_body(trader: Node3D) -> void:
 	var jacket: StandardMaterial3D = _make_material(Color(0.32, 0.27, 0.2), 0.8)
 	# ズボンは作業着より暗い灰色で、上着との境 (腰) が見分けられる
 	var trousers: StandardMaterial3D = _make_material(Color(0.18, 0.18, 0.2), 0.85)
+	# 靴はほぼ黒の革で、ズボンより暗く足元の形が見分けられ、少し艶のある粗さ
 	var shoes: StandardMaterial3D = _make_material(Color(0.07, 0.06, 0.06), 0.5)
+	# 肌は画面の手 (scripts/player/hand_view.gd の SKIN_COLOR) より少し日焼けした色で、焦げ茶の作業着の上で顔と手が浮いて見える
 	var skin: StandardMaterial3D = _make_material(Color(0.86, 0.68, 0.55), 0.75)
-	var hair: StandardMaterial3D = _make_material(Color(0.12, 0.09, 0.07), 0.9)
+	# 目は黒に近い色で、肌の上の小さな点として正面から見える。濡れて見えるよう少し艶を残す粗さ
 	var eyes: StandardMaterial3D = _make_material(Color(0.05, 0.04, 0.04), 0.4)
 	# 帽子は作業着と同じ系統の、一段暗い色
 	var cap: StandardMaterial3D = _make_material(Color(0.22, 0.18, 0.13), 0.85)
 	for side: float in [-1.0, 1.0]:
-		var label: String = "Left" if side < 0.0 else "Right"
+		var side_name: String = "Left" if side < 0.0 else "Right"
 		HumanParts.add_box(
-			body, label + "Shoe", Vector3(0.09 * side, 0.035, -0.03), Vector3(0.1, 0.07, 0.25), shoes,
+			body, side_name + "Shoe", Vector3(0.09 * side, 0.035, -0.03), Vector3(0.1, 0.07, 0.25), shoes,
 			true,
 		)
 		HumanParts.add_limb(
-			body, label + "Leg", Vector3(0.09 * side, 0.1, 0.0), Vector3(0.095 * side, 0.84, 0.0), 0.065,
+			body, side_name + "Leg", Vector3(0.09 * side, 0.1, 0.0), Vector3(0.095 * side, 0.84, 0.0), 0.065,
 			trousers, true,
 		)
 		# 腕は肩から少し外へ開いて下ろし、肘から先をわずかに前へ出す
 		HumanParts.add_limb(
-			body, label + "UpperArm", Vector3(0.2 * side, 1.3, 0.0), Vector3(0.23 * side, 1.02, 0.01),
+			body, side_name + "UpperArm", Vector3(0.2 * side, 1.3, 0.0), Vector3(0.23 * side, 1.02, 0.01),
 			0.048, jacket, true,
 		)
 		HumanParts.add_limb(
-			body, label + "Forearm", Vector3(0.23 * side, 1.02, 0.01), Vector3(0.22 * side, 0.78, -0.03),
+			body, side_name + "Forearm", Vector3(0.23 * side, 1.02, 0.01), Vector3(0.22 * side, 0.78, -0.03),
 			0.042, jacket, true,
 		)
 		HumanParts.add_sphere(
-			body, label + "Hand", Vector3(0.22 * side, 0.72, -0.035), 0.5, Vector3(0.05, 0.1, 0.08), skin,
-			true,
+			body, side_name + "Hand", Vector3(0.22 * side, 0.72, -0.035), 0.5,
+			Vector3(0.05, 0.1, 0.08), skin, true,
 		)
 		HumanParts.add_sphere(
-			body, label + "Eye", Vector3(0.035 * side, 1.51, -0.086), 0.012, Vector3.ONE, eyes, false
+			body, side_name + "Eye", Vector3(0.035 * side, 1.51, -0.086), 0.012, Vector3.ONE, eyes, false
 		)
 		HumanParts.add_sphere(
-			body, label + "Ear", Vector3(0.086 * side, 1.49, 0.0), 0.5, Vector3(0.02, 0.05, 0.035), skin,
+			body, side_name + "Ear", Vector3(0.086 * side, 1.49, 0.0), 0.5, Vector3(0.02, 0.05, 0.035), skin,
 			false,
 		)
 	# 半径 0.5 の球を伸ばす部品は、倍率がそのまま幅・高さ・奥行 (m) になる
@@ -249,7 +251,9 @@ func _build_trader_body(trader: Node3D) -> void:
 	)
 	# 髪は頭の後ろ寄りに重ね、正面からは額の上と耳の後ろだけに見せる
 	HumanParts.add_sphere(
-		body, "Hair", Vector3(0.0, 1.5, 0.035), 0.5, Vector3(0.17, 0.19, 0.16), hair, true
+		body, "Hair", Vector3(0.0, 1.5, 0.035), 0.5, Vector3(0.17, 0.19, 0.16),
+		# 髪は黒に近い焦げ茶で、肌と帽子の間で境が見え、艶の無い粗さ
+		_make_material(Color(0.12, 0.09, 0.07), 0.9), true,
 	)
 	# 作業帽は頭の上半分にかぶせ、つばを顔の側 (-Z) へ出す
 	HumanParts.add_sphere(
