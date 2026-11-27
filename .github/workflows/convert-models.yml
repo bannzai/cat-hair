@@ -1,0 +1,49 @@
+name: Convert models
+
+# OpenGameArt の CC0 の模型 (FBX・.blend) を、Godot が Blender 無しで読める glb に書き出す。
+# 開発マシンでは 3D のアプリを起動しないため (AGENTS.md「検証方法」)、ランナーの Blender で変換し、artifact から
+# assets/models/ に取り出して commit する。変換の手順を変えた時だけ動けばよいため、スクリプトの変更と手動の起動で動かす
+on:
+  pull_request:
+    paths:
+      - scripts/assets/convert_models.py
+      - .github/workflows/convert-models.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  convert:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Install Blender and archivers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender p7zip-full unzip
+      - name: Download sources
+        run: |
+          mkdir -p tmp/sources/arms tmp/sources/buyer tmp/models
+          curl -fsSL -o tmp/sources/arms.7z "https://opengameart.org/sites/default/files/fps%20arms.7z"
+          curl -fsSL -o tmp/sources/buyer.zip "https://opengameart.org/sites/default/files/steve_npc1.zip"
+          7z x -otmp/sources/arms tmp/sources/arms.7z
+          unzip -o tmp/sources/buyer.zip -d tmp/sources/buyer
+          ls -la tmp/sources/arms tmp/sources/buyer
+      - name: Convert arms
+        run: |
+          blender -b --factory-startup -P scripts/assets/convert_models.py -- \
+            arms tmp/models/first_person_arms.glb "tmp/sources/arms/FPS ARMS RIG 1.fbx" tmp/sources/arms/new_diff.png \
+            | tee tmp/models/arms.log
+      - name: Convert buyer
+        run: |
+          blender -b --disable-autoexec tmp/sources/buyer/steve_npc1.blend -P scripts/assets/convert_models.py -- \
+            buyer tmp/models/buyer.glb \
+            | tee tmp/models/buyer.log
+      - name: Upload models
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cat-hair-converted-models
+          path: tmp/models/
