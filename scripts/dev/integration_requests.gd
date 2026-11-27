@@ -274,12 +274,14 @@ func _verify_android_and_same_use_reveal(main: Node3D, game_state: Node) -> void
 		"アンドロイドが掃除した部屋 (%s) の探し物は埋もれていてもきれいに取れ、別の部屋の探し物は取らない"
 		% cleaned_room,
 	)
-	var spot: MansionLayout.FoundItemSpotDef = null
+	# 前の検証で手とピンセットが探し物の近くの毛を取っているため、範囲の広い粘着ローラーが合う探し物 (衣類) を使う
+	var spot: MansionLayout.FoundItemSpotDef = spots[0]
 	for candidate: MansionLayout.FoundItemSpotDef in spots:
-		if candidate.room_id != cleaned_room:
+		if (
+			RequestRulesScript.kind_for_item_id(candidate.found_item_id)["match_tool"]
+			== ToolCatalogScript.TOOL_LINT_ROLLER
+		):
 			spot = candidate
-	if spot == null:
-		spot = spots[0]
 	var item: FoundItemProgress = game_state.requests.find_item(spot.found_item_id)
 	item.condition = FoundItemProgressScript.Condition.HIDDEN
 	item.is_returned = false
