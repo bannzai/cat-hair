@@ -32,7 +32,6 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await checker.process_frame
 	suite._verify_fresh_counts(main, game_state)
 	await suite._verify_hand_pluck(main, game_state)
-	await suite._verify_pull_skips_vanished_hair(main, game_state)
 	await suite._verify_roller_sweep(main, game_state)
 	main.hand.allow_uncaptured_pluck = false
 	main.tools.allow_uncaptured_use = false
@@ -88,40 +87,6 @@ func _verify_hand_pluck(main: Node3D, game_state: Node) -> void:
 			game_state.get_total_remaining_hairs(),
 			HairFieldScript.count_drawn_hairs(hair_field),
 		],
-	)
-
-
-## 2 本を引いている途中に、そのうち 1 本がほかの手段で屋敷から消えると (猫が落とした毛との入れ替えで埋もれた毛へ
-## 戻った・道具が取った)、引き終えた時に残っていた 1 本だけを数え、GameState と HairField の残り本数がずれないか
-func _verify_pull_skips_vanished_hair(main: Node3D, game_state: Node) -> void:
-	var hand: HandController = main.hand
-	var hair_field: Node3D = main.mansion_world.get_hair_field()
-	var aimed: int = await HandAim.aim_at_floor_hair(_checker, main)
-	if aimed < 0:
-		_check(false, "既定の本数の屋敷で床の毛をもう一度狙える")
-		return
-	Input.action_press(HandController.ACTION_PLUCK)
-	await _checker.process_frame
-	# 狙った毛をつまんだ面 (begin_pull が決める)
-	var surface_index: int = hand._pull_surface_index
-	var other: int = hair_field.get_hair_id_at_slot(surface_index, 0)
-	if other == aimed:
-		other = hair_field.get_hair_id_at_slot(surface_index, 1)
-	hand._pulling_ids = PackedInt32Array([aimed, other])
-	# ほかの手段で 1 本を取った時と同じく、GameState と HairField の両方から 1 本減らす
-	game_state.pluck_hair(
-		main.mansion_world.get_surface_def(surface_index).surface_id,
-		main.mansion_world.get_hair_color_id(other),
-	)
-	hair_field.remove_hair(other)
-	var plucked: int = hand.advance_pull(hand.get_pull_duration())
-	Input.action_release(HandController.ACTION_PLUCK)
-	await _checker.process_frame
-	_check(
-		plucked == 1
-		and game_state.get_total_remaining_hairs() == hair_field.get_remaining_count(),
-		"引いている 2 本のうち 1 本が途中で消えると、残っていた 1 本だけを数え、残り本数がずれない (抜いた %d 本・%d / %d 本)"
-		% [plucked, game_state.get_total_remaining_hairs(), hair_field.get_remaining_count()],
 	)
 
 

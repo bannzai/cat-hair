@@ -264,7 +264,8 @@ func _check_every_surface_with_hairs_is_drawn() -> void:
 
 ## 埋もれた毛から描き足し続けても、消した毛の ID を使い直して毛の ID が描く本数と ID_REUSE_DELAY の合計ほどで
 ## 頭打ちになるか。消した直後の ID は別の毛に付かないか。使い直し済みの列を詰めた後 (ID_REUSE_DELAY の 3 倍を消すと
-## 2 回以上詰める) も、描いている毛の ID が重ならず、ID から引いた表面と位置が合うか。clear の後に置き直すと ID が 0 から振られるか
+## 20,001 本目で 1 回詰め、その後も約 1 万本を使い直す) も、描いている毛の ID が重ならず、ID から引いた表面と位置が
+## 合うか。clear の後に置き直すと ID が 0 から振られるか
 func _check_hair_ids_are_reused() -> void:
 	var field: Node3D = HairFieldScript.new()
 	field.draw_budget = SMALL_BUDGET
