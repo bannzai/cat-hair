@@ -6,8 +6,6 @@ extends RefCounted
 const BuildingProgressScript := preload("res://scripts/data/building_progress.gd")
 ## 終えた建物成績データ型スクリプト
 const BuildingRecordScript := preload("res://scripts/data/building_record.gd")
-## 探し物進捗データ型スクリプト
-const FoundItemProgressScript := preload("res://scripts/data/found_item_progress.gd")
 ## 開発者向け調整値データ型スクリプト
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 ## 掃除代・機嫌の計算 (ご機嫌の線)
@@ -70,6 +68,7 @@ static func building_name(building_id: StringName) -> String:
 
 
 ## 開発者向けの調整値 base_tuning (最初の屋敷の作り) から、並びの番号 index の建物の作りを返す。
+## base_tuning が null の時は既定の調整値を使う (保存データの調整値が無い時に GameState が使う値と同じにするため)。
 ## 部屋を EXTRA_ROOMS_PER_BUILDING ずつ増やし、毛・物・探し物の数を部屋の数に比例させる (どれも上限で丸める)
 static func building_tuning(base_tuning: MansionTuning, index: int) -> MansionTuning:
 	var base: MansionTuning = (

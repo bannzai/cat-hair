@@ -53,8 +53,7 @@ func _reset(game_state: Node, original_tuning: MansionTuning, original_levels: D
 func _verify_bot_advances(main: Node3D, game_state: Node) -> void:
 	var bot: RefCounted = PlaytestBotScript.new()
 	bot.setup(main, BOT_SEED)
-	var progress: BuildingProgress = game_state.save_data.building_progress
-	progress.elapsed_seconds = PLAYED_SECONDS
+	game_state.save_data.building_progress.elapsed_seconds = PLAYED_SECONDS
 	SelfcheckNextBuildingScript.make_everyone_happy(game_state)
 	# 次の建物へ進む前に他の 3 つの節目に着いていても、bot の遊びは終わらない (simulate が進むまでの分を測れる)
 	for milestone: String in [

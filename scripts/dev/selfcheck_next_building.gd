@@ -13,8 +13,6 @@ const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 ## 建物進行データ型スクリプト (屋敷の id)
 const BuildingProgressScript := preload("res://scripts/data/building_progress.gd")
-## 終えた建物成績データ型スクリプト
-const BuildingRecordScript := preload("res://scripts/data/building_record.gd")
 ## 探し物進捗データ型スクリプト
 const FoundItemProgressScript := preload("res://scripts/data/found_item_progress.gd")
 ## 掃除代・機嫌の計算 (ご機嫌の線)
@@ -111,18 +109,18 @@ func _check_building_tuning() -> void:
 		and is_equal_approx(hotel.room_size_m, base.room_size_m),
 		"2 つ目の建物は部屋が 2 つ増え、毛・物・探し物が部屋の数に比例して増える (実際: %s)" % str(hotel.to_dict()),
 	)
-	var crowded: MansionTuning = base.clamped()
-	crowded.room_count = MansionTuningScript.MAX_ROOM_COUNT
+	var crowded_tuning: MansionTuning = base.clamped()
+	crowded_tuning.room_count = MansionTuningScript.MAX_ROOM_COUNT
 	_check(
-		BuildingRulesScript.building_tuning(crowded, 3).equals(crowded),
+		BuildingRulesScript.building_tuning(crowded_tuning, 3).equals(crowded_tuning),
 		"部屋の数が上限の時は、次の建物も同じ作り (上限で丸める)",
 	)
 	_check(base.hair_count == 1000 and base.room_count == 4, "元の調整値は変えない")
-	var near_max: MansionTuning = base.clamped()
-	near_max.hair_count = MansionTuningScript.MAX_HAIR_COUNT
-	near_max.object_count = MansionTuningScript.MAX_OBJECT_COUNT
-	near_max.found_item_count = MansionTuningScript.MAX_FOUND_ITEM_COUNT
-	var near_max_hotel: MansionTuning = BuildingRulesScript.building_tuning(near_max, 1)
+	var near_max_tuning: MansionTuning = base.clamped()
+	near_max_tuning.hair_count = MansionTuningScript.MAX_HAIR_COUNT
+	near_max_tuning.object_count = MansionTuningScript.MAX_OBJECT_COUNT
+	near_max_tuning.found_item_count = MansionTuningScript.MAX_FOUND_ITEM_COUNT
+	var near_max_hotel: MansionTuning = BuildingRulesScript.building_tuning(near_max_tuning, 1)
 	_check(
 		near_max_hotel.room_count == 4 + BuildingRulesScript.EXTRA_ROOMS_PER_BUILDING
 		and near_max_hotel.hair_count == MansionTuningScript.MAX_HAIR_COUNT
@@ -162,10 +160,10 @@ func _check_record() -> void:
 		BuildingRulesScript.make_record(progress).returned_found_item_count == 0,
 		"探し物がまだ無い時は、返した数を 0 として扱う",
 	)
-	var negative: BuildingProgress = BuildingProgressScript.new()
-	negative.elapsed_seconds = -5.0
+	var negative_elapsed_progress: BuildingProgress = BuildingProgressScript.new()
+	negative_elapsed_progress.elapsed_seconds = -5.0
 	_check(
-		BuildingRulesScript.make_record(negative).clear_seconds == 0.0,
+		BuildingRulesScript.make_record(negative_elapsed_progress).clear_seconds == 0.0,
 		"遊んだ時間が負の値の時も、成績のかかった時間は 0 秒にする",
 	)
 	for returned: bool in [true, false, true]:
@@ -216,7 +214,7 @@ func _check_carried_hand_upgrades() -> void:
 		previous_total = total
 	_check(increasing, "返した探し物が多いほど、持ち越す手の強化の段が多い")
 	var max_level: int = ToolRulesScript.MAX_HAND_UPGRADE_LEVEL
-	var near_max: Dictionary = BuildingRulesScript.carried_hand_upgrades(
+	var near_max_levels: Dictionary = BuildingRulesScript.carried_hand_upgrades(
 		{
 			HandRulesScript.UPGRADE_DEXTERITY: max_level,
 			HandRulesScript.UPGRADE_GRAB_COUNT: max_level - 1,
@@ -224,8 +222,10 @@ func _check_carried_hand_upgrades() -> void:
 		5
 	)
 	_check(
-		HandRulesScript.upgrade_level(near_max, HandRulesScript.UPGRADE_DEXTERITY) == max_level
-		and HandRulesScript.upgrade_level(near_max, HandRulesScript.UPGRADE_GRAB_COUNT) == max_level,
+		HandRulesScript.upgrade_level(near_max_levels, HandRulesScript.UPGRADE_DEXTERITY)
+		== max_level
+		and HandRulesScript.upgrade_level(near_max_levels, HandRulesScript.UPGRADE_GRAB_COUNT)
+		== max_level,
 		"持ち越しで足す段は上限 (%d 段) を超えない" % max_level,
 	)
 
@@ -332,7 +332,7 @@ func _check_game_state_advance() -> void:
 ## 分母を最初の屋敷の作りから取ると、最初の屋敷に無い部屋の分母が 0 になり、毛が残る間はきれいさが 0 になる
 func _check_room_cleanliness(state: Node, when: String) -> void:
 	var room_id: StringName = state.current_layout.rooms.back().room_id
-	var initial: int = int(state.get_room_status(room_id)["hair_count"])
+	var initial_room_hair_count: int = int(state.get_room_status(room_id)["hair_count"])
 	for surface_def: MansionLayout.SurfaceDef in state.current_layout.surfaces:
 		if surface_def.room_id != room_id:
 			continue
@@ -344,11 +344,13 @@ func _check_room_cleanliness(state: Node, when: String) -> void:
 	var remaining: int = int(state.get_room_status(room_id)["hair_count"])
 	var cleanliness: float = float(state.get_room_status(room_id)["cleanliness"])
 	_check(
-		remaining < initial
+		remaining < initial_room_hair_count
 		and cleanliness > 0.0
-		and is_equal_approx(cleanliness, EconomyRulesScript.cleanliness(remaining, initial)),
+		and is_equal_approx(
+			cleanliness, EconomyRulesScript.cleanliness(remaining, initial_room_hair_count)
+		),
 		"%s、次の建物のきれいさはその建物に入った時の部屋の毛 (%d 本) を分母にする (残り %d 本できれいさ %.2f)"
-		% [when, initial, remaining, cleanliness],
+		% [when, initial_room_hair_count, remaining, cleanliness],
 	)
 
 
