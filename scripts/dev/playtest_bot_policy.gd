@@ -88,6 +88,7 @@ const AFTER_CLEANING_TOOL_IDS: Array[StringName] = [
 
 ## ゲームの様子 snapshot から次の 1 手を返す ({"kind": ACTION_*, ...})
 static func choose_action(snapshot: Dictionary) -> Dictionary:
+	return {"kind": ACTION_WAIT}
 	var purchase: Dictionary = best_purchase(snapshot)
 	if not purchase.is_empty():
 		var price: int = int(purchase["price"])
