@@ -141,7 +141,10 @@ func _check_hand_view_shape_and_pinch() -> void:
 		"作った直後の画面の手は、引いていない位置 (REST_POSITION) にあり、親指と人差し指を開いている",
 	)
 	var fingers_ok: bool = true
-	for finger_name: String in HandViewScript.FINGER_NAMES + ["Thumb"]:
+	# 期待する 5 本は実装の FINGER_NAMES から取らずにここに書き、指が減ると落ちるようにする
+	for finger_name: String in [
+		"IndexFinger", "MiddleFinger", "RingFinger", "LittleFinger", "Thumb",
+	]:
 		var finger: Node3D = hand.get_node_or_null(finger_name)
 		# コードで作ったノードは owner を持たないため、owner の無い子も数える (owned = false)
 		if finger == null or finger.find_children("Segment", "MeshInstance3D", true, false).size() != 3:
@@ -261,11 +264,11 @@ func _check_trader_body() -> void:
 			and body.get_node("Torso").position.y > body.get_node("LeftLeg").position.y
 			and body.get_node("Torso").position.y > body.get_node("RightLeg").position.y
 			# 頭は半径 0.5 の球を伸ばした部品で、倍率の Y の半分が頭の上端までの高さ
-			# 頭の上端を背の高さにそろえて置いたため、浮動小数の丸めの分だけ超えるのは許す
-			and head.position.y + head.scale.y * 0.5
-			<= MansionWorldScript.TRADER_HEIGHT_M + POSITION_TOLERANCE_M
+			# 頭の上端は背の高さ (帽子を除く) にそろえて置いた。背の高さは円柱だった時と同じ 1.6 m
+			and absf(head.position.y + head.scale.y * 0.5 - 1.6) < POSITION_TOLERANCE_M
+			and is_equal_approx(MansionWorldScript.TRADER_HEIGHT_M, 1.6)
 			and body.get_node("Nose").position.z < head.position.z,
-			"買取業者の頭は胴より上で上端が背の高さ以下、胴は左右の脚より上にあり、顔を部屋の中 (-Z) へ向けている",
+			"買取業者の頭は胴より上で上端が背の高さ 1.6 m にあり、胴は左右の脚より上にあり、顔を部屋の中 (-Z) へ向けている",
 		)
 		var shoe: MeshInstance3D = body.get_node("LeftShoe")
 		_check(
