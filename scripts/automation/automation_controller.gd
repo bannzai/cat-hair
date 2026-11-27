@@ -220,6 +220,11 @@ func _on_automation_advanced(changes: Dictionary) -> void:
 			if _world.get_hair_color_id(hair_id) == pick["color"]:
 				hair_field.remove_hair(hair_id)
 				left -= 1
+		# 描いている同じ色の毛が足りない分は、埋もれた毛から取る (GameState と同じ本数を減らす)
+		if left > 0:
+			HairFieldScript.remove_buried_hairs(
+				hair_field, surface_index, SurfaceHairScript.STANDARD_COLORS.find(pick["color"]), left
+			)
 
 
 ## 猫 1 匹の形 (胴・頭・耳・尾・脚と、三毛猫のぶち、頭の上の名札) を作る。足元が原点で、-Z が顔の向き

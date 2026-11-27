@@ -11,8 +11,12 @@ const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## 計測対象の試作シーン
 const HAIR_PROTOTYPE_SCENE: PackedScene = preload("res://scenes/hair_prototype.tscn")
 
-## 既定の計測本数 (issue #6 要件の 1,000〜1,000,000 本の 4 段階)
-const DEFAULT_COUNTS: Array[int] = [1000, 10000, 100000, 1000000]
+## 全部の毛を 1 本ずつ描いて計る本数の上限。これ以下の本数は描く本数の上限を外して全部描き (issue #6 要件の
+## 1,000〜1,000,000 本の描画の可否)、超える本数は屋敷と同じ既定の上限 (HairField.DEFAULT_DRAW_BUDGET) で描く
+const FULL_DRAW_MAX_COUNT: int = 1000000
+## 既定の計測本数 (issue #6 要件の 1,000〜1,000,000 本の 4 段階と、issue #65 の既定の毛の本数 9,999,999 本を
+## 上回る 10,000,000 本)
+const DEFAULT_COUNTS: Array[int] = [1000, 10000, 100000, FULL_DRAW_MAX_COUNT, 10000000]
 ## JSON レポートの既定出力先 (Makefile の hairbench target が参照するパス)
 const DEFAULT_JSON_PATH: String = "tmp/hairbench.json"
 ## PNG の既定出力ディレクトリ
@@ -185,9 +189,13 @@ func _run() -> void:
 			failed = true
 			break
 		print(
-			"hairbench count=%d rendered=%s setup_ms=%.2f frame_ms_avg=%.2f mean_lum=%.3f remove_ok=%s"
+			(
+				"hairbench count=%d drawn=%d rendered=%s setup_ms=%.2f frame_ms_avg=%.2f mean_lum=%.3f"
+				+ " remove_ok=%s"
+			)
 			% [
 				target_count,
+				int(entry["drawn_count"]),
 				str(entry["rendered"]),
 				float(entry["setup_ms"]),
 				float(entry["frame_ms_avg"]),
@@ -218,9 +226,16 @@ func _measure_count(
 	png_dir: String,
 	png_prefix: String
 ) -> Dictionary:
+	var field: Node3D = prototype.get_hair_field()
+	field.draw_budget = (
+		0 if target_count <= FULL_DRAW_MAX_COUNT else HairFieldScript.DEFAULT_DRAW_BUDGET
+	)
 	var setup_start: int = Time.get_ticks_usec()
 	var placed: int = prototype.populate_hairs(target_count)
 	var setup_ms: float = float(Time.get_ticks_usec() - setup_start) / 1000.0
+	var drawn: int = 0
+	for surface_index: int in range(field.get_surface_count()):
+		drawn += field.get_surface_visible_instance_count(surface_index)
 
 	for _w: int in range(WARMUP_FRAMES_FIRST if is_first else WARMUP_FRAMES_NEXT):
 		await process_frame
@@ -241,8 +256,7 @@ func _measure_count(
 	var save_status: Error = image.save_png(png_path) if image != null else ERR_UNAVAILABLE
 	var lum_stats: Dictionary = sample_luminance(image)
 
-	var field: Node3D = prototype.get_hair_field()
-	var surface0_count: int = field.get_surface_remaining_count(0)
+	var surface0_count: int = field.get_surface_visible_instance_count(0)
 	var tail_id: int = (
 		field.get_hair_id_at_slot(0, surface0_count - 1)
 		if surface0_count >= 2
@@ -283,6 +297,8 @@ func _measure_count(
 	return {
 		"count": target_count,
 		"placed_count": placed,
+		# 1 本ずつ描いた本数 (FULL_DRAW_MAX_COUNT 以下は placed_count と同じ、超える本数は描く本数の上限)
+		"drawn_count": drawn,
 		"rendered": evaluate_rendered(
 			placed, target_count, save_status, bool(lum_stats["not_blank"]), single_remove_ok
 		),

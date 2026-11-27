@@ -30,6 +30,10 @@ const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## 大型の道具の見た目 (運転席・床一面のシート)
 const BigToolModelsScript := preload("res://scripts/tools/big_tool_models.gd")
+## 毛の描画・管理 (埋もれた毛の系統の本数と、その抽選・削除を使う)
+const HairFieldScript := preload("res://scripts/hair_field.gd")
+## 面ごとの毛データ型スクリプト (HairColorGroup の順の色の名前を使う)
+const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 
 ## 道具を選ぶキー (ToolCatalog.selectable_tool_ids の順に、キーボードの数字の段の左から割り当てる)
 const SELECT_KEYS: Array[Key] = [
@@ -401,9 +405,7 @@ func _use_room_tool(tool_def: Dictionary, result: Dictionary) -> void:
 	if removed < 0:
 		result["message"] = "%s をかけられない" % tool_def["name"]
 		return
-	var hair_field: Node3D = _world.get_hair_field()
-	for hair_id: int in plan["removed_ids"]:
-		hair_field.remove_hair(hair_id)
+	apply_room_removal(_world, plan)
 	if tool_def["kind"] == ToolCatalogScript.KIND_SHEET:
 		_show_sheet_trace(room)
 	_finish_result(tool_def, result, int(plan["in_range"]), removed, room.display_name)
@@ -451,9 +453,11 @@ func current_room() -> MansionLayout.RoomDef:
 
 ## 部屋ごとにかける道具 (吸引車・粘着シート・アンドロイド) を部屋 room_id に 1 回かけた時に取る毛を、HairField から抽選する。
 ## 道具がかかる表面 (ToolRules.covers_surface) ごとに、ToolRules.touchable_count の本数 (表面 1 つあたり max_hairs まで、
-## 最後の 1 本は残す) を取りこぼしの割合で抽選する。HairField と GameState は変えない。
-## 戻り値は {"counts_by_surface": surface_id -> {color -> 本数}, "removed_ids": 取る毛 ID,
-## "in_range": かかった表面の本数}
+## 最後の 1 本は残す) を取りこぼしの割合で抽選する。描いている毛から先に取り、描いている毛より多く触れる時は
+## 残りを埋もれた毛 (系統は埋もれた毛の本数に比例した抽選) から取る。HairField と GameState は変えない。
+## 戻り値は {"counts_by_surface": surface_id -> {color -> 本数}, "removed_ids": 取る描いている毛 ID,
+## "buried_by_surface": 表面の添字 -> 取る埋もれた毛の HairColorGroup ごとの本数, "in_range": かかった表面の本数}。
+## HairField へは apply_room_removal で反映する
 static func plan_room_removal(
 	world: MansionWorld,
 	room_id: StringName,
@@ -463,11 +467,17 @@ static func plan_room_removal(
 ) -> Dictionary:
 	var counts_by_surface: Dictionary = {}
 	var removed_ids: PackedInt32Array = PackedInt32Array()
+	var buried_by_surface: Dictionary = {}
 	var in_range: int = 0
 	var hair_field: Node3D = world.get_hair_field()
 	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
 	if hair_field == null or tool_def.is_empty():
-		return {"counts_by_surface": counts_by_surface, "removed_ids": removed_ids, "in_range": 0}
+		return {
+			"counts_by_surface": counts_by_surface,
+			"removed_ids": removed_ids,
+			"buried_by_surface": buried_by_surface,
+			"in_range": 0,
+		}
 	for surface_index: int in range(hair_field.get_surface_count()):
 		var surface_def: MansionLayout.SurfaceDef = world.get_surface_def(surface_index)
 		if (
@@ -480,15 +490,44 @@ static func plan_room_removal(
 		in_range += on_surface
 		var ratio: float = ToolRulesScript.miss_ratio(tool_id, level, surface_def.surface_type)
 		var counts_by_color: Dictionary = {}
+		var visible: int = hair_field.get_surface_visible_instance_count(surface_index)
+		var buried_left: PackedInt32Array = HairFieldScript.buried_group_counts(hair_field, surface_index)
+		var buried_taken: PackedInt32Array = PackedInt32Array([0, 0, 0])
 		for slot: int in range(ToolRulesScript.touchable_count(on_surface, int(tool_def["max_hairs"]))):
 			if ToolRulesScript.is_missed(rng.randf(), ratio):
 				continue
-			var hair_id: int = hair_field.get_hair_id_at_slot(surface_index, slot)
-			var color_id: StringName = world.get_hair_color_id(hair_id)
-			counts_by_color[color_id] = int(counts_by_color.get(color_id, 0)) + 1
-			removed_ids.append(hair_id)
+			if slot < visible:
+				var hair_id: int = hair_field.get_hair_id_at_slot(surface_index, slot)
+				var color_id: StringName = world.get_hair_color_id(hair_id)
+				counts_by_color[color_id] = int(counts_by_color.get(color_id, 0)) + 1
+				removed_ids.append(hair_id)
+				continue
+			var group: int = HairFieldScript.pick_buried_group(buried_left, rng)
+			buried_left[group] -= 1
+			buried_taken[group] += 1
+			var buried_color: StringName = SurfaceHairScript.STANDARD_COLORS[group]
+			counts_by_color[buried_color] = int(counts_by_color.get(buried_color, 0)) + 1
 		counts_by_surface[surface_def.surface_id] = counts_by_color
-	return {"counts_by_surface": counts_by_surface, "removed_ids": removed_ids, "in_range": in_range}
+		buried_by_surface[surface_index] = buried_taken
+	return {
+		"counts_by_surface": counts_by_surface,
+		"removed_ids": removed_ids,
+		"buried_by_surface": buried_by_surface,
+		"in_range": in_range,
+	}
+
+
+## plan_room_removal の結果 plan の毛 (描いている毛と埋もれた毛) を world の HairField から消す
+## (GameState に同じ本数を反映した後に呼ぶ)
+static func apply_room_removal(world: MansionWorld, plan: Dictionary) -> void:
+	var hair_field: Node3D = world.get_hair_field()
+	for hair_id: int in plan["removed_ids"]:
+		hair_field.remove_hair(hair_id)
+	var buried_by_surface: Dictionary = plan["buried_by_surface"]
+	for surface_index: int in buried_by_surface:
+		var taken: PackedInt32Array = buried_by_surface[surface_index]
+		for group: int in range(taken.size()):
+			HairFieldScript.remove_buried_hairs(hair_field, surface_index, group, taken[group])
 
 
 ## 道具をかけた範囲に、表面に沿った半透明の円盤を出す (前の跡は消す)。取りこぼした毛は円盤の中に残って見える

@@ -6,6 +6,9 @@ extends Node3D
 ## 手で 1 本抜く時は末尾インスタンスとの swap-remove で O(1) に消す。
 ## 表面は「面の枠 (Transform3D) の局所 XZ 平面上の矩形」で、局所 +Y が面の外向きの法線になる。
 ## 枠を回すと縦の面 (スーツの前身頃) や回転した家具の天面にも毛を置ける。
+## 毛の総本数が draw_budget を超える時は、表面ごとに本数に比例した本数だけを 1 本ずつ描き、残りは
+## 「埋もれた毛」として表面ごと・色の系統ごとの本数だけを持つ。描いている毛を消すと、埋もれた毛から 1 本を
+## その表面のどこかに描き足す (本数は 1 本ずつ数え、描く本数と 1 本ずつの配列の大きさは draw_budget で頭打ちにする)。
 
 ## 毛の色の系統 (白・黒・三毛)
 enum HairColorGroup {
@@ -44,12 +47,19 @@ const INVALID_COLOR: Color = Color(0.0, 0.0, 0.0, 0.0)
 const EXCLUSION_RETRY_LIMIT: int = 64
 ## 表面の向きを変えない時の面の局所基底 (+Y が上向きの法線)
 const UPWARD_BASIS: Basis = Basis.IDENTITY
+## 1 本ずつ描く毛の本数の既定の上限 (屋敷全体)。決めた計測は ADR 0002 の 2026-11-27 (issue #65) の追記
+const DEFAULT_DRAW_BUDGET: int = 120000
 
+## 1 本ずつ描く毛の本数の上限 (屋敷全体。0 以下は上限なし)。populate の前に設定する
+var draw_budget: int = DEFAULT_DRAW_BUDGET
 ## 登録済みの配置表面定義 (name / transform / rect_min / rect_max / weight / exclusions)
 var _surfaces: Array[Dictionary] = []
-## 生成済みの表面ごとのバケット (instance / multimesh / hair_ids / transforms / colors)。
-## 表面ごとの有効本数は multimesh.visible_instance_count を唯一の SSOT とする
+## 生成済みの表面ごとのバケット (instance / multimesh / hair_ids / transforms / colors / buried / draw_cap)。
+## 表面ごとの描いている本数は multimesh.visible_instance_count を唯一の SSOT とする。
+## buried は描いていない埋もれた毛の HairColorGroup ごとの本数、draw_cap は埋もれた毛を描き足して保つ描く本数
 var _buckets: Array[Dictionary] = []
+## 埋もれた毛を描き足す時の位置と色の乱数 (populate のシードから決まる)
+var _refill_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## hair_id -> 表面インデックスの逆引き配列 (INVALID_SLOT = -1 は削除済み)
 var _id_to_surface: PackedInt32Array = PackedInt32Array()
 ## hair_id -> 表面内スロット番号の逆引き配列 (INVALID_SLOT = -1 は削除済み)
@@ -58,6 +68,8 @@ var _id_to_slot: PackedInt32Array = PackedInt32Array()
 var _remaining_count: int = 0
 ## 全表面で共有する 1 本の毛メッシュ
 var _hair_mesh: ArrayMesh = null
+## _hair_mesh のローカル AABB (毛を面から持ち上げる高さの計算に使う。メッシュを作った時に 1 回だけ求める)
+var _hair_aabb: AABB = AABB()
 ## 全表面で共有する毛マテリアル
 var _hair_material: StandardMaterial3D = null
 
@@ -165,15 +177,35 @@ static func classify_hair_color(color: Color) -> int:
 	return HairColorGroup.BLACK
 
 
-## field の指定した表面に残っている毛を色の系統ごとに数え、HairColorGroup 順の 3 要素で返す
+## field の指定した表面に残っている毛 (描いている毛と埋もれた毛) を色の系統ごとに数え、HairColorGroup 順の 3 要素で返す
 static func count_surface_groups(field: Node3D, surface_index: int) -> PackedInt32Array:
-	var counts: PackedInt32Array = PackedInt32Array()
-	counts.resize(HairColorGroup.size())
-	counts.fill(0)
+	var counts: PackedInt32Array = field._buried_counts(surface_index).duplicate()
 	for slot: int in range(field.get_surface_visible_instance_count(surface_index)):
 		var hair_id: int = field.get_hair_id_at_slot(surface_index, slot)
 		counts[classify_hair_color(field.get_hair_color(hair_id))] += 1
 	return counts
+
+
+## field の表面 surface_index の埋もれた毛 (描いていない毛) から、色の系統 group の毛を最大 count 本消し、
+## 消した本数を返す。描いている同じ色の毛が足りない時に、GameState と同じ本数を減らすために使う
+## (掃除ロボットが取った毛・部屋ごとにかける道具)。公開の関数の数の上限に収めるため add_hair と同じく field を受け取る
+static func remove_buried_hairs(field: Node3D, surface_index: int, group: int, count: int) -> int:
+	return field._remove_buried(surface_index, group, count)
+
+
+## field の表面 surface_index の埋もれた毛の HairColorGroup ごとの本数 (3 要素の複製。範囲外・未配置は 0)
+static func buried_group_counts(field: Node3D, surface_index: int) -> PackedInt32Array:
+	return field._buried_counts(surface_index).duplicate()
+
+
+## 系統ごとの本数 counts (合計 1 以上) から、本数に比例した確率で系統を 1 つ選ぶ
+static func pick_buried_group(counts: PackedInt32Array, rng: RandomNumberGenerator) -> int:
+	var roll: int = rng.randi_range(0, _sum(counts) - 1)
+	var group: int = 0
+	while roll >= counts[group]:
+		roll -= counts[group]
+		group += 1
+	return group
 
 
 ## 1 本の猫の毛のメッシュ (2 セグメント・5 頂点・3 三角形の細い曲がった先細り形状) を作る。
@@ -308,26 +340,47 @@ func populate_with_group_counts(
 	clear()
 	if _surfaces.is_empty():
 		return 0
-	var groups_by_surface: Array[PackedInt32Array] = []
+	var group_counts_by_surface: Array[PackedInt32Array] = []
+	var totals: PackedFloat32Array = PackedFloat32Array()
 	var total: int = 0
 	for surface_idx: int in range(_surfaces.size()):
-		var groups: PackedInt32Array = PackedInt32Array()
+		var group_counts: PackedInt32Array = PackedInt32Array()
+		group_counts.resize(HairColorGroup.size())
+		group_counts.fill(0)
 		if surface_idx < counts_by_surface.size():
-			var group_counts: PackedInt32Array = counts_by_surface[surface_idx]
-			for group: int in range(mini(group_counts.size(), HairColorGroup.size())):
-				for _i: int in range(maxi(0, group_counts[group])):
-					groups.append(group)
-		groups_by_surface.append(groups)
-		total += groups.size()
+			var given: PackedInt32Array = counts_by_surface[surface_idx]
+			for group: int in range(mini(given.size(), HairColorGroup.size())):
+				group_counts[group] = maxi(0, given[group])
+		var surface_total: int = 0
+		for count: int in group_counts:
+			surface_total += count
+		group_counts_by_surface.append(group_counts)
+		totals.append(float(surface_total))
+		total += surface_total
+	var drawn_by_surface: PackedInt32Array = _drawn_counts(totals, total)
 	# 0 本の時も表面ごとの枠を作る (毛を取り切った屋敷を開き直した後も、猫が落とした毛を add_hair で足せるようにする)
-	_prepare_shared_resources(total)
+	_prepare_shared_resources(_sum(drawn_by_surface))
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = seed_value
+	_refill_rng.seed = seed_value + 1
 	var next_id: int = 0
 	for surface_idx: int in range(_surfaces.size()):
-		var groups: PackedInt32Array = groups_by_surface[surface_idx]
+		var group_counts: PackedInt32Array = group_counts_by_surface[surface_idx]
+		var drawn: int = drawn_by_surface[surface_idx]
+		# 描く本数を色の系統の本数に比例して分ける (全部描く時は系統の本数そのまま)
+		var drawn_groups: PackedInt32Array = (
+			group_counts
+			if drawn >= int(totals[surface_idx])
+			else allocate_counts(drawn, _to_weights(group_counts))
+		)
+		var groups: PackedInt32Array = PackedInt32Array()
+		var buried: PackedInt32Array = PackedInt32Array()
+		for group: int in range(HairColorGroup.size()):
+			for _i: int in range(drawn_groups[group]):
+				groups.append(group)
+			buried.append(group_counts[group] - drawn_groups[group])
 		_buckets.append(_create_surface_bucket(
-			surface_idx, _surfaces[surface_idx], groups.size(), rng, next_id, groups
+			surface_idx, _surfaces[surface_idx], groups.size(), rng, next_id, groups, buried
 		))
 		next_id += groups.size()
 	_remaining_count = total
@@ -346,37 +399,55 @@ func populate(total_count: int, seed_value: int = DEFAULT_SEED) -> int:
 		weights[i] = float(_surfaces[i]["weight"])
 
 	var counts: PackedInt32Array = allocate_counts(total_count, weights)
-	var actual_total: int = 0
-	for count_for_surface: int in counts:
-		actual_total += count_for_surface
+	var actual_total: int = _sum(counts)
 	if actual_total <= 0:
 		return 0
+	var drawn_by_surface: PackedInt32Array = _drawn_counts(_to_weights(counts), actual_total)
 
-	_prepare_shared_resources(actual_total)
+	_prepare_shared_resources(_sum(drawn_by_surface))
 
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = seed_value
+	_refill_rng.seed = seed_value + 1
 	var next_id: int = 0
+	# 描く毛の色は pick_hair_color の乱数で選び、埋もれた毛は同じ確率の比で系統に分ける
+	var group_weights: PackedFloat32Array = PackedFloat32Array([
+		COLOR_WHITE_THRESHOLD,
+		COLOR_BLACK_THRESHOLD - COLOR_WHITE_THRESHOLD,
+		1.0 - COLOR_BLACK_THRESHOLD,
+	])
 
 	for surface_idx: int in range(_surfaces.size()):
-		var count: int = counts[surface_idx]
+		var drawn: int = drawn_by_surface[surface_idx]
 		_buckets.append(_create_surface_bucket(
-			surface_idx, _surfaces[surface_idx], count, rng, next_id, PackedInt32Array()
+			surface_idx, _surfaces[surface_idx], drawn, rng, next_id, PackedInt32Array(),
+			allocate_counts(counts[surface_idx] - drawn, group_weights)
 		))
-		next_id += count
+		next_id += drawn
 
 	_remaining_count = actual_total
 	return actual_total
 
 
-## 指定した毛 ID を 1 本だけ消す (O(1) swap-remove)。消せたら true
+## 指定した毛 ID を 1 本だけ消す (O(1) swap-remove)。消せたら true。
+## その表面に埋もれた毛があれば、1 本を表面のどこかに描き足す (残り本数は 1 減る)
 func remove_hair(hair_id: int) -> bool:
 	if hair_id < 0 or hair_id >= _id_to_slot.size():
 		return false
-	var slot: int = _id_to_slot[hair_id]
-	if slot < 0:
+	if _id_to_slot[hair_id] < 0:
 		return false
-	var bucket: Dictionary = _buckets[_id_to_surface[hair_id]]
+	var surface_index: int = _erase_drawn(hair_id)
+	_remaining_count -= 1
+	_draw_buried_hair(surface_index)
+	return true
+
+
+## 描いている毛 hair_id (描いていることを確かめ済み) を末尾の毛との swap-remove で描かなくし、その表面の添字を返す。
+## 残り本数と埋もれた毛は変えない
+func _erase_drawn(hair_id: int) -> int:
+	var slot: int = _id_to_slot[hair_id]
+	var surface_index: int = _id_to_surface[hair_id]
+	var bucket: Dictionary = _buckets[surface_index]
 	var multimesh: MultiMesh = bucket["multimesh"]
 	var hair_ids: PackedInt32Array = bucket["hair_ids"]
 	var last_slot: int = multimesh.visible_instance_count - 1
@@ -399,13 +470,48 @@ func remove_hair(hair_id: int) -> bool:
 	multimesh.visible_instance_count = last_slot
 	_id_to_slot[hair_id] = INVALID_SLOT
 	_id_to_surface[hair_id] = INVALID_SLOT
-	_remaining_count -= 1
-	return true
+	return surface_index
+
+
+## 表面 surface_index に埋もれた毛があり、描いている本数が draw_cap より少なければ、埋もれた毛から 1 本
+## (系統は埋もれた毛の本数に比例した抽選) を表面のどこかに描き足す。残り本数は変えない
+func _draw_buried_hair(surface_index: int) -> void:
+	var bucket: Dictionary = _buckets[surface_index]
+	var buried: PackedInt32Array = bucket["buried"]
+	var buried_total: int = _sum(buried)
+	if (
+		buried_total <= 0
+		or (bucket["multimesh"] as MultiMesh).visible_instance_count >= int(bucket["draw_cap"])
+	):
+		return
+	var group: int = pick_buried_group(buried, _refill_rng)
+	buried[group] -= 1
+	bucket["buried"] = buried
+	var xform: Transform3D = _random_hair_transform(_surfaces[surface_index], _hair_aabb, _refill_rng)
+	_place_hair(surface_index, xform, pick_hair_color_in_group(_refill_rng, group))
+
+
+## 表面 surface_index の埋もれた毛から系統 group の毛を最大 count 本消し、消した本数を返す (remove_buried_hairs の本体)
+func _remove_buried(surface_index: int, group: int, count: int) -> int:
+	if (
+		surface_index < 0 or surface_index >= _buckets.size()
+		or group < 0 or group >= HairColorGroup.size()
+	):
+		return 0
+	var bucket: Dictionary = _buckets[surface_index]
+	var buried: PackedInt32Array = bucket["buried"]
+	var removed: int = clampi(count, 0, buried[group])
+	buried[group] -= removed
+	bucket["buried"] = buried
+	_remaining_count -= removed
+	return removed
 
 
 ## field の表面 surface_index の、point (ワールド座標) から面に沿って spread 以内のどこかに、色の系統 group の毛を
 ## 1 本足し、足した毛の ID を返す (猫が落とした毛)。point は面の矩形の中に収め、置けない時 (表面が無い・未配置) は
 ## INVALID_SLOT。MultiMesh の枠が足りない時は枠を倍に広げて、CPU 側の配列から今の毛を置き直す。
+## 埋もれた毛がある表面で描いている本数が draw_cap に達している時は、描いている毛を 1 本 (乱数で選ぶ) 埋もれた毛へ戻してから
+## 落とした毛を描く (描く本数を draw_budget で頭打ちに保ち、落とした毛は見せるため)。
 ## 公開の関数の数の上限 (gdlint の max-public-methods) に収めるため、count_surface_groups と同じく field を受け取る形にする
 static func add_hair(
 	field: Node3D,
@@ -425,12 +531,15 @@ func _add_hair(
 	if surface_index < 0 or surface_index >= _buckets.size() or _hair_mesh == null:
 		return INVALID_SLOT
 	var bucket: Dictionary = _buckets[surface_index]
+	var buried: PackedInt32Array = bucket["buried"]
 	var multimesh: MultiMesh = bucket["multimesh"]
-	var slot: int = multimesh.visible_instance_count
-	if slot >= multimesh.instance_count:
-		# 倍に広げて置き直す回数を本数の log に抑える。0 本の面の最初の枠は、猫が 1 か所に立ち止まる間に落とす 4 本の
-		# 数回分 (16 本) にし、立ち止まるたびに広げ直さない
-		_grow_bucket(bucket, maxi(16, multimesh.instance_count * 2))
+	if _sum(buried) > 0 and multimesh.visible_instance_count >= int(bucket["draw_cap"]):
+		# 描く本数を上限に保ったまま落とした毛を見せるため、描いている毛を 1 本 (乱数で選ぶ) 埋もれた毛へ戻す
+		var swapped_slot: int = rng.randi_range(0, multimesh.visible_instance_count - 1)
+		var swapped_id: int = (bucket["hair_ids"] as PackedInt32Array)[swapped_slot]
+		buried[classify_hair_color((bucket["colors"] as PackedColorArray)[swapped_slot])] += 1
+		bucket["buried"] = buried
+		_erase_drawn(swapped_id)
 	var spec: Dictionary = _surfaces[surface_index]
 	var surface_transform: Transform3D = spec["transform"]
 	var rect_min: Vector2 = spec["rect_min"]
@@ -438,7 +547,7 @@ func _add_hair(
 	var local_point: Vector3 = surface_transform.affine_inverse() * point
 	var basis: Basis = random_hair_basis(rng)
 	var local_xform: Transform3D = Transform3D(
-		basis, Vector3(0.0, hair_lift(basis, compute_mesh_aabb(_hair_mesh), rng), 0.0)
+		basis, Vector3(0.0, hair_lift(basis, _hair_aabb, rng), 0.0)
 	)
 	var xform: Transform3D = Transform3D()
 	for _retry: int in range(EXCLUSION_RETRY_LIMIT + 1):
@@ -449,7 +558,21 @@ func _add_hair(
 		xform = surface_transform * local_xform
 		if not _is_excluded(xform.origin, spec["exclusions"]):
 			break
-	var color: Color = pick_hair_color_in_group(rng, group)
+	var hair_id: int = _place_hair(surface_index, xform, pick_hair_color_in_group(rng, group))
+	_remaining_count += 1
+	return hair_id
+
+
+## 表面 surface_index の描いている毛の末尾に、xform と color の毛を 1 本描き、新しい毛 ID を返す (残り本数は変えない)。
+## MultiMesh の枠が足りない時は枠を倍に広げて、CPU 側の配列から今の毛を置き直す
+func _place_hair(surface_index: int, xform: Transform3D, color: Color) -> int:
+	var bucket: Dictionary = _buckets[surface_index]
+	var multimesh: MultiMesh = bucket["multimesh"]
+	var slot: int = multimesh.visible_instance_count
+	if slot >= multimesh.instance_count:
+		# 倍に広げて置き直す回数を本数の log に抑える。0 本の面の最初の枠は、猫が 1 か所に立ち止まる間に落とす 4 本の
+		# 数回分 (16 本) にし、立ち止まるたびに広げ直さない
+		_grow_bucket(bucket, maxi(16, multimesh.instance_count * 2))
 	var hair_id: int = _id_to_slot.size()
 	_id_to_slot.append(slot)
 	_id_to_surface.append(surface_index)
@@ -464,7 +587,6 @@ func _add_hair(
 	multimesh.visible_instance_count = slot + 1
 	multimesh.set_instance_transform(slot, xform)
 	multimesh.set_instance_color(slot, color)
-	_remaining_count += 1
 	return hair_id
 
 
@@ -536,9 +658,9 @@ func get_surface_count() -> int:
 	return _surfaces.size()
 
 
-## 指定した表面の残り毛本数を返す (MultiMesh の visible_instance_count を SSOT とする)
+## 指定した表面の残り毛本数 (描いている毛と埋もれた毛の合計) を返す
 func get_surface_remaining_count(surface_index: int) -> int:
-	return get_surface_visible_instance_count(surface_index)
+	return get_surface_visible_instance_count(surface_index) + _sum(_buried_counts(surface_index))
 
 
 ## 指定した表面の MultiMesh の visible_instance_count を返す
@@ -676,10 +798,73 @@ func set_hair_display_transform(hair_id: int, display_transform: Transform3D) ->
 func _prepare_shared_resources(total: int) -> void:
 	if _hair_mesh == null:
 		_hair_mesh = build_hair_mesh()
+		_hair_aabb = compute_mesh_aabb(_hair_mesh)
 	if _hair_material == null:
 		_hair_material = build_hair_material()
 	_id_to_surface.resize(total)
 	_id_to_slot.resize(total)
+
+
+## 表面ごとの本数 totals (合計 total) から、表面ごとに 1 本ずつ描く本数を返す。合計が draw_budget 以下 (か上限なし)
+## なら全部描き、超える時は draw_budget を表面の本数に比例して分ける
+func _drawn_counts(totals: PackedFloat32Array, total: int) -> PackedInt32Array:
+	if draw_budget <= 0 or total <= draw_budget:
+		var all_counts: PackedInt32Array = PackedInt32Array()
+		for count: float in totals:
+			all_counts.append(int(count))
+		return all_counts
+	return allocate_counts(draw_budget, totals)
+
+
+## 表面 surface_index の埋もれた毛の HairColorGroup ごとの本数 (範囲外・未配置は 0 の 3 要素)
+func _buried_counts(surface_index: int) -> PackedInt32Array:
+	if surface_index < 0 or surface_index >= _buckets.size():
+		var zeros: PackedInt32Array = PackedInt32Array()
+		zeros.resize(HairColorGroup.size())
+		zeros.fill(0)
+		return zeros
+	return _buckets[surface_index]["buried"]
+
+
+## 整数の列の合計
+static func _sum(values: PackedInt32Array) -> int:
+	var total: int = 0
+	for value: int in values:
+		total += value
+	return total
+
+
+## 整数の列を allocate_counts の重みの形にする
+static func _to_weights(values: PackedInt32Array) -> PackedFloat32Array:
+	var weights: PackedFloat32Array = PackedFloat32Array()
+	for value: int in values:
+		weights.append(float(value))
+	return weights
+
+
+## 表面 spec の矩形のどこかに置く毛 1 本の Transform3D を乱数で決める (除外範囲に当たれば EXCLUSION_RETRY_LIMIT 回まで
+## 置き直す)。乱数を引く順 (向き・X・持ち上げ・Z、置き直しは X・Z) を変えると同じ種で置く毛の位置が変わるため、順を文で固定する
+static func _random_hair_transform(
+	spec: Dictionary, local_aabb: AABB, rng: RandomNumberGenerator
+) -> Transform3D:
+	var surface_transform: Transform3D = spec["transform"]
+	var rect_min: Vector2 = spec["rect_min"]
+	var rect_max: Vector2 = spec["rect_max"]
+	var exclusions: Array = spec["exclusions"]
+	var basis: Basis = random_hair_basis(rng)
+	var local_xform: Transform3D = Transform3D(basis, Vector3(
+		rng.randf_range(rect_min.x, rect_max.x),
+		hair_lift(basis, local_aabb, rng),
+		rng.randf_range(rect_min.y, rect_max.y)
+	))
+	var xform: Transform3D = surface_transform * local_xform
+	var retries: int = 0
+	while retries < EXCLUSION_RETRY_LIMIT and _is_excluded(xform.origin, exclusions):
+		local_xform.origin.x = rng.randf_range(rect_min.x, rect_max.x)
+		local_xform.origin.z = rng.randf_range(rect_min.y, rect_max.y)
+		xform = surface_transform * local_xform
+		retries += 1
+	return xform
 
 
 ## 表面の局所 XZ 上の点がワールド座標で除外範囲のどれかに入るか
@@ -692,8 +877,9 @@ static func _is_excluded(world_point: Vector3, exclusions: Array) -> bool:
 	return false
 
 
-## 1 表面分の MultiMeshInstance3D とバケットを生成し、乱数シードに従って毛を配置する。
+## 1 表面分の MultiMeshInstance3D とバケットを生成し、乱数シードに従って count 本の毛を描く。
 ## groups が空なら色の系統も乱数で選び、空でなければ slot ごとに groups[slot] の系統で色を選ぶ。
+## buried は描かない埋もれた毛の HairColorGroup ごとの本数で、描いている毛を消した時に描き足す元になる。
 ## MultiMesh.get_instance_transform/color は headless (Dummy レンダラ) で既定値を返すため、
 ## CPU 側の transforms / colors 配列にも同値を保持して swap-remove と照会を統一する。
 func _create_surface_bucket(
@@ -703,6 +889,7 @@ func _create_surface_bucket(
 	rng: RandomNumberGenerator,
 	start_id: int,
 	groups: PackedInt32Array,
+	buried: PackedInt32Array,
 ) -> Dictionary:
 	var multimesh: MultiMesh = MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
@@ -718,31 +905,13 @@ func _create_surface_bucket(
 	var colors: PackedColorArray = PackedColorArray()
 	colors.resize(count)
 
-	var surface_transform: Transform3D = spec["transform"]
-	var rect_min: Vector2 = spec["rect_min"]
-	var rect_max: Vector2 = spec["rect_max"]
-	var exclusions: Array = spec["exclusions"]
-	var local_aabb: AABB = compute_mesh_aabb(_hair_mesh)
-
 	for slot: int in range(count):
 		var hair_id: int = start_id + slot
 		hair_ids[slot] = hair_id
 		_id_to_surface[hair_id] = surface_idx
 		_id_to_slot[hair_id] = slot
 
-		var basis: Basis = random_hair_basis(rng)
-		var local_xform: Transform3D = Transform3D(basis, Vector3(
-			rng.randf_range(rect_min.x, rect_max.x),
-			hair_lift(basis, local_aabb, rng),
-			rng.randf_range(rect_min.y, rect_max.y)
-		))
-		var xform: Transform3D = surface_transform * local_xform
-		var retries: int = 0
-		while retries < EXCLUSION_RETRY_LIMIT and _is_excluded(xform.origin, exclusions):
-			local_xform.origin.x = rng.randf_range(rect_min.x, rect_max.x)
-			local_xform.origin.z = rng.randf_range(rect_min.y, rect_max.y)
-			xform = surface_transform * local_xform
-			retries += 1
+		var xform: Transform3D = _random_hair_transform(spec, _hair_aabb, rng)
 		var color: Color = (
 			pick_hair_color(rng)
 			if groups.is_empty()
@@ -766,4 +935,6 @@ func _create_surface_bucket(
 		"hair_ids": hair_ids,
 		"transforms": transforms,
 		"colors": colors,
+		"buried": buried,
+		"draw_cap": count,
 	}

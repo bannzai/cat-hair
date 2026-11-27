@@ -54,10 +54,9 @@ const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 
 ## screenshot 専用のセーブパス
 const TEST_SAVE_PATH: String = "user://screenshot_save_data.json"
-## 見た目の試作を撮る時の屋敷全体の毛の本数。既定の 4 部屋で 1 部屋 3 万本前後になり、量の多さが一目で分かる。
-## 屋敷は全部の毛を 1 本ずつ描くため (#9)、CI の lavapipe で 10 万本が 187 ms/frame (ADR 0002 の実測) を大きく
-## 超えない本数にした
-const LOOK_HAIR_COUNT: int = 120000
+## 見た目の試作を撮る時の屋敷全体の毛の本数。新しく始めた屋敷と同じ既定の本数 (issue #65 の 9,999,999 本) で撮る。
+## 1 本ずつ描くのは HairField.draw_budget の本数までで、残りは埋もれた毛として数だけ持つ
+const LOOK_HAIR_COUNT: int = MansionTuningScript.DEFAULT_HAIR_COUNT
 ## 部屋に入った直後と自動化の絵で見下ろす角度 (rad)。床と家具の上の毛が画面の下半分を占める角度
 const LOOK_OVERVIEW_PITCH: float = -0.45
 

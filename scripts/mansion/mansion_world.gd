@@ -70,6 +70,9 @@ const TRADER_SOUTH_OFFSET_M: float = 0.22
 ## _build_trader_body の各部の位置と大きさは、この背の高さの大人の体の釣り合いで置いた値
 const TRADER_HEIGHT_M: float = 1.6
 
+## 屋敷全体で 1 本ずつ描く毛の本数の上限 (HairField.draw_budget に渡す。rebuild の前に変えると次の作り直しから効く。
+## 計測で上限を変えて比べる scenebench が変える)
+var hair_draw_budget: int = HairFieldScript.DEFAULT_DRAW_BUDGET
 ## 部屋ノード群の親コンテナ
 var _rooms_root: Node3D = null
 ## 家具・布ノード群の親コンテナ
@@ -131,6 +134,7 @@ func rebuild(layout: MansionLayout, progress: BuildingProgress) -> void:
 
 	_hair_field = HairFieldScript.new()
 	_hair_field.name = "HairField"
+	_hair_field.draw_budget = hair_draw_budget
 	add_child(_hair_field)
 
 	_lights_root = Node3D.new()

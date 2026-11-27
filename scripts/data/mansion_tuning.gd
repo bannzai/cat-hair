@@ -7,9 +7,9 @@ extends Resource
 const MIN_HAIR_COUNT: int = 0
 ## PROJECT.md の「数百万本」を余裕をもって試せる上限 (1,000 万本)
 const MAX_HAIR_COUNT: int = 10000000
-## 既定 4 部屋で、部屋に入った直後に床・カーペット・家具の上が毛で埋まって見える本数。見た目の試作 (#19) の撮影と
-## 同じ本数で、issue #56 で 12,000・60,000・120,000・240,000 本を撮って比べ、60,000 本では床の地が目立った
-const DEFAULT_HAIR_COUNT: int = 120000
+## 既定の毛の本数。屋敷が毛で溢れていると数字で伝わる 9,999,999 本 (owner の指示。issue #65)。
+## 1 本ずつ描くのは HairField.draw_budget の本数までで、残りは埋もれた毛として数だけ持つ
+const DEFAULT_HAIR_COUNT: int = 9999999
 
 ## 探し物を置かない境界テストを許す最小値
 const MIN_FOUND_ITEM_COUNT: int = 0

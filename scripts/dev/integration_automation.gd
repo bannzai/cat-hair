@@ -575,6 +575,11 @@ static func _clear_surface(hair_field: Node3D, game_state: Node, surface_id: Str
 	for index: int in range(surfaces.size()):
 		if surfaces[index].surface_id != surface_id:
 			continue
+		# 埋もれた毛を先に消し、描いている毛を消した時に描き足さないようにする
+		for group: int in range(HairFieldScript.HairColorGroup.size()):
+			HairFieldScript.remove_buried_hairs(
+				hair_field, index, group, hair_field.get_surface_remaining_count(index)
+			)
 		for hair_id: int in hair_field.find_hairs_near(
 			index, surfaces[index].center, INF, hair_field.get_surface_remaining_count(index)
 		):

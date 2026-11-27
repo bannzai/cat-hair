@@ -46,8 +46,8 @@ MOVIE_FRAMES ?= 150
 MOVIE_AUTOMATION_FRAMES ?= 330
 # hairbench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/hairbench.gd の DEFAULT_COUNTS が SSOT)
 HAIRBENCH_COUNTS ?=
-# scenebench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/scenebench.gd の DEFAULT_COUNTS が SSOT)
-SCENEBENCH_COUNTS ?=
+# scenebench target の計測する描く本数の上限の上書き (カンマ区切り。未指定時は scripts/dev/scenebench.gd の DEFAULT_DRAW_BUDGETS が SSOT)
+SCENEBENCH_DRAW_BUDGETS ?=
 
 .PHONY: import check selfcheck integration failure-path lint check-generated uid uidcheck test verify screenshot movie movie-automation hairbench scenebench run build-macos build-windows build-linux build-web build-all clean
 
@@ -212,12 +212,13 @@ hairbench: import
 	test -f $(LOG_DIR)/hairbench.json
 	ls $(LOG_DIR)/hairbench-*.png
 
-# 屋敷の 1 フレームの時間のベンチマーク。メインシーンで毛の本数を変えながら、部屋に入った直後と掃除ロボットが
-# 動いている間の 1 フレームの時間・処理の時間・描画の CPU / GPU の時間・描いた三角形の数を tmp/scenebench.json に出し、
-# 本数ごとの画面を tmp/scenebench-<本数>.png に撮る (本数の既定は scripts/dev/scenebench.gd の DEFAULT_COUNTS)
+# 屋敷の 1 フレームの時間のベンチマーク。メインシーンで既定の毛の本数のまま 1 本ずつ描く本数の上限を変えながら、
+# 部屋に入った直後と掃除ロボットが動いている間の 1 フレームの時間・処理の時間・描画の CPU / GPU の時間・描いた三角形の数を
+# tmp/scenebench.json に出し、上限ごとの画面を tmp/scenebench-<上限>.png に撮る
+# (上限の既定は scripts/dev/scenebench.gd の DEFAULT_DRAW_BUDGETS)
 scenebench: import
 	rm -f $(LOG_DIR)/scenebench-*.png $(LOG_DIR)/scenebench.json
-	SCENEBENCH_COUNTS="$(SCENEBENCH_COUNTS)" "$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) $(SCRIPT_FLAGS) --script res://scripts/dev/scenebench.gd > $(LOG_DIR)/scenebench.log 2>&1; \
+	SCENEBENCH_DRAW_BUDGETS="$(SCENEBENCH_DRAW_BUDGETS)" "$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) $(SCRIPT_FLAGS) --script res://scripts/dev/scenebench.gd > $(LOG_DIR)/scenebench.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/scenebench.log; \
 	grep -q '^scenebench OK$$' $(LOG_DIR)/scenebench.log
 	tail -n 1 $(LOG_DIR)/scenebench.log | grep -q '^exit=0$$'
