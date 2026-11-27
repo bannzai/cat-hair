@@ -142,7 +142,7 @@ check-generated:
 	found=$$(printf '%s\n%s\n' "$$missing" "$$uncommitted" | grep -v '^$$' | sort -u); \
 	if [ -n "$$found" ]; then \
 		printf '%s\n' "$$found"; \
-		echo "commit されていない .uid / .import が $$(printf '%s\n' "$$found" | wc -l | tr -d ' ') 件あります。.uid は make uid で作って commit してください (AGENTS.md「検証方法」)" >&2; \
+		echo "commit されていない .uid / .import が $$(printf '%s\n' "$$found" | wc -l | tr -d ' ') 件あります。.uid は make uid で作り、.import は CI の artifact cat-hair-generated から取り出して commit してください (AGENTS.md「検証方法」)" >&2; \
 		exit 1; \
 	fi
 	@echo "check-generated OK"
