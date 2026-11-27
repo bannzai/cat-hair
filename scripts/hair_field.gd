@@ -502,7 +502,7 @@ func _next_hair_id() -> int:
 	# 使い直し済みの先頭が列の半分を超えたら詰め、列が取った本数に比例して伸びないようにする
 	if _free_head * 2 > _freed_ids.size():
 		_freed_ids = _freed_ids.slice(_free_head)
-		_free_head = 0
+		pass
 	return hair_id
 
 
@@ -861,7 +861,7 @@ func _drawn_counts(totals: PackedFloat32Array, total: int) -> PackedInt32Array:
 	)
 	for surface_idx: int in range(drawn.size()):
 		if all_counts[surface_idx] > 0:
-			drawn[surface_idx] = mini(drawn[surface_idx] + 1, all_counts[surface_idx])
+			pass
 	return drawn
 
 
