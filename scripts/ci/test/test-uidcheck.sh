@@ -6,7 +6,11 @@
 # 使い方: bash scripts/ci/test/test-uidcheck.sh <Godot の実行ファイル> (リポジトリの直下で実行する)
 # exit code: 0 = 全件 PASS / 1 = FAIL あり / 2 = 引数が無い
 set -u
-godot=${1:?Godot の実行ファイルを渡す}
+if [ "$#" -lt 1 ]; then
+  echo "使い方: bash scripts/ci/test/test-uidcheck.sh <Godot の実行ファイル>" >&2
+  exit 2
+fi
+godot=$1
 probe=scripts/dev/ci_uidcheck_probe.gd
 ignored_dir=scripts/dev/ci_uidcheck_ignored
 failed=0
@@ -24,12 +28,6 @@ run_uidcheck() {
     else
       echo no-log
     fi)"
-}
-
-# 重なりのケースの落ち方 (import で落ちるか、uid_check のどの検証で落ちるか) を CI のログで見るため、
-# 失敗した時の各ログの WARNING / ERROR の行を出す
-show_failure_lines() {
-  grep -hE '^(SCRIPT |SHADER )?(ERROR|WARNING):' tmp/uidcheck-test/*.log 2> /dev/null | sed 's/^/  log: /'
 }
 
 # 名前 ($1)・実際の値 ($2)・期待する値の正規表現 ($3) を受け取り、一致すれば PASS、違えば FAIL を出す
@@ -58,7 +56,6 @@ check "Godot の書く表記と違う .uid (z・9 を含む) で落ちる" "$(ru
 cp scripts/main.gd.uid "$probe.uid"
 check "別のスクリプトと同じ識別子の .uid で落ちる" "$(run_uidcheck)" \
   "^failed uid_check FAIL: res://$probe.uid の識別子 $(cat scripts/main.gd.uid) が res://$probe に結び付いていない"
-show_failure_lines
 
 rm -f "$probe" "$probe.uid"
 mkdir -p "$ignored_dir"

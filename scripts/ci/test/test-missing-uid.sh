@@ -212,6 +212,15 @@ printf 'dummy' > "$work/scripts/a.png.import"
 check "check-generated: 未 commit の .import だけでも失敗する" "$(run_check_generated)" "scripts/a.png.import exit=nonzero"
 rm "$work/scripts/a.png.import"
 
+# 2 つの一覧のスクリプトの片方だけを失敗する偽物に差し替えても、check-generated が成功と出さずに失敗する
+for broken in list-missing-uid.sh list-uncommitted-generated.sh; do
+  cp "$work/scripts/ci/$broken" "$work.bak"
+  printf '#!/usr/bin/env bash\nexit 3\n' > "$work/scripts/ci/$broken"
+  check "check-generated: $broken だけが失敗しても成功と出さずに失敗する" "$(run_check_generated)" " exit=nonzero"
+  mv "$work.bak" "$work/scripts/ci/$broken"
+done
+rm -f "$work.err"
+
 copy_make_files "$not_a_repo"
 check "check-generated: git のリポジトリでない場所では成功と出さずに失敗する" \
   "$(exit_code_outside_repo make --no-print-directory check-generated | sed 's/^0$/0/;s/^[1-9][0-9]*$/nonzero/') $(cat "$not_a_repo/out")" "nonzero "

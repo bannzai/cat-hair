@@ -61,7 +61,7 @@ jobs:
       - name: Package Linux build
         run: tar -czf build/cat-hair-linux.tar.gz -C build linux
       # import が生成した .uid / .import が commit されていなければ失敗させ、artifact に上げる (開発マシンでは Godot を
-      # 起動しないため、ここで取り出して commit する。手順は AGENTS.md「検証方法」)。
+      # 起動しないため、.import はここで取り出して commit する。.uid は手元の make uid で作る。手順は AGENTS.md「検証方法」)。
       # 検証とエクスポートの結果を隠さないよう最後に置く
       - name: Check untracked generated files (.uid / .import)
         id: generated
@@ -79,7 +79,7 @@ jobs:
             fi
           done
           printf '%s\n' "$untracked"
-          echo "::error::未 commit の .uid / .import が $(printf '%s\n' "$untracked" | wc -l) 件あります。artifact cat-hair-generated を取り出して commit してください (AGENTS.md「検証方法」)"
+          echo "::error::未 commit の .uid / .import が $(printf '%s\n' "$untracked" | wc -l) 件あります。.uid は手元で make uid で作り、.import は artifact cat-hair-generated から取り出して commit してください (AGENTS.md「検証方法」)"
           exit 1
       - name: Upload untracked generated files
         if: always() && steps.generated.outcome == 'failure'
