@@ -232,14 +232,14 @@ static func remove_picked_hairs(
 			break
 		if world.get_hair_color_id(hair_id) == color_id:
 			picked_ids.append(hair_id)
-	for hair_id: int in picked_ids:
-		hair_field.remove_hair(hair_id)
 	HairFieldScript.remove_buried_hairs(
 		hair_field,
 		surface_index,
 		SurfaceHairScript.STANDARD_COLORS.find(color_id),
 		count - picked_ids.size(),
 	)
+	for hair_id: int in picked_ids:
+		hair_field.remove_hair(hair_id)
 
 
 ## 猫 1 匹の形 (胴・頭・耳・尾・脚と、三毛猫のぶち、頭の上の名札) を作る。足元が原点で、-Z が顔の向き
