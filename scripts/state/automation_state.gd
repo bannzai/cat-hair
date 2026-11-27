@@ -60,11 +60,16 @@ func advance(delta_seconds: float) -> Dictionary:
 		var segment_start: float = _seconds
 		_seconds = minf(end, floorf(segment_start) + 1.0)
 		for route: Dictionary in _cat_routes:
-			_drop_cat_hairs(route, segment_start, changes["drops"])
+			# 逃げて隠れている・抱えられている猫は通り道を離れているので毛を落とさない
+			if not _game_state.requests.is_cat_away(route["cat_id"]):
+				_drop_cat_hairs(route, segment_start, changes["drops"])
 		for robot_index: int in range(robot_routes.size()):
 			_pick_robot_hairs(
 				robot_index, robot_routes[robot_index], segment_start, changes["picks"]
 			)
+	if not changes["picks"].is_empty():
+		# 掃除ロボットが取った毛でも、埋めた面の毛が半分になれば探し物が出てくる
+		_game_state.requests.after_hairs_removed()
 	if not changes["drops"].is_empty() or not changes["picks"].is_empty():
 		_game_state.state_changed.emit()
 		_game_state.automation_advanced.emit(changes)

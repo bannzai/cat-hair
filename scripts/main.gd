@@ -41,6 +41,8 @@ const TOGGLE_SHOP_KEY: Key = KEY_T
 const TOGGLE_ROBOT_KEY: Key = KEY_R
 ## 操作の案内の一覧を閉じる・開くキー (Help の H)
 const TOGGLE_GUIDE_KEY: Key = KEY_H
+## 住人の依頼の一覧を開閉するキー (ほかの画面のキーと重ならず、移動の WASD から手を離さずに届くキー)
+const TOGGLE_REQUESTS_KEY: Key = KEY_J
 ## 操作の案内・マウスの捕捉の案内・手で引いている進み具合の表示のスクリプト
 const PlayGuideHudScript := preload("res://scripts/ui/play_guide_hud.gd")
 ## 猫と掃除ロボットを描いて時計を進めるノードのスクリプト
@@ -91,6 +93,8 @@ var big_tools: BigToolSite = null
 var robot_route_panel: RobotRoutePanel = null
 ## 猫と掃除ロボットを描き、屋敷で遊んでいる間に時計を進めるノード
 var automation: AutomationController = null
+## 住人の依頼の見た目 (探し物・逃げた猫の毛の跡) と一覧の画面、歩いて起きる操作 (猫を抱える・返す・届ける)
+var requests: RequestController = null
 ## 選んでいる道具の様子 (レベル・得意な表面・消耗品の残り) の表示 (画面右下の道具の枠と所持金の上)
 var tool_detail_label: Label = null
 ## 最後に道具を使った結果 (取りこぼしの割合) の表示
@@ -209,7 +213,7 @@ func _exit_tree() -> void:
 		_owned_game_state = null
 
 
-## プレイ中の F1 (開発者調整画面開閉)・B (図鑑開閉)・T (道具を買う画面の開閉)・R (掃除ロボットの回る順の画面の開閉)・
+## プレイ中の F1 (開発者調整画面開閉)・B (図鑑開閉)・T (道具を買う画面の開閉)・R (掃除ロボットの回る順の画面の開閉)・J (住人の依頼の一覧の開閉)・
 ## F5 (手動セーブ)・F3 (fps と 1 フレームの時間の表示の出し入れ)・H (操作の案内の開閉。画面を開いていない時だけ) を処理する。
 ## 画面は 1 つずつしか開かない (開いている画面と別の画面のキーは何もしない)。F3 は画面を開いていても効く (画面を開いた時の重さも読めるように)
 func _unhandled_input(event: InputEvent) -> void:
@@ -228,6 +232,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif _is_key_press(event, TOGGLE_ROBOT_KEY):
 		if _is_playing and _no_panel_open_except(robot_route_panel):
 			toggle_robot_route()
+	elif _is_key_press(event, TOGGLE_REQUESTS_KEY):
+		if _is_playing and _no_panel_open_except(requests.panel):
+			toggle_requests()
 	elif _is_key_press(event, TOGGLE_GUIDE_KEY):
 		if _is_playing and _no_panel_open_except(null):
 			play_guide.toggle_controls_guide()
@@ -245,9 +252,11 @@ static func _is_key_press(event: InputEvent, key: Key) -> bool:
 	)
 
 
-## panel 以外の画面 (開発者調整・図鑑・道具を買う・掃除ロボットの回る順) がどれも開いていないか
+## panel 以外の画面 (開発者調整・図鑑・道具を買う・掃除ロボットの回る順・住人の依頼) がどれも開いていないか
 func _no_panel_open_except(panel: Control) -> bool:
-	for other: Control in [dev_tuning_panel, hair_book_panel, tool_shop_panel, robot_route_panel]:
+	for other: Control in [
+		dev_tuning_panel, hair_book_panel, tool_shop_panel, robot_route_panel, requests.panel
+	]:
 		if other != panel and other.visible:
 			return false
 	return true
@@ -265,6 +274,7 @@ func enter_mansion() -> void:
 	hair_book_panel.visible = false
 	tool_shop_panel.visible = false
 	robot_route_panel.visible = false
+	requests.panel.visible = false
 	_sync_controls()
 	look_room.set_playing(true)
 	automation.playing = true
@@ -368,6 +378,16 @@ func close_robot_route() -> void:
 	_sync_controls()
 
 
+## 住人の依頼の一覧の開閉を切り替える (開いている間は歩く・つまむ・道具を使う操作を止める)
+func toggle_requests() -> void:
+	if requests.panel.visible:
+		requests.panel.visible = false
+	else:
+		requests.open_panel()
+		_release_mouse()
+	_sync_controls()
+
+
 ## プレイヤーが買取業者に毛を売れる距離にいるか
 func is_near_trader() -> bool:
 	var trader: Vector3 = mansion_world.get_trader_position()
@@ -395,6 +415,7 @@ func _process(delta: float) -> void:
 		if auto_advance_time:
 			_advance_play_time(delta)
 		_refresh_room_gauge()
+		requests.interact_at(player.global_position)
 	if _pluck_popup_remaining <= 0.0:
 		return
 	_pluck_popup_remaining -= delta
@@ -465,6 +486,7 @@ func _set_title_mode() -> void:
 	hair_book_panel.visible = false
 	tool_shop_panel.visible = false
 	robot_route_panel.visible = false
+	requests.panel.visible = false
 	_sync_controls()
 	look_room.set_playing(false)
 	automation.playing = false
@@ -490,6 +512,7 @@ func _rebuild_world_from_state() -> void:
 	mansion_world.rebuild(layout, _game_state.save_data.building_progress)
 	big_tools.reset_for_new_progress()
 	automation.rebuild()
+	requests.rebuild()
 	look_room.apply(layout, mansion_world)
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	_refresh_hud()
@@ -514,6 +537,8 @@ func _refresh_hud() -> void:
 		tool_shop_panel.refresh(_game_state, is_near_trader())
 	if robot_route_panel != null and robot_route_panel.visible:
 		robot_route_panel.refresh(_game_state)
+	if requests != null:
+		requests.refresh()
 
 
 ## 画面右下の道具の枠を、キーの番号 (1〜9・0) と名前 (持っていない道具は「—」) のキーで選ぶ道具の数だけ描き直し、
@@ -557,9 +582,12 @@ func _refresh_room_gauge() -> void:
 		int(status["cleaning_fee"]),
 		int(EconomyRulesScript.PAYMENT_INTERVAL_SECONDS),
 	]
+	var reward: int = _game_state.requests.pending_reward(room.room_id)
+	if reward > 0:
+		cleaning_fee_label.text += " (次はお礼 +%d 円)" % reward
 
 
-## プレイ中で、開発者画面・図鑑・道具を買う画面・掃除ロボットの回る順の画面のどれも開いていない時だけ、歩く操作・つまむ操作・道具を使う操作を受け付ける。
+## プレイ中で、開発者画面・図鑑・道具を買う画面・掃除ロボットの回る順の画面・住人の依頼の一覧のどれも開いていない時だけ、歩く操作・つまむ操作・道具を使う操作を受け付ける。
 ## つまむ操作は手を選んでいる時だけ、道具を使う操作は手以外を選んでいる時だけ受け付ける。
 ## 画面を開いている間は操作の案内の一覧を隠す
 func _sync_controls() -> void:
@@ -750,6 +778,13 @@ func _build_tool_ui() -> void:
 	robot_route_panel.buy_requested.connect(_on_robot_buy_requested)
 	robot_route_panel.route_change_requested.connect(_on_robot_route_change_requested)
 	robot_route_panel.close_requested.connect(close_robot_route)
+
+	requests = RequestController.new()
+	requests.name = "Requests"
+	add_child(requests)
+	requests.setup(_game_state, ui_root)
+	requests.notice_posted.connect(_show_popup)
+	requests.panel.close_requested.connect(toggle_requests)
 
 
 ## 見出しと 0〜100 のゲージの行を足し、ゲージを返す

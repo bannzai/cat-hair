@@ -22,6 +22,8 @@ const GameStateScript := preload("res://scripts/state/game_state.gd")
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 大型の道具の撮影
 const ScreenshotBigTools := preload("res://scripts/dev/screenshot_big_tools.gd")
+## 住人の依頼の場面の撮影
+const ScreenshotRequests := preload("res://scripts/dev/screenshot_requests.gd")
 ## 撮影で、見たい所との間に家具を挟まずに立つ所を選ぶ手順
 const ViewPointScript := preload("res://scripts/dev/view_point.gd")
 ## 掃除ロボットの部屋の探し方 (猫がいる部屋を引く)
@@ -299,7 +301,7 @@ func _capture_perf_overlay(main: Node3D) -> String:
 	return "" if ok else "fps と 1 フレームの時間の表示を保存できない"
 
 
-## 道具 (手に持つ道具)・猫と掃除ロボット・大型の道具の場面を順に撮る。撮れたら空文字、失敗したら最初の失敗の理由を返す
+## 道具 (手に持つ道具)・猫と掃除ロボット・住人の依頼・大型の道具の場面を順に撮る。撮れたら空文字、失敗したら最初の失敗の理由を返す
 func _capture_tool_scenes(main: Node3D) -> String:
 	var tool_error: String = await _capture_tools(main)
 	if not tool_error.is_empty():
@@ -307,6 +309,9 @@ func _capture_tool_scenes(main: Node3D) -> String:
 	var automation_error: String = await _capture_automation(main)
 	if not automation_error.is_empty():
 		return automation_error
+	var request_error: String = await ScreenshotRequests.capture_all(self, main)
+	if not request_error.is_empty():
+		return request_error
 	return await ScreenshotBigTools.capture_all(self, main)
 
 

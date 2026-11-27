@@ -387,6 +387,12 @@ func _use_sweep_tool_on_target(
 		return
 	for hair_id: int in removed_ids:
 		hair_field.remove_hair(hair_id)
+	_game_state.requests.apply_tool(
+		tool_id,
+		_game_state.requests.items_in_reach(
+			surface_def.surface_id, target["point"], float(tool_def["radius_m"])
+		),
+	)
 	_show_trace(target["point"], surface_def, float(tool_def["radius_m"]))
 	_finish_result(tool_def, result, hair_ids.size(), removed, "")
 
@@ -410,6 +416,9 @@ func _use_room_tool(tool_def: Dictionary, result: Dictionary) -> void:
 	var hair_field: Node3D = _world.get_hair_field()
 	for hair_id: int in plan["removed_ids"]:
 		hair_field.remove_hair(hair_id)
+	_game_state.requests.apply_tool(
+		tool_id, _game_state.requests.items_on_surfaces(plan["counts_by_surface"].keys())
+	)
 	if tool_def["kind"] == ToolCatalogScript.KIND_SHEET:
 		_show_sheet_trace(room)
 	_finish_result(tool_def, result, int(plan["in_range"]), removed, room.display_name)

@@ -30,6 +30,12 @@ const BUILDING_MANSION: StringName = &"mansion"
 @export var resident_moods: Dictionary = {}
 ## 探し物ごとの状態
 @export var found_items: Array[FoundItemProgress] = []
+## 黒いスーツの服の毛の依頼で、出かける前に取り切って上乗せを受け取ったスーツの面の id
+@export var cleared_suit_surface_ids: Array[StringName] = []
+## 逃げた猫を持ち主に届けたか
+@export var runaway_cat_returned: bool = false
+## 住人 id -> 次の掃除代に上乗せするお礼 (円)。探し物を返した・スーツの毛を取り切った時に足し、掃除代を払う時に払って消す
+@export var pending_rewards: Dictionary = {}
 
 
 ## 建物全体に残っている毛の総本数を返す
@@ -66,6 +72,9 @@ func to_dict() -> Dictionary:
 	var moods_out: Dictionary = {}
 	for resident_key: Variant in resident_moods.keys():
 		moods_out[String(resident_key)] = clampf(float(resident_moods[resident_key]), 0.0, 1.0)
+	var rewards_out: Dictionary = {}
+	for resident_key: Variant in pending_rewards.keys():
+		rewards_out[String(resident_key)] = maxi(0, int(pending_rewards[resident_key]))
 	var items_out: Array[Dictionary] = []
 	for item: FoundItemProgress in found_items:
 		if item != null:
@@ -79,6 +88,11 @@ func to_dict() -> Dictionary:
 		"owned_tools": tools_out,
 		"resident_moods": moods_out,
 		"found_items": items_out,
+		"cleared_suit_surface_ids": cleared_suit_surface_ids.map(
+			func(surface_id: StringName) -> String: return String(surface_id)
+		),
+		"runaway_cat_returned": runaway_cat_returned,
+		"pending_rewards": rewards_out,
 	}
 
 
@@ -108,6 +122,8 @@ static func from_dict(raw_progress_dict: Variant) -> BuildingProgress:
 	if not _load_resident_moods(progress_dict.get("resident_moods"), progress):
 		return null
 	if not _load_found_items(progress_dict.get("found_items"), progress):
+		return null
+	if not _load_requests(progress_dict, progress):
 		return null
 	return progress
 
@@ -176,4 +192,25 @@ static func _load_found_items(raw_entries: Variant, target_progress: BuildingPro
 		if parsed == null:
 			return false
 		target_progress.found_items.append(parsed)
+	return true
+
+
+## 依頼の進み (取り切ったスーツの面・猫を届けたか・次の掃除代に上乗せするお礼) を復元して target_progress へ格納する。
+## 依頼を足す前の保存データにはキーが無いため、キーが無い時は依頼を始める前の値のままにする。型が不正なら false
+static func _load_requests(progress_dict: Dictionary, target_progress: BuildingProgress) -> bool:
+	var raw_suits: Variant = progress_dict.get("cleared_suit_surface_ids", [])
+	var raw_returned: Variant = progress_dict.get("runaway_cat_returned", false)
+	var raw_rewards: Variant = progress_dict.get("pending_rewards", {})
+	if not (raw_suits is Array) or not (raw_returned is bool) or not (raw_rewards is Dictionary):
+		return false
+	for resident_key: Variant in raw_rewards.keys():
+		var amount: Variant = raw_rewards[resident_key]
+		if not (resident_key is String) or not (amount is float or amount is int):
+			return false
+		target_progress.pending_rewards[StringName(resident_key)] = int(amount)
+	for entry: Variant in raw_suits:
+		if not (entry is String):
+			return false
+		target_progress.cleared_suit_surface_ids.append(StringName(entry))
+	target_progress.runaway_cat_returned = raw_returned
 	return true
