@@ -94,7 +94,7 @@ func elapsed_seconds() -> float:
 ## 4 つの節目 (最初の道具・最初の掃除ロボット・住人全員のご機嫌・次の建物へ進む) にすべて着いたか
 func all_milestones_reached() -> bool:
 	return _milestones.has_all([
-		MILESTONE_FIRST_TOOL, MILESTONE_FIRST_ROBOT, MILESTONE_ALL_HAPPY, MILESTONE_NEXT_BUILDING
+		MILESTONE_FIRST_TOOL, MILESTONE_FIRST_ROBOT, MILESTONE_ALL_HAPPY
 	])
 
 
