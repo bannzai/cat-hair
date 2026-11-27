@@ -5,8 +5,6 @@ extends "res://scripts/dev/headless_check.gd"
 ## (確認用の PR https://github.com/bannzai/cat-hair/pull/50 で、uid://zz99 のまま import が通った)。
 ## 実行: make uidcheck (CI の check-and-export が実行する)。テスト: scripts/ci/test/test-uidcheck.sh
 
-## 探さないディレクトリ (Godot のキャッシュ)
-const SKIPPED_DIR: String = "res://.godot"
 ## .uid を付けるスクリプトの拡張子
 const SCRIPT_EXTENSION: String = ".gd"
 ## Godot がスクリプトの横に置く識別子のファイルの拡張子
@@ -34,10 +32,13 @@ func _initialize() -> void:
 	_finish()
 
 
-## dir の配下の `<名前>.gd.uid` のパスを集める (.gdignore を置いたディレクトリと .godot は Godot が読まないため除く)
+## dir の配下の `<名前>.gd.uid` のパスを集める (.gdignore を置いたディレクトリは Godot が読まないため除く)。
+## .godot のような隠しディレクトリは DirAccess.get_directories_at が列挙しないため入らない
+## (Godot 4.7.2 の core/io/dir_access.h の include_hidden = false と core/io/dir_access.cpp の
+## get_directories_at。テスト: scripts/ci/test/test-uidcheck.sh の「.godot の下の .uid は見ない」)
 func _find_uid_paths(dir: String) -> PackedStringArray:
 	var found: PackedStringArray = []
-	if dir.trim_suffix("/") == SKIPPED_DIR or FileAccess.file_exists(dir.path_join(".gdignore")):
+	if FileAccess.file_exists(dir.path_join(".gdignore")):
 		return found
 	for file_name: String in DirAccess.get_files_at(dir):
 		if file_name.ends_with(SCRIPT_EXTENSION + UID_EXTENSION):

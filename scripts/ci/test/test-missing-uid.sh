@@ -66,7 +66,11 @@ check ".gdignore を置いたディレクトリの配下の .gd は対象外" "$
 
 printf 'extends Node\n' > "$work/scripts/猫.gd"
 check "日本語のファイル名は、引用符や 8 進の表記にせずそのまま出す" "$(run_in_work "$list")" "$(printf 'scripts/staged.gd.uid\nscripts/猫.gd.uid')"
-rm "$work/scripts/猫.gd"
+printf 'uid://ccc\n' > "$work/scripts/猫.gd.uid"
+repo_git add scripts/猫.gd scripts/猫.gd.uid
+check "日本語のファイル名の .uid が index にあれば出さない" "$(run_in_work "$list")" "scripts/staged.gd.uid"
+repo_git rm -q --cached scripts/猫.gd scripts/猫.gd.uid
+rm "$work/scripts/猫.gd" "$work/scripts/猫.gd.uid"
 
 repo_git rm -q --cached scripts/new.gd.uid
 rm "$work/scripts/new.gd" "$work/scripts/new.gd.uid"
@@ -113,6 +117,13 @@ reset_work() {
 
 reset_work
 check "list: .gd が 1 つも無いリポジトリでは何も出さない" "$(run_in_work "$list")" ""
+printf 'extends Node\n' > "$work/done.gd"
+printf 'uid://ddd\n' > "$work/done.gd.uid"
+repo_git add -A
+repo_git commit -q -m done
+check "create: 全部の .uid が commit 済みなら exit 0 で何も出さない" \
+  "$(out=$(run_in_work "$create"); printf '%s exit=%s' "$out" "$?")" " exit=0"
+check "create: 全部の .uid が commit 済みなら .uid を書き換えない" "$(cat "$work/done.gd.uid")" "uid://ddd"
 printf 'extends Node\n' > "$work/deleted.gd"
 repo_git add deleted.gd
 repo_git commit -q -m deleted

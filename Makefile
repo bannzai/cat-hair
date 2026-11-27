@@ -96,8 +96,6 @@ integration: import
 	tail -n 1 $(LOG_DIR)/integration-cmdline.log | grep -q '^exit=0$$'
 	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/integration-cmdline.log
 
-# 検証の土台 (scripts/dev/headless_check.gd) と hairbench.gd の失敗の経路の検証。わざと失敗する条件で動かし、
-# exit code 1 で終わり、完了の行が出ないことを確かめる (失敗を握り潰して常に OK を返す退行を検出する)
 # 全部の .gd.uid を Godot が識別子として読め、Godot の書く表記と一致し、スクリプトに結び付いていることの検証
 # (scripts/dev/uid_check.gd)。make uid が作った .uid を Godot が使えるかを CI で確かめる。Godot を起動するため
 # このマシンでは実行しない (AGENTS.md「検証方法」)
@@ -109,6 +107,8 @@ uidcheck: import
 	tail -n 1 $(LOG_DIR)/uidcheck.log | grep -q '^exit=0$$'
 	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/uidcheck.log
 
+# 検証の土台 (scripts/dev/headless_check.gd) と hairbench.gd の失敗の経路の検証。わざと失敗する条件で動かし、
+# exit code 1 で終わり、完了の行が出ないことを確かめる (失敗を握り潰して常に OK を返す退行を検出する)
 failure-path: import
 	"$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/failure_path_check.gd > $(LOG_DIR)/failure-path.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/failure-path.log; \
@@ -254,7 +254,7 @@ build-all: build-macos build-windows build-linux
 # ディレクトリごとや *.log をまとめては消さない)。ログは target ごとの <target>.log と、ENGINE_LOG の <target>.godot.log
 clean:
 	rm -rf build
-	rm -f $(foreach target,import check selfcheck integration integration-cmdline failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-automation hairbench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
+	rm -f $(foreach target,import check selfcheck integration integration-cmdline uidcheck failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-automation hairbench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
 	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4 $(LOG_DIR)/movie-automation.avi $(LOG_DIR)/movie-automation.mp4
 
 # 引数なしの make で run を実行する (人が手で動作確認するための入口。検査・テストは CI が行う)
