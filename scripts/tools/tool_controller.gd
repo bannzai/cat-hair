@@ -218,6 +218,13 @@ func set_rng_seed(seed_value: int) -> void:
 ## 選んでいる道具を 1 回使う。戻り値は {"used": 使えたか, "tool_id", "message": 画面に出す文言,
 ## "in_range": かけた範囲の本数, "removed": 取れた本数, "missed": 取りこぼした本数}
 func use_selected_tool() -> Dictionary:
+	return use_selected_tool_at(_hand.aim_target() if _hand != null else {})
+
+
+## use_selected_tool と同じく選んでいる道具を 1 回使い、手に持つ毛を取る道具は画面中央の狙いの代わりに
+## target ({"surface_index", "point"}。HandController.aim_target の戻り値と同じ形) にかける。
+## 自動テストプレイの bot は、狙う毛の根元を渡す
+func use_selected_tool_at(target: Dictionary) -> Dictionary:
 	var result: Dictionary = {
 		"used": false,
 		"tool_id": _selected_tool_id,
@@ -232,7 +239,7 @@ func use_selected_tool() -> Dictionary:
 	else:
 		match tool_def["kind"]:
 			ToolCatalogScript.KIND_SWEEP:
-				_use_sweep_tool(tool_def, result)
+				_use_sweep_tool(tool_def, target, result)
 			ToolCatalogScript.KIND_ROOM, ToolCatalogScript.KIND_SHEET:
 				_use_room_tool(tool_def, result)
 			ToolCatalogScript.KIND_LIGHT:
@@ -298,10 +305,9 @@ func _cat_name(cat_id: StringName) -> String:
 ## パックの道具 (掃除機) のパックが一杯で、アンドロイドを持っている時は先に交換させ、文言の先頭に交換したことを出す。
 ## ただし範囲に取れる毛 (ToolRules.touchable_count が 1 本以上) が無い時は交換させない (交換の値段だけ減って何も吸えないため)。
 ## 消耗品が尽きている時は使わずに、尽きた理由 (アンドロイドがいてもお金が足りない時はそのこと) を文言に入れる
-func _use_sweep_tool(tool_def: Dictionary, result: Dictionary) -> void:
+func _use_sweep_tool(tool_def: Dictionary, target: Dictionary, result: Dictionary) -> void:
 	var tool_id: StringName = tool_def["id"]
 	var owned: OwnedTool = _game_state.find_owned_tool(tool_id)
-	var target: Dictionary = _hand.aim_target() if _hand != null else {}
 	if target.is_empty():
 		result["message"] = "狙いの先に毛の付く表面が無い"
 		return
