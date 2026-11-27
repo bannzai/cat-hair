@@ -194,7 +194,7 @@ func _build_trader_body(trader: Node3D) -> void:
 	model.position = -FurnitureModels.bottom_center(bounds)
 	body.add_child(model)
 	# モデルは glTF の +Z に顔を向けるため、Y 軸で半回転して局所の -Z へ向ける
-	body.basis = Basis(Vector3.UP, PI)
+	body.basis = Basis(Vector3.UP, PI).scaled(Vector3.ONE * (TRADER_HEIGHT_M / bounds.size.y))
 
 
 ## 構築済みの部屋ノード数を返す
