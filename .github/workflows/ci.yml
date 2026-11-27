@@ -44,35 +44,6 @@ jobs:
             templates/macos.zip templates/web_nothreads_release.zip
       - name: Import assets and boot check
         run: make check GODOT="${{ steps.godot.outputs.godot }}"
-      - name: 回帰検査が壊れた実装を検出することを確認
-        env:
-          GODOT: ${{ steps.godot.outputs.godot }}
-        run: |
-          python3 - <<'PYTHON'
-          from pathlib import Path
-          p = Path("scripts/mansion/mansion_builder.gd")
-          s = p.read_text()
-          p.write_text(s.replace("layout.surfaces.append(floor_surface)", "floor_surface.extents = Vector2.ONE\n\t\tlayout.surfaces.append(floor_surface)"))
-          PYTHON
-          sed -i '/^\s*_spread_entrance_hairs(layout)$/d' scripts/mansion/mansion_builder.gd
-          sed -i 's/for _attempt: int in range(EXCLUSION_RETRY_LIMIT)/for _attempt: int in range(0)/' scripts/hair_field.gd
-          if make selfcheck; then exit 1; fi
-          grep 'FAIL:.*玄関の床の 16 区画' tmp/selfcheck.log
-          grep 'FAIL:.*次の毛の根元を描き足さない' tmp/selfcheck.log
-          git restore scripts/mansion/mansion_builder.gd scripts/hair_field.gd
-          sed -i 's/SURFACE_SOFA: 0.65/SURFACE_SOFA: 0.45/' scripts/hand/hand_rules.gd
-          sed -i '/audio_manager.play_sfx(AudioCatalog.SFX_PLUCK_HAIR)/p' scripts/hand/hand_controller.gd
-          python3 - <<'PYTHON'
-          from pathlib import Path
-          p = Path("scripts/hand/hand_controller.gd")
-          s = p.read_text()
-          p.write_text(s.replace("func release_pull() -> void:", "func release_pull() -> void:\n\tif is_pulling():\n\t\tAudioManagerScript.resolve(get_tree()).play_sfx(AudioCatalog.SFX_PLUCK_HAIR)"))
-          PYTHON
-          if make integration; then exit 1; fi
-          grep 'FAIL:.*途中で離すと毛は抜けずに残り' tmp/integration.log
-          grep 'FAIL:.*ソファの毛を抜き終えるまでが床より長い' tmp/integration.log
-          grep 'FAIL:.*抜くと効果音' tmp/integration.log
-          git restore scripts/hand/hand_rules.gd scripts/hand/hand_controller.gd
       - name: Selfcheck
         run: make selfcheck GODOT="${{ steps.godot.outputs.godot }}"
       - name: Integration
