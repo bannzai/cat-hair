@@ -35,6 +35,8 @@ const STAND_DISTANCE_M: float = 0.9
 const ROOM_VIEW_RATIO: float = 0.5
 ## 買取業者から離れて立つ距離 (m。main.TRADER_RANGE_M より短い)
 const TRADER_STAND_M: float = 1.2
+## 1 本も取れなかった時の様子を simulate.json に残す回数 (原因を追うのに数回分で足り、JSON を大きくしない)
+const EMPTY_DETAIL_LIMIT: int = 5
 ## 経過を記録する間隔 (ゲーム内の秒)
 const SAMPLE_INTERVAL_SECONDS: float = 60.0
 
@@ -63,6 +65,8 @@ var _count_by_action: Dictionary = {}
 var _removed_by_tool: Dictionary = {}
 ## 「道具の id: 文言」 -> 道具を使って 1 本も取れなかった回数
 var _empty_results: Dictionary = {}
+## 道具を使って 1 本も取れなかった時の、使う前と後の狙った表面の様子 (最初の EMPTY_DETAIL_LIMIT 回)
+var _empty_details: Array[Dictionary] = []
 ## 最後に毛を取った部屋 (別の部屋に移る時に歩く秒を足す)
 var _last_room_id: StringName = &""
 ## 次に経過を記録するゲーム内の秒
@@ -181,6 +185,7 @@ func report() -> Dictionary:
 		"count_by_action": _count_by_action,
 		"removed_by_tool": _removed_by_tool,
 		"empty_results": _empty_results,
+		"empty_details": _empty_details,
 		"final": _sample(),
 	}
 
@@ -230,7 +235,7 @@ func _clean(tool_id: StringName, room_id: StringName) -> float:
 		_main.tools.select_tool(tool_id)
 		_record_tool_result(_main.tools.use_selected_tool())
 		return seconds + PolicyScript.action_seconds(action, 0.0)
-	var target: Dictionary = _hair_target(room_id)
+	var target: Dictionary = _hair_target(room_id, tool_id)
 	if target.is_empty():
 		return seconds + PolicyScript.action_seconds({"kind": PolicyScript.ACTION_WAIT}, 0.0)
 	_face(_game_state.current_layout, target["point"], STAND_DISTANCE_M)
@@ -243,8 +248,29 @@ func _clean(tool_id: StringName, room_id: StringName) -> float:
 		hand.advance_pull(pull)
 		return seconds + PolicyScript.action_seconds(action, pull)
 	_main.tools.select_tool(tool_id)
-	_record_tool_result(_main.tools.use_selected_tool_at(target))
+	var before: Dictionary = _target_detail(target)
+	var result: Dictionary = _main.tools.use_selected_tool_at(target)
+	_record_tool_result(result)
+	if int(result.get("removed", 0)) <= 0 and _empty_details.size() < EMPTY_DETAIL_LIMIT:
+		_empty_details.append({"before": before, "after": _target_detail(target), "result": result})
 	return seconds + PolicyScript.action_seconds(action, 0.0)
+
+
+## 狙った点 target の表面の様子 (表面の id・種類、描いている本数、保存データの色ごとの本数、根元の毛の色)
+func _target_detail(target: Dictionary) -> Dictionary:
+	var world: MansionWorld = _main.mansion_world
+	var surface: MansionLayout.SurfaceDef = world.get_surface_def(target["surface_index"])
+	var hair_field: Node3D = world.get_hair_field()
+	var hair_id: int = hair_field.get_hair_id_at_slot(target["surface_index"], 0)
+	return {
+		"surface_id": String(surface.surface_id),
+		"surface_type": String(surface.surface_type),
+		"drawn": hair_field.get_surface_remaining_count(target["surface_index"]),
+		"saved_counts": str(
+			_game_state.save_data.building_progress.find_surface_hair(surface.surface_id).hair_counts
+		),
+		"slot0_color": String(world.get_hair_color_id(hair_id)),
+	}
 
 
 ## 道具を使った結果 result (ToolController.use_selected_tool_at の戻り値) を、取った本数と、
@@ -257,20 +283,25 @@ func _record_tool_result(result: Dictionary) -> void:
 		_empty_results[message] = int(_empty_results.get(message, 0)) + 1
 
 
-## 部屋 room_id の表面のうち、残りがいちばん多い表面の 1 本の根元を狙う点 ({"surface_index", "point"}) にする。
-## 部屋に毛が無ければ空
-func _hair_target(room_id: StringName) -> Dictionary:
+## 部屋 room_id の表面のうち、道具 tool_id で取れる見込みの本数 (残り × 取りこぼさない割合) がいちばん多い表面の
+## 1 本の根元を狙う点 ({"surface_index", "point"}) にする。取れる見込みのある表面が無ければ空。
+## 道具は表面の種類で取りこぼしの割合が違い (ピンセットはカーペットの毛を取れない等。ToolRules.miss_ratio)、
+## 残りの本数だけで選ぶと取れない表面を狙い続けるため
+func _hair_target(room_id: StringName, tool_id: StringName) -> Dictionary:
 	var world: MansionWorld = _main.mansion_world
 	var hair_field: Node3D = world.get_hair_field()
+	var owned: OwnedTool = _game_state.find_owned_tool(tool_id)
 	var best_index: int = -1
-	var best_count: int = 0
+	var best_expected: float = 0.0
 	for surface_index: int in range(hair_field.get_surface_count()):
 		var surface: MansionLayout.SurfaceDef = world.get_surface_def(surface_index)
 		if surface == null or surface.room_id != room_id:
 			continue
-		var count: int = hair_field.get_surface_remaining_count(surface_index)
-		if count > best_count:
-			best_count = count
+		var expected: float = float(hair_field.get_surface_remaining_count(surface_index))
+		if owned != null:
+			expected *= 1.0 - ToolRulesScript.miss_ratio(tool_id, owned.level, surface.surface_type)
+		if expected > best_expected:
+			best_expected = expected
 			best_index = surface_index
 	if best_index < 0:
 		return {}
