@@ -215,12 +215,12 @@ func _measure_frames(main: Node3D, advance_automation: bool) -> Dictionary:
 		"advance_ms": [],
 	}
 	for _i: int in range(MEASURE_FRAMES):
+		# 1 フレームの時間には、猫と掃除ロボットの時計を進める処理 (毛の削除を含む) も含める
+		var frame_start: int = Time.get_ticks_usec()
 		var advance_ms: float = 0.0
 		if advance_automation:
-			var advance_start: int = Time.get_ticks_usec()
 			main.get_game_state().automation.advance(AUTOMATION_STEP_SECONDS)
-			advance_ms = float(Time.get_ticks_usec() - advance_start) / 1000.0
-		var frame_start: int = Time.get_ticks_usec()
+			advance_ms = float(Time.get_ticks_usec() - frame_start) / 1000.0
 		await process_frame
 		(samples["frame_ms"] as Array).append(
 			float(Time.get_ticks_usec() - frame_start) / 1000.0
