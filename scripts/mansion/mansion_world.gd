@@ -144,10 +144,10 @@ func rebuild(layout: MansionLayout, progress: BuildingProgress) -> void:
 	for room_idx: int in range(layout.rooms.size()):
 		_build_room_node(layout.rooms[room_idx], room_idx)
 
+	_layout = layout
 	for obj: MansionLayout.ObjectDef in layout.objects:
 		_build_object_node(obj)
 
-	_layout = layout
 	_build_hairs(layout, progress)
 	_build_trader(layout)
 
@@ -629,11 +629,14 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 		)
 	elif obj.object_kind == MansionLayoutScript.OBJECT_SUIT_RACK:
 		if obj.wall_mounted:
+			# 玄関の北壁から上着の中心まで届く長さ。家具の縮尺と壁際の余白の両方を含む。
+			var entrance: MansionLayout.RoomDef = _layout.rooms[0]
+			var hook_depth: float = obj.position.z - (entrance.center.z - entrance.size.z * 0.5)
 			_add_static_box(
 				object_root,
 				"WallHook",
-				Vector3(0.0, object_height * 0.88, -object_width * 0.25),
-				Vector3(0.045, 0.065, object_width * 0.5),
+				Vector3(0.0, object_height * 0.88, -hook_depth * 0.5),
+				Vector3(0.045, 0.065, hook_depth),
 				_material_metal,
 				false,
 			)

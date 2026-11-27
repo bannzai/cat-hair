@@ -17,6 +17,7 @@ const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## AudioManager の型解決と実行時取得用スクリプト参照
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
+## 見えている毛の先端に指先を合わせるためのメッシュ座標。
 const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## 指先が毛に届くまでの時間。強化した場合も、引く時間の半分以上を伸びる動きに残す
 const REACH_SECONDS: float = 0.07
@@ -319,7 +320,7 @@ func is_view_blocked(target: Vector3) -> bool:
 	)
 
 
-## 引いている毛を伸ばし (面の法線の向きへ起こして長く・太くする)、手の指を閉じる
+## 根元を面に残し、毛先を視点の手前・右上に引きながら、両指を毛先に合わせる
 func _show_pull(progress: float) -> void:
 	var hair_field: Node3D = _world.get_hair_field()
 	var reach_end: float = minf(REACH_SECONDS / _pull_duration, 0.5)

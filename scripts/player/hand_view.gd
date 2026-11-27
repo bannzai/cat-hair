@@ -1,6 +1,8 @@
 extends Node3D
 ## 体の右肩から手首へ腕を結び、つまんだ毛の先端に親指と人差し指を合わせる。
+## 腕と手の寸法・角度・色は、床と縦面の撮影で根元と指先を同時に追えるよう調整した値。
 
+## 指に持たせる毛も、面の毛と同じメッシュで描く。
 const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## 人の体の部品を作る関数
 const HumanParts := preload("res://scripts/human/human_parts.gd")
@@ -9,9 +11,11 @@ const HumanParts := preload("res://scripts/human/human_parts.gd")
 const REST_POSITION: Vector3 = Vector3(0.30, -0.55, 0.0)
 ## 下ろした手の向きと、つまむ時に指先を左奥に向ける姿勢
 const REST_ROTATION: Vector3 = Vector3(-1.2, 0.15, 0.0)
+## 照準を右手で覆わず、毛先の左右に指が見える向き。
 const PINCH_ROTATION: Vector3 = Vector3(-0.40, 1.05, -0.28)
 ## 抜いた毛と閉じた指先が見える時間、その後で手を下ろす時間
 const SHOW_HAIR_SECONDS: float = 0.16
+## 抜けた瞬間と腕を下ろす動きを別々に追える時間。
 const RETURN_SECONDS: float = 0.24
 ## つまむ前の親指と人差し指の開き (rad)
 const FINGER_OPEN_RAD: float = 0.55
@@ -55,12 +59,19 @@ var _index_finger: Node3D = null
 ## 親指の付け根のノード (開き具合で回す)
 var _thumb: Node3D = null
 
+## 人差し指の末節の先端。
 var _index_tip: Node3D
+## 親指の末節の先端。
 var _thumb_tip: Node3D
+## 体に追従する腕の付け根。
 var _shoulder: Node3D
+## 肩と肘の間を覆う袖。
 var _sleeve: MeshInstance3D
+## 肘から手首までの前腕。
 var _forearm: MeshInstance3D
+## 抜いた直後だけ指先に残す毛。
 var _plucked: MeshInstance3D
+## 抜いた毛を見せてから手を下ろすアニメーション。
 var _retract: Tween
 
 
@@ -78,6 +89,7 @@ func set_pull_progress(progress: float, reach_end: float = 1.0 / 3.0) -> float:
 	return reach
 
 
+## 開き具合を 0（閉）から 1（開）の範囲で両指に反映する。
 func _open_fingers(amount: float) -> void:
 	var open_rad: float = FINGER_OPEN_RAD * amount
 	# 開いている時は人差し指を手の甲の側 (+Y) へ起こし、親指を外 (-X) へ開く。閉じると 2 本の先が近づく
@@ -127,8 +139,7 @@ func show_plucked(pose: Transform3D, color: Color) -> void:
 	_plucked.show()
 	_pull_progress = 0.0
 	_retract = create_tween()
-	var camera_basis: Basis = get_parent_node_3d().global_basis
-	var snap: Vector3 = camera_basis * Vector3(0.055, 0.045, 0.12)
+	var snap: Vector3 = get_parent_node_3d().global_basis * Vector3(0.055, 0.045, 0.12)
 	_retract.tween_property(self, "global_position", global_position + snap, 0.075)
 	_retract.tween_interval(SHOW_HAIR_SECONDS)
 	_retract.tween_callback(_start_return)
@@ -143,6 +154,7 @@ func return_to_side() -> void:
 		_start_return()
 
 
+## 毛を隠して指を開き、その姿勢から肩の脇まで戻す。
 func _start_return() -> void:
 	_plucked.hide()
 	_open_fingers(1.0)
@@ -151,16 +163,19 @@ func _start_return() -> void:
 	_retract.tween_callback(_rest)
 
 
+## 戻り始めの姿勢 start と現在の肩の間を、経過割合 weight で補間する。
 func _return_step(weight: float, start: Transform3D) -> void:
 	global_transform = start.interpolate_with(_rest_transform(), smoothstep(0.0, 1.0, weight))
 
 
+## 下ろした手が腰の外側に来る、右肩を基準にしたワールド姿勢。
 func _rest_transform() -> Transform3D:
 	return _shoulder.global_transform * Transform3D(
 		Basis.from_euler(REST_ROTATION), Vector3(0.065, -0.54, -0.07)
 	)
 
 
+## 手を肩基準の待機姿勢に戻し、戻る動きの管理を終える。
 func _rest() -> void:
 	_retract = null
 	_pull_progress = 0.0
@@ -169,6 +184,7 @@ func _rest() -> void:
 	_pose_arm()
 
 
+## 手を下ろして歩く間も、体から肩と腕が離れないよう追従させる。
 func _process(_delta: float) -> void:
 	if _shoulder == null:
 		return

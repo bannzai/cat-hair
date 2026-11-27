@@ -213,11 +213,15 @@ movie: import
 	bash scripts/ci/check-movie-brightness.sh $(LOG_DIR)/movie.mp4
 
 # 各面で歩行・照準・つまみ・途中解放・引き抜きを録り、操作の進行に対応するフレームを動画から切り出す。
+# 3 面で完遂と中断を撮る。実測の約 350 フレームに探索・移動の余裕を持たせ、900 で打ち切る。
 movie-pull: import
+	rm -f $(LOG_DIR)/movie-pull.avi $(LOG_DIR)/movie-pull.mp4 $(LOG_DIR)/pull-*.png
 	"$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) --write-movie $(LOG_DIR)/movie-pull.avi --fixed-fps $(MOVIE_FPS) --quit-after 900 --script res://scripts/dev/pull_movie.gd > $(LOG_DIR)/movie-pull.log 2>&1
 	grep -q '^pull movie OK$$' $(LOG_DIR)/movie-pull.log
 	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/movie-pull.log | grep -v $(WINDOWED_LOG_NOISE) | grep -q .
 	ffmpeg -loglevel error -y -i $(LOG_DIR)/movie-pull.avi -c:v libx264 -pix_fmt yuv420p $(LOG_DIR)/movie-pull.mp4
+	rm -f $(LOG_DIR)/movie-pull.avi
+	bash scripts/ci/check-movie-brightness.sh $(LOG_DIR)/movie-pull.mp4
 	awk '/^PULL_FRAME / {print $$2, $$3}' $(LOG_DIR)/movie-pull.log | while read -r stage frame; do \
 		ffmpeg -nostdin -loglevel error -y -i $(LOG_DIR)/movie-pull.mp4 -vf "select=eq(n\,$$frame)" -frames:v 1 $(LOG_DIR)/pull-$$stage.png && test -s $(LOG_DIR)/pull-$$stage.png || exit 1; \
 	done
@@ -332,6 +336,7 @@ clean:
 	rm -rf build
 	rm -f $(foreach target,import check selfcheck integration integration-cmdline uidcheck failure-path bot-play-failure-path simulate-failure-path simulate-json-failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-pull movie-automation simulate playtest hairbench scenebench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
 	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/scenebench-*.png $(LOG_DIR)/scenebench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4 $(LOG_DIR)/movie-automation.avi $(LOG_DIR)/movie-automation.mp4
+	rm -f $(LOG_DIR)/movie-pull.avi $(LOG_DIR)/movie-pull.mp4 $(LOG_DIR)/pull-*.png
 	rm -f $(LOG_DIR)/simulate.json $(LOG_DIR)/simulate-fail.json $(LOG_DIR)/playtest.avi $(LOG_DIR)/playtest.mp4
 
 # 引数なしの make で run を実行する (人が手で動作確認するための入口。検査・テストは CI が行う)

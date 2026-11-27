@@ -1,5 +1,5 @@
 extends RefCounted
-## 検証と撮影で、一人称の目線を手の届く毛へ向ける手順 (integration_hand.gd と screenshot.gd が使う)。
+## 検証と撮影で、一人称の目線を手の届く毛へ向ける手順。
 
 ## 屋敷レイアウト型スクリプト (表面の種類の定数を使う)
 const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
@@ -51,8 +51,7 @@ static func _aim(
 			tried += 1
 			var hair_id: int = hair_field.get_hair_id_at_slot(surface_idx, slot)
 			var root: Vector3 = hair_field.get_hair_transform(hair_id).origin
-			var stand: Vector3 = _stand_position(surface, root, first_room)
-			player.set_spawn(stand, 0.0)
+			player.set_spawn(_stand_position(surface, root, first_room), 0.0)
 			await tree.physics_frame
 			await tree.physics_frame
 			player.look_at_point(root)
@@ -81,7 +80,8 @@ static func _stand_position(
 	elif absf(surface.basis.y.y) < 0.01:
 		direction = surface.basis.y
 	elif steep_floor:
-		distance = FirstPersonPlayer.EYE_HEIGHT_M / tan(FirstPersonPlayer.MAX_PITCH_RADIANS) + 0.02
+		# 真下に近い角度を保ちつつ、目線の水平成分が消えず向きが定まる 2 cm。
+		distance = 0.02
 	if direction.length_squared() < 0.0001:
 		direction = Vector3.RIGHT
 	return Vector3(hair.x, 0.0, hair.z) + direction.normalized() * distance

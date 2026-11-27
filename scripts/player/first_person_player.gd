@@ -2,7 +2,9 @@ class_name FirstPersonPlayer
 extends CharacterBody3D
 ## 屋敷の中を歩く一人称プレイヤー。WASD / 矢印キーで移動し、マウスで視点を回す。
 
+## 買取業者と同じ部品から一人称プレイヤーの体を組む。
 const HumanParts := preload("res://scripts/human/human_parts.gd")
+## 体と右手で袖と肌の色をそろえる。
 const HandViewScript := preload("res://scripts/player/hand_view.gd")
 
 ## 6m 部屋を約 1.4 秒で横切る一人称の標準歩行速度 (m/s)
@@ -184,6 +186,12 @@ func _ensure_rig() -> void:
 	var body: Node3D = get_node_or_null("Body")
 	if body == null:
 		body = _build_body()
+	right_shoulder = body.get_node_or_null("RightShoulder")
+	if right_shoulder == null:
+		right_shoulder = Node3D.new()
+		right_shoulder.name = "RightShoulder"
+		right_shoulder.position = Vector3(0.19, 1.35, 0.22)
+		body.add_child(right_shoulder)
 	_head = body.get_node_or_null("Head")
 	if _head == null:
 		_head = Node3D.new()
@@ -221,10 +229,6 @@ func _build_body() -> Node3D:
 			Vector3(side * 0.10, 0.88, 0.23), 0.072, pants, false)
 		HumanParts.add_sphere(body, prefix + "Shoe", Vector3(side * 0.10, 0.07, 0.18), 0.5,
 			Vector3(0.14, 0.14, 0.26), pants, false)
-	right_shoulder = Node3D.new()
-	right_shoulder.name = "RightShoulder"
-	right_shoulder.position = Vector3(0.19, 1.35, 0.22)
-	body.add_child(right_shoulder)
 	var elbow := Vector3(-0.24, 1.04, 0.21)
 	HumanParts.add_limb(body, "LeftSleeve", Vector3(-0.19, 1.35, 0.22), elbow, 0.053, shirt, false)
 	HumanParts.add_limb(body, "LeftForearm", elbow, Vector3(-0.24, 0.8, 0.15), 0.033, skin, false)

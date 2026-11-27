@@ -1,16 +1,23 @@
 extends SceneTree
 ## 最初の部屋で床・壁の上着・ソファへ歩き、各面で同じ毛を途中で離してから抜く入力を録画する。
 
+## 撮影対象を、実際に届く距離から狙う。
 const HandAim := preload("res://scripts/dev/hand_aim.gd")
+## 録画と入力テストの音・状態の初期化を共通にする。
 const HeadlessCheck := preload("res://scripts/dev/headless_check.gd")
+## 録画専用データの作成前と終了後に使う。
 const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
+## 通常起動と同じ屋敷を操作する。
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
+## 普段のプレイと独立した録画用のセーブ先。
 const SAVE_PATH: String = "user://pull_movie_save_data.json"
+## 普段の音量設定を使わずに撮るための設定先。
 const AUDIO_SETTINGS: String = "res://tmp/pull-movie-audio.cfg"
 ## つまめる位置の少し後ろから、数歩を撮って停止する距離 (m)
 const APPROACH_DISTANCE: float = 0.65
 
 
+## シーンツリーの初期化後に録画を開始する。
 func _initialize() -> void:
 	_run.call_deferred()
 

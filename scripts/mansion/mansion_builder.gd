@@ -278,7 +278,8 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		obj.size = Vector3(raw_size.x * fit_scale, raw_size.y, raw_size.z * fit_scale)
 
 		var slot: Dictionary = ROOM_SLOTS[local_idx % ROOM_SLOTS.size()]
-		if room_idx == 0 and obj.object_kind == MansionLayoutScript.OBJECT_TABLE and local_idx == 2:
+		if (room_idx == 0 and local_idx < OBJECT_PRESETS.size()
+			and obj.object_kind == MansionLayoutScript.OBJECT_TABLE):
 			# 壁掛けの前に立てるよう、机は部屋の入口側へ置く。
 			slot = ROOM_SLOTS[3]
 		obj.wall_mounted = (
@@ -307,7 +308,7 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		)
 		if obj.wall_mounted:
 			# 北の扉の右側で、入口から前身頃が見え、手前に立てる高さに掛ける。
-			offset_z = -room.size.z * 0.5 + obj.size.x * 0.5
+			offset_z = -limit_z
 		offset_x = clampf(offset_x, -limit_x, limit_x)
 		offset_z = clampf(offset_z, -limit_z, limit_z)
 		if obj.object_kind != MansionLayoutScript.OBJECT_CARPET:

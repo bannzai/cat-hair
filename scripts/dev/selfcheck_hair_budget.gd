@@ -38,6 +38,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_group_counts_over_budget()
 	suite._check_remove_refills_until_buried_runs_out()
 	suite._check_plucked_spot_stays_clear()
+	suite._check_refill_on_tiny_surface()
 	suite._check_add_and_remove_buried()
 	suite._check_populate_over_budget_and_unlimited()
 	suite._check_budget_boundary()
@@ -141,6 +142,19 @@ func _check_plucked_spot_stays_clear() -> void:
 		if root.distance_to(next) < HairFieldScript.HAIR_LENGTH_M:
 			clear = false
 	_check(clear, "抜いた位置から毛 1 本の長さの範囲には、次の毛の根元を描き足さない")
+	field.free()
+
+
+## 抜いた位置から毛の長さだけ離れられない面でも、上限回数で探索を終え、残った毛を描く。
+func _check_refill_on_tiny_surface() -> void:
+	var field: Node3D = HairFieldScript.new()
+	field.draw_budget = 1
+	field.add_oriented_surface("seat", Transform3D.IDENTITY,
+		Vector2.ONE * HairFieldScript.HAIR_LENGTH_M * 0.01, 1.0)
+	field.populate(2)
+	field.remove_hair(field.get_hair_id_at_slot(0, 0))
+	_check(field.get_surface_visible_instance_count(0) == 1
+		and field.get_surface_remaining_count(0) == 1, "小さい面でも埋もれた最後の毛を 1 本描く")
 	field.free()
 
 
