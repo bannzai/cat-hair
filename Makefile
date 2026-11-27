@@ -127,6 +127,17 @@ failure-path: import
 	tail -n 1 $(LOG_DIR)/bot-play-failure-path.log | grep -q '^exit=1$$'
 	grep -q 'bot_play.gd には --simulate か' $(LOG_DIR)/bot-play-failure-path.log
 	! grep -qE '^(simulate|playtest) OK$$' $(LOG_DIR)/bot-play-failure-path.log
+	SIMULATE_MAX_SECONDS=60 SIMULATE_JSON="res://tmp/simulate-fail.json" "$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/bot_play.gd -- --simulate > $(LOG_DIR)/simulate-failure-path.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/simulate-failure-path.log; \
+	rm -f $(LOG_DIR)/simulate-fail.json; \
+	tail -n 1 $(LOG_DIR)/simulate-failure-path.log | grep -q '^exit=1$$'
+	grep -q '最初の道具を買えなかった' $(LOG_DIR)/simulate-failure-path.log
+	! grep -q '^simulate OK$$' $(LOG_DIR)/simulate-failure-path.log
+	SIMULATE_JSON="res://tmp/nonexistent-simulate-dir/out.json" "$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/bot_play.gd -- --simulate > $(LOG_DIR)/simulate-json-failure-path.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/simulate-json-failure-path.log; \
+	tail -n 1 $(LOG_DIR)/simulate-json-failure-path.log | grep -q '^exit=1$$'
+	grep -q 'を書けない' $(LOG_DIR)/simulate-json-failure-path.log
+	! grep -q '^simulate OK$$' $(LOG_DIR)/simulate-json-failure-path.log
 	HAIRBENCH_COUNTS="10" HAIRBENCH_JSON="$(LOG_DIR)/hairbench-fail.json" HAIRBENCH_PNG_PREFIX="hairbench-fail" "$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/hairbench.gd > $(LOG_DIR)/hairbench-failure-path.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/hairbench-failure-path.log; \
 	rm -f $(LOG_DIR)/hairbench-fail.json $(LOG_DIR)/hairbench-fail-*.png; \
@@ -291,9 +302,9 @@ build-all: build-macos build-windows build-linux
 # ディレクトリごとや *.log をまとめては消さない)。ログは target ごとの <target>.log と、ENGINE_LOG の <target>.godot.log
 clean:
 	rm -rf build
-	rm -f $(foreach target,import check selfcheck integration integration-cmdline uidcheck failure-path bot-play-failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-automation simulate playtest hairbench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
+	rm -f $(foreach target,import check selfcheck integration integration-cmdline uidcheck failure-path bot-play-failure-path simulate-failure-path simulate-json-failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-automation simulate playtest hairbench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
 	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4 $(LOG_DIR)/movie-automation.avi $(LOG_DIR)/movie-automation.mp4
-	rm -f $(LOG_DIR)/simulate.json $(LOG_DIR)/playtest.avi $(LOG_DIR)/playtest.mp4
+	rm -f $(LOG_DIR)/simulate.json $(LOG_DIR)/simulate-fail.json $(LOG_DIR)/playtest.avi $(LOG_DIR)/playtest.mp4
 
 # 引数なしの make で run を実行する (人が手で動作確認するための入口。検査・テストは CI が行う)
 .DEFAULT_GOAL := run

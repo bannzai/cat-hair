@@ -18,6 +18,8 @@ const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 const MovieScript := preload("res://scripts/dev/movie.gd")
 ## 自動テストプレイの bot
 const PlaytestBotScript := preload("res://scripts/dev/playtest_bot.gd")
+## 環境変数が空の時に既定値を使う読み方 (hairbench.gd と同じ)
+const HairbenchScript := preload("res://scripts/dev/hairbench.gd")
 ## 自動テストプレイだけが使う一時セーブのパス (遊んでいる人のセーブと分ける)
 const SAVE_PATH: String = "user://bot_play_save_data.json"
 ## 集計の書き出し先 (make simulate の成果物)
@@ -92,26 +94,31 @@ func _audio_settings_path() -> String:
 	return ProjectSettings.globalize_path("res://tmp/playtest-audio-settings.cfg")
 
 
-## bot を 3 つの節目にすべて着くか MAX_GAME_SECONDS まで遊ばせ、集計を SIMULATE_JSON_PATH に書く。
+## bot を 3 つの節目にすべて着くか打ち切りの秒まで遊ばせ、集計を JSON に書く。
+## 打ち切りの秒は環境変数 SIMULATE_MAX_SECONDS、書き出し先は SIMULATE_JSON で上書きできる
+## (make failure-path がわざと失敗させるため。未指定の時は make simulate の既定 MAX_GAME_SECONDS・SIMULATE_JSON_PATH)。
 ## 書けて、最初の道具を買う節目に届いていたら true
 func _simulate(bot: RefCounted) -> bool:
-	while not bot.all_milestones_reached() and bot.elapsed_seconds() < MAX_GAME_SECONDS:
+	var raw_max: String = OS.get_environment("SIMULATE_MAX_SECONDS")
+	var max_seconds: float = raw_max.to_float() if raw_max.is_valid_float() else MAX_GAME_SECONDS
+	var json_path: String = HairbenchScript.env_or_default(
+		OS.get_environment("SIMULATE_JSON"), SIMULATE_JSON_PATH
+	)
+	while not bot.all_milestones_reached() and bot.elapsed_seconds() < max_seconds:
 		bot.step()
 	var report: Dictionary = bot.report()
-	report["max_game_seconds"] = MAX_GAME_SECONDS
+	report["max_game_seconds"] = max_seconds
 	report["seed"] = BOT_SEED
-	var file: FileAccess = FileAccess.open(
-		ProjectSettings.globalize_path(SIMULATE_JSON_PATH), FileAccess.WRITE
-	)
+	var file: FileAccess = FileAccess.open(ProjectSettings.globalize_path(json_path), FileAccess.WRITE)
 	if file == null:
-		push_error("bot_play.gd: %s を書けない (%s)" % [SIMULATE_JSON_PATH, FileAccess.get_open_error()])
+		push_error("bot_play.gd: %s を書けない (%s)" % [json_path, FileAccess.get_open_error()])
 		return false
 	file.store_string(JSON.stringify(report, "  "))
 	file.close()
 	print("simulate milestones (minutes): %s" % JSON.stringify(report["milestone_minutes"]))
 	# 所要時間が目標から外れても結果は書いて成功にするが、最初の道具すら買えない時は bot か値の壊れなので失敗にする
 	if not (report["milestone_minutes"] as Dictionary).has(PlaytestBotScript.MILESTONE_FIRST_TOOL):
-		push_error("bot_play.gd: %d 秒遊んでも最初の道具を買えなかった" % int(MAX_GAME_SECONDS))
+		push_error("bot_play.gd: %d 秒遊んでも最初の道具を買えなかった" % int(max_seconds))
 		return false
 	print("simulate OK")
 	return true
