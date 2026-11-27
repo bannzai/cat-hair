@@ -24,10 +24,11 @@
 - 改変: `Prologue Theme.zip` 内の `Prologue Theme.ogg` を取り出し、ファイル名を変更し、読み込み負荷とリポジトリ容量を抑えるため OGG Vorbis (`-q:a 4`) で再エンコード
 
 - ファイル: `audio/bgm_mansion.ogg`
-- 素材名・作者: Snowfall (`Snowfall (Looped ver.).ogg`) / Kistol
-- 入手 URL: https://opengameart.org/content/snowfall
-- ライセンス: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)。クレジット表記は不要 (作者の任意記載: "Music by Kistol, but credit is not required.")
-- 改変: ファイル名変更のみ
+- 素材名・作者: Hot Spring Town (`hot_spring_town_1.ogg`) / Kistol
+- 入手 URL: https://opengameart.org/content/hot-springs-town (2026-11-27 に取得)
+- ライセンス: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)。クレジット表記は不要 (作者の任意記載: "No credits necessary, though you may credit me as Kistol if you would like.")
+- 改変: ファイル名を変更し、読み込み負荷とリポジトリ容量を抑えるため OGG Vorbis (libvorbis `-q:a 4`) で再エンコード (配布元は `q0.8` の 4.4MB。再エンコード後 2.1MB)
+- 経緯: 2026-11-27 まで使っていた Snowfall (Kistol, CC0) を、owner の「微妙に不気味」の感想を受けて差し替えた (issue #79)
 
 ## 効果音
 
