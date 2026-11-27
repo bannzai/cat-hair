@@ -419,6 +419,9 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 	var before_stock: int = game_state.get_raw_hair_stock_count()
 	var before_field: int = hair_field.get_remaining_count()
 
+	var audio_manager: AudioManagerScript = AudioManagerScript.resolve(_checker) as AudioManagerScript
+	var sound_count: int = audio_manager.get_sfx_play_count()
+
 	# 押した瞬間につまみ、離すと元に戻る
 	await _press_pluck()
 	var pulled_ids: PackedInt32Array = hand.get_pulling_ids()
@@ -443,7 +446,21 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		main.play_guide.is_pull_progress_visible() and main.play_guide.get_pull_progress_value() == 0.0,
 		"つまんだ瞬間に、照準の下に引いている進み具合のゲージが 0 で出る",
 	)
-	hand.advance_pull(hand.get_pull_duration() * 0.5)
+	hand.advance_pull(hand.get_pull_duration() * 0.2)
+	var camera: Camera3D = main.player.get_camera()
+	var screen: Rect2 = main.get_viewport().get_visible_rect()
+	for tip_path: String in [
+		"IndexFinger/Joint0/End/Joint1/End/Joint2/End",
+		"Thumb/Aim/Joint0/End/Joint1/End/Joint2/End",
+	]:
+		var tip: Node3D = hand.get_hand_view().get_node(tip_path)
+		_check(
+			not camera.is_position_behind(tip.global_position)
+			and camera.unproject_position(tip.global_position).distance_to(screen.get_center())
+			< screen.size.x / 20.0,
+			"毛を挟んだ指先が照準から画面幅の 1/20 以内にある: %s" % tip_path,
+		)
+	hand.advance_pull(hand.get_pull_duration() * 0.31)
 	_check(
 		hand.get_pull_progress() >= 0.5 and hand.get_pull_progress() < 1.0
 		and hand.get_hand_view().get_pull_progress() >= 0.5,
@@ -460,6 +477,8 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		not hand.is_pulling()
 		and hair_field.has_hair(pulled_ids[0])
 		and hand.get_hand_view().get_pull_progress() == 0.0
+		and audio_manager.get_sfx_play_count() == sound_count
+		and main.get_pluck_popup_text().is_empty()
 		and game_state.get_total_remaining_hairs() == before_total
 		and game_state.get_raw_hair_stock_count() == before_stock,
 		"途中で離すと毛は抜けずに残り、手が開き、残り本数と在庫が変わらない",
@@ -508,9 +527,6 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		return
 
 	# もう一度つまんで引き終えると 1 本抜ける
-	var audio_manager: AudioManagerScript = (
-		AudioManagerScript.resolve(_checker) as AudioManagerScript
-	)
 	await _press_pluck()
 	var plucked_id: int = hand.get_pulling_ids()[0] if hand.is_pulling() else -1
 	var plucked_color: StringName = world.get_hair_color_id(plucked_id)
@@ -535,8 +551,8 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 	)
 	_check(game_state.get_raw_hair_stock_count() == before_stock + 1, "抜くと毛のままの在庫が 1 増える")
 	_check(
-		audio_manager == null
-		or audio_manager.get_last_sfx_event_name() == AudioCatalog.SFX_PLUCK_HAIR,
+		audio_manager.get_sfx_play_count() == sound_count + 1
+		and audio_manager.get_last_sfx_event_name() == AudioCatalog.SFX_PLUCK_HAIR,
 		"抜くと効果音 pluck_hair が鳴る",
 	)
 	_check(main.get_pluck_popup_text().begins_with("+1 本"), "抜くと画面中央に「+1 本」が出る")
