@@ -330,7 +330,7 @@ func _check_game_state_advance() -> void:
 
 ## 次の建物で増えた部屋 (最後の部屋) の毛を半分にすると、きれいさがその建物に入った時の本数を分母にした値 (0.5 前後) になる。
 ## 分母を最初の屋敷の作りから取ると、最初の屋敷に無い部屋の分母が 0 になり、毛が残る間はきれいさが 0 になる
-func _check_room_cleanliness(state: Node, when: String) -> void:
+func _check_room_cleanliness(state: Node, timing_label: String) -> void:
 	var room_id: StringName = state.current_layout.rooms.back().room_id
 	var initial_room_hair_count: int = int(state.get_room_status(room_id)["hair_count"])
 	for surface_def: MansionLayout.SurfaceDef in state.current_layout.surfaces:
@@ -350,7 +350,7 @@ func _check_room_cleanliness(state: Node, when: String) -> void:
 			cleanliness, EconomyRulesScript.cleanliness(remaining, initial_room_hair_count)
 		),
 		"%s、次の建物のきれいさはその建物に入った時の部屋の毛 (%d 本) を分母にする (残り %d 本できれいさ %.2f)"
-		% [when, initial_room_hair_count, remaining, cleanliness],
+		% [timing_label, initial_room_hair_count, remaining, cleanliness],
 	)
 
 
