@@ -162,7 +162,6 @@ func _verify_short_press_twice(main: Node3D, game_state: Node) -> void:
 
 ## 6 番の発言の読み (b): 毛の付く床を狙っていても、狙った所の 0.08 m 以内に毛が無い時は、つまめずに理由が出るか
 func _verify_bare_floor_reason(main: Node3D, game_state: Node) -> void:
-	var hand: HandController = main.hand
 	if not await _aim_at_bare_floor(main):
 		_check(false, "床の毛の表面のうち、狙った所の近くに毛が無い所を狙える")
 		return
@@ -170,7 +169,7 @@ func _verify_bare_floor_reason(main: Node3D, game_state: Node) -> void:
 	main.tool_message_label.text = ""
 	await _hold_pluck(3)
 	_check(
-		not hand.is_pulling()
+		not main.hand.is_pulling()
 		and game_state.get_total_remaining_hairs() == before_total
 		and main.tool_message_label.text
 		== HandController.failure_message(HandController.REASON_NO_HAIR),

@@ -71,9 +71,17 @@ func _check_failure_messages_and_guide_text() -> void:
 	)
 	_check(
 		messages[0].contains("離した") and messages[1].contains("毛が無い")
-		and messages[2].contains("届かない") and messages[2].contains("2.6 m"),
-		"途中で離した・毛が無い・届かない (手の届く 2.6 m を添える) の文言が、それぞれの理由の言葉を含む",
+		and messages[2].contains("届かない")
+		and messages[2].contains("%.1f m" % HandController.REACH_M),
+		"途中で離した・毛が無い・届かない (手の届く距離 REACH_M を添える) の文言が、それぞれの理由の言葉を含む",
 	)
+	# 屋敷に置く前 (カメラ・屋敷を受け取る前) の手は、光線を調べられないので「狙った所に毛が無い」を返す
+	var unprepared_hand: HandController = HandController.new()
+	_check(
+		unprepared_hand.pull_failure_reason() == HandController.REASON_NO_HAIR,
+		"カメラと屋敷を受け取る前の手で抜けなかった理由を求めると、「狙った所に毛が無い」を返す",
+	)
+	unprepared_hand.free()
 	_check(
 		PlayGuideHud.mouse_hint_text(true).contains("Esc: マウスを放す")
 		and not PlayGuideHud.mouse_hint_text(false).contains("Esc"),

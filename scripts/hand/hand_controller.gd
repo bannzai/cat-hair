@@ -119,8 +119,8 @@ func _process(delta: float) -> void:
 
 
 ## 画面中央の狙いで毛をつまめない理由 (REASON_*) を返す。手の届く距離に毛の表面があれば、手前に物があるか
-## (REASON_BLOCKED)、近くに毛が無いか (REASON_NO_HAIR)。無ければ、光線の先の毛の表面か壁・家具が手の届く
-## 距離より遠くにあるか (REASON_OUT_OF_REACH)、何にも当たらないか届く所の壁・家具に当たるか (REASON_NO_HAIR)
+## (REASON_BLOCKED)、近くに毛が無いか (REASON_NO_HAIR)。無ければ、光線が最初に当たる床・壁・家具が手の届く
+## 距離より遠いか (REASON_OUT_OF_REACH)、何にも当たらないか届く所の壁・家具に当たるか (REASON_NO_HAIR)
 func pull_failure_reason() -> StringName:
 	if _camera == null or _world == null or _world.get_hair_field() == null:
 		return REASON_NO_HAIR
@@ -130,8 +130,6 @@ func pull_failure_reason() -> StringName:
 	var surface_hit_in_reach: Dictionary = hair_field.intersect_surfaces(from, direction, REACH_M)
 	if not surface_hit_in_reach.is_empty():
 		return REASON_BLOCKED if is_view_blocked(surface_hit_in_reach["point"]) else REASON_NO_HAIR
-	if not hair_field.intersect_surfaces(from, direction, AIM_PROBE_M).is_empty():
-		return REASON_OUT_OF_REACH
 	var space: PhysicsDirectSpaceState3D = _camera.get_world_3d().direct_space_state
 	if space == null:
 		return REASON_NO_HAIR

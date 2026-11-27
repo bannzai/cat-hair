@@ -14,7 +14,7 @@ const GUIDE_KEY_TEXT: String = "H: 操作の案内"
 const RELEASE_MOUSE_TEXT: String = "Esc: マウスを放す"
 ## 操作の一覧の行 (キーは project.godot の入力アクションと main.gd・ToolController のキーの定数のとおり)
 const CONTROLS_LINES: Array[String] = [
-	"操作の案内 (H で閉じる・開く)",
+	GUIDE_KEY_TEXT + " (閉じる・開く)",
 	"W A S D / 矢印キー: 歩く",
 	"マウス: 視点を動かす",
 	"左クリック / E を押したまま: 手で毛を抜く",
@@ -45,7 +45,8 @@ const MOUSE_HINT_HEIGHT_PX: float = 26.0
 const LEFT_COLUMN_WIDTH_PX: float = 340.0
 ## 操作の一覧の枠の高さ (px)。15 px の文字 11 行と上下の余白が収まる高さ (収まらない時は上へ伸びる)
 const CONTROLS_PANEL_HEIGHT_PX: float = 270.0
-## 操作の一覧の枠の内側の余白 (px)
+## 操作の一覧の枠の内側の余白 (px)。枠の外の左端の余白 (LookPrototypeHud.SCREEN_MARGIN_PX = 18) の半分弱にし、
+## 文字を枠の縁から離しつつ、11 行を枠の高さに収める
 const PANEL_PADDING_PX: float = 8.0
 ## 引いている進み具合のゲージの大きさ (px)。照準 (16 px) より広く、照準の下の道具の結果の文字 (中央から 30 px 下) に
 ## 重ならない高さ

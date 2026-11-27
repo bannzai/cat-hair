@@ -262,11 +262,11 @@ func _capture_mansion_scenes(main: Node3D) -> String:
 	main.enter_mansion()
 	if not await _capture("tmp/screenshot-mansion.png"):
 		return "屋敷の画面を保存できない"
-	var hand_error: String = await _capture_guide_toggle(main)
-	if hand_error.is_empty():
-		hand_error = await _capture_pluck(main)
-	if not hand_error.is_empty():
-		return hand_error
+	var capture_error: String = await _capture_guide_toggle(main)
+	if capture_error.is_empty():
+		capture_error = await _capture_pluck(main)
+	if not capture_error.is_empty():
+		return capture_error
 	main.open_hair_book()
 	var book_ok: bool = await _capture("tmp/screenshot-hair-book.png")
 	main.close_hair_book()
