@@ -48,7 +48,7 @@ const EXCLUSION_RETRY_LIMIT: int = 64
 ## 表面の向きを変えない時の面の局所基底 (+Y が上向きの法線)
 const UPWARD_BASIS: Basis = Basis.IDENTITY
 ## 1 本ずつ描く毛の本数の既定の上限 (屋敷全体)。決めた計測は ADR 0002 の 2026-11-27 (issue #65) の追記
-const DEFAULT_DRAW_BUDGET: int = 120000
+const DEFAULT_DRAW_BUDGET: int = 240000
 
 ## 1 本ずつ描く毛の本数の上限 (屋敷全体。0 以下は上限なし)。populate の前に設定する
 var draw_budget: int = DEFAULT_DRAW_BUDGET
