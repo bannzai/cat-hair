@@ -107,3 +107,22 @@ func _verify_advance_from_shop(
 		"お金と道具は置いていき、買った手の強化は持ち越す",
 	)
 	main.close_tool_shop()
+	_verify_reload(game_state, next_tuning, dexterity_before)
+
+
+## 進んだ時に保存したセーブを別の GameState で読み戻し、同じ建物・残りの毛・お金と道具なし・手の強化で続きから遊べる
+func _verify_reload(game_state: Node, next_tuning: MansionTuning, dexterity: int) -> void:
+	var reloaded: Node = GameStateScript.new()
+	reloaded.initialize_from_storage(game_state.save_path)
+	_check(
+		reloaded.loaded_from_save
+		and reloaded.save_data.building_progress.building_id == BuildingRulesScript.BUILDING_HOTEL
+		and reloaded.current_layout.rooms.size() == next_tuning.room_count
+		and reloaded.get_total_remaining_hairs() == next_tuning.hair_count
+		and reloaded.get_money() == 0
+		and reloaded.find_owned_tool(ToolCatalogScript.TOOL_PACKING_TAPE) == null
+		and reloaded.get_hand_upgrade_level(HandRulesScript.UPGRADE_DEXTERITY) == dexterity
+		and reloaded.save_data.building_records.size() == 1,
+		"進んだ後のセーブを読み戻しても、同じ建物で毛が戻り、お金と道具が無く、手の強化が残っている",
+	)
+	reloaded.free()
