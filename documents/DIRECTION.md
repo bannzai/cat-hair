@@ -47,7 +47,7 @@ bannzai が作るかの判断の issue ( https://github.com/bannzai/cat-hair/iss
 
 ## デザインの方向
 
-既製の 3D モデルを入れて写実に寄せる (2026-11-27 に owner が見た目の試作 (`documents/design/look-prototype-2026-11-26/`) の 3 枚を見て選んだ。発言の原文は https://github.com/bannzai/cat-hair/issues/34#issuecomment-7209673362 )。家具・手・掃除ロボットなどの形を、ライセンスが CC0 の既製の 3D モデルに置き換え、床・壁・光は試作の物を使う (選んだ選択肢の中身。issue #34 の本文)。絵は写実寄りで真面目な見た目にし、やっていることのくだらなさとの落差で笑わせる (owner が選んだ案)。`~/.claude/documents/guides/visual-patterns-to-avoid.md` の項目を使わない。実在の掃除用品・家電のメーカーの名前と意匠は使わない。
+既製の 3D モデルを入れて写実に寄せる (2026-11-27 に owner が見た目の試作 (`documents/design/look-prototype-2026-11-26/`) の 3 枚を見て選んだ。発言の原文は https://github.com/bannzai/cat-hair/issues/34#issuecomment-7209673362 )。家具・手・掃除ロボットを、ライセンスが CC0 の既製の 3D モデルに置き換え、床・壁・光は試作の物を使う (選んだ選択肢の中身。issue #34 の本文)。絵は写実寄りで真面目な見た目にし、やっていることのくだらなさとの落差で笑わせる (owner が選んだ案)。`~/.claude/documents/guides/visual-patterns-to-avoid.md` の項目を使わない。実在の掃除用品・家電のメーカーの名前と意匠は使わない。
 
 参考にする動画 (owner の指定。2026-11-26。発言の原文は https://github.com/bannzai/cat-hair/issues/4#issuecomment-7183068745 )。2 本とも、干し草の山から針を探すゲームの実況。
 
