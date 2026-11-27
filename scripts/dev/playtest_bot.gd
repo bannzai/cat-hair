@@ -72,6 +72,8 @@ var _empty_results: Dictionary = {}
 var _last_room_id: StringName = &""
 ## 次に経過を記録するゲーム内の秒
 var _next_sample_seconds: float = 0.0
+## 終えた建物で遊んだゲーム内の秒の合計 (建物ごとの遊んだ時間は次の建物で 0 から数え直すため、通しの秒に足す)
+var _finished_buildings_seconds: float = 0.0
 
 
 ## メインシーン main (屋敷に入った後) を受け取り、取りこぼしと珍しい毛の抽選のシードを seed_value に固定する
@@ -84,9 +86,9 @@ func setup(main: Node3D, seed_value: int) -> void:
 	_record_sample()
 
 
-## 遊んだゲーム内の秒
+## 遊んだゲーム内の通しの秒 (終えた建物で遊んだ秒と、今いる建物で遊んだ秒の和)
 func elapsed_seconds() -> float:
-	return _game_state.save_data.building_progress.elapsed_seconds
+	return _finished_buildings_seconds + _game_state.save_data.building_progress.elapsed_seconds
 
 
 ## 4 つの節目 (最初の道具・最初の掃除ロボット・住人全員のご機嫌・次の建物へ進む) にすべて着いたか
@@ -200,11 +202,12 @@ func _building_records() -> Array[Dictionary]:
 
 
 ## 次の建物へ進む (道具を買う画面の「次の建物へ進む」と同じ入口)。進む直前の秒で節目を付け、進んだ後の建物の様子を
-## 経過に記録する (遊んだ時間は次の建物で 0 から数え直す)。行った 1 手を返す
+## 経過に記録する (建物ごとの遊んだ時間は次の建物で 0 から数え直すが、通しの秒は続ける)。行った 1 手を返す
 func _advance_building() -> Dictionary:
 	var before_seconds: float = elapsed_seconds()
 	if _game_state.next_building.advance() == null:
 		return {"kind": ACTION_ADVANCE, "seconds": 0.0}
+	_finished_buildings_seconds = before_seconds
 	if not _milestones.has(MILESTONE_NEXT_BUILDING):
 		_milestones[MILESTONE_NEXT_BUILDING] = snappedf(before_seconds, 0.01)
 	var key: String = String(ACTION_ADVANCE)

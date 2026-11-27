@@ -67,8 +67,9 @@ func _verify_bot_advances(main: Node3D, game_state: Node) -> void:
 			PLAYED_SECONDS
 		)
 		and (report["building_records"] as Array).size() == 1
-		and bot.elapsed_seconds() == 0.0,
-		"bot は住人全員がご機嫌なら次の建物へ進み、進む直前の秒 (%d 秒) で節目を付け、成績を集計に入れる (実際: %s)"
+		and is_equal_approx(bot.elapsed_seconds(), PLAYED_SECONDS)
+		and game_state.save_data.building_progress.elapsed_seconds == 0.0,
+		"bot は住人全員がご機嫌なら次の建物へ進み、進む直前の秒 (%d 秒) で節目を付け、成績を集計に入れ、通しの秒は続ける (実際: %s)"
 		% [int(PLAYED_SECONDS), str(report["milestone_seconds"])],
 	)
 	await _checker.process_frame
