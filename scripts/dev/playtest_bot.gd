@@ -112,11 +112,7 @@ func snapshot() -> Dictionary:
 	for tool: OwnedTool in progress.owned_tools:
 		if tool == null or tool.tool_id == RobotRulesScript.ROBOT_TOOL_ID:
 			continue
-		owned[tool.tool_id] = {
-			"level": tool.level,
-			"consumables": tool.consumable_count,
-			"count": ToolRulesScript.count_owned(progress.owned_tools, tool.tool_id),
-		}
+		owned[tool.tool_id] = {"level": tool.level, "consumables": tool.consumable_count}
 	var area_by_room: Dictionary = {}
 	var surfaces_by_tool: Dictionary = {}
 	for surface: MansionLayout.SurfaceDef in layout.surfaces:

@@ -53,6 +53,9 @@ func _run() -> void:
 	var audio_handle: Dictionary = HeadlessCheck.prepare_audio_manager(self, _audio_settings_path())
 	SaveStorageScript.delete_save_file(SAVE_PATH)
 	var state_handle: Dictionary = HeadlessCheck.acquire_game_state(root, SAVE_PATH)
+	# acquire_game_state は調整値の引数を渡さないため、--room-count= などの引数 (make playtest の
+	# PLAYTEST_TUNING_ARGS) で屋敷を組み直す。調整値の引数が無ければ既定の屋敷のまま
+	(state_handle["node"] as Node).initialize_from_storage(SAVE_PATH, user_args)
 	var main: Node3D = MAIN_SCENE.instantiate()
 	main.auto_advance_time = false
 	main.auto_advance_automation = false

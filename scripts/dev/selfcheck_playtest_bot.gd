@@ -20,8 +20,8 @@ const GameStateScript := preload("res://scripts/state/game_state.gd")
 const ROOM_HAIRS: int = 3000
 ## 検証の部屋 1 つの毛の付く表面の面積 (m2。既定の 6 m 四方の部屋の床)
 const ROOM_AREA_M2: float = 36.0
-## 1 円あたりの速さの伸びを比べる時に、浮動小数の誤差で同じ値の候補を「もっと大きい」と数えない幅
-const RATE_TOLERANCE: float = 0.000001
+## 元を取るまでの秒を比べる時に、浮動小数の誤差で同じ値の候補を「もっと短い」と数えない幅 (秒)
+const SCORE_TOLERANCE: float = 0.001
 
 ## 検証結果を記録する selfcheck の SceneTree 参照
 var _checker: SceneTree = null
@@ -75,7 +75,6 @@ static func _with_tool(snapshot: Dictionary, tool_id: StringName) -> Dictionary:
 	after["owned"][tool_id] = {
 		"level": 1,
 		"consumables": int(ToolCatalogScript.find_tool(tool_id)["initial_consumables"]),
-		"count": 1,
 	}
 	return after
 
@@ -122,24 +121,32 @@ func _check_waits_when_no_hair() -> void:
 	)
 
 
-## お金が足りる時は、毛を取る速さが 1 円あたりいちばん伸びる物を買う
+## お金が足りる時は、貯めて買って元を取るまでの秒がいちばん短い物を買う。最初は安い道具が高い道具より先に来る
 func _check_buys_affordable_best_purchase() -> void:
 	var snapshot: Dictionary = _base_snapshot()
 	snapshot["money"] = 1000000
 	var best: Dictionary = PolicyScript.best_purchase(snapshot)
 	var base_rate: float = PolicyScript.total_rate(snapshot)
-	var best_is_max: bool = not best.is_empty()
+	var best_is_min: bool = not best.is_empty()
 	for candidate: Dictionary in PolicyScript.purchase_candidates(snapshot):
 		var gain: float = (
 			PolicyScript.total_rate(PolicyScript.apply_purchase(snapshot, candidate)) - base_rate
 		)
 		if (
-			gain / float(maxi(1, int(candidate["price"])))
-			> float(best.get("gain_per_yen", 0.0)) + RATE_TOLERANCE
+			gain > 0.0
+			and PolicyScript.purchase_score_seconds(int(candidate["price"]), base_rate, gain)
+			< float(best.get("score_seconds", 0.0)) - SCORE_TOLERANCE
 		):
-			best_is_max = false
+			best_is_min = false
 	_checker._check(
-		best_is_max, "選んだ物 %s は、候補のうち 1 円あたりの速さの伸びがいちばん大きい" % str(best)
+		best_is_min, "選んだ物 %s は、候補のうち貯めて元を取るまでの秒がいちばん短い" % str(best)
+	)
+	_checker._check(
+		(
+			int(best.get("price", 0))
+			< int(ToolCatalogScript.find_tool(ToolCatalogScript.TOOL_SUCTION_TRUCK)["price"])
+		),
+		"手しか持たない時に最初に選ぶ物 %s は、吸引車 (3,000 円) より安い" % str(best)
 	)
 	var action: Dictionary = PolicyScript.choose_action(snapshot)
 	_checker._check(
@@ -272,13 +279,13 @@ func _check_robot_raises_rate() -> void:
 	_checker._check(not has_robot, "上限の台数まで置いたら掃除ロボットは候補から外れる")
 
 
-## 速さが伸びる物を買い終えたら、加工機・ダンプカーを安い順に買う
+## 速さが伸びる物を買い終えたら、加工機・ダンプカーを 1 つずつ順に買う
 func _check_after_cleaning_tools() -> void:
 	var snapshot: Dictionary = _base_snapshot()
 	snapshot["money"] = 1000000
 	for _round: int in range(200):
 		var purchase: Dictionary = PolicyScript.best_purchase(snapshot)
-		if purchase.is_empty() or float(purchase["gain_per_yen"]) <= 0.0:
+		if purchase.is_empty() or float(purchase["gain"]) <= 0.0:
 			break
 		snapshot = PolicyScript.apply_purchase(snapshot, purchase)
 	var first: Dictionary = PolicyScript.best_purchase(snapshot)

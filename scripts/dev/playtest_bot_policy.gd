@@ -1,13 +1,13 @@
 extends RefCounted
 ## 自動テストプレイ (make simulate / make playtest) の bot が、次にする 1 手を選ぶ方針。状態を持たない純粋な計算だけを置き、
 ## selfcheck が入力 (ゲームの様子) と出力 (1 手) で検証する。
-## 方針は「いちばん効率のよい手を選ぶ」: 毛を取る速さ (本 / 秒) を見積もり、1 円あたりの速さの伸びがいちばん大きい物を、
+## 方針は「いちばん効率のよい手を選ぶ」: 毛を取る速さ (本 / 秒) を見積もり、貯めて買って元を取るまでの秒がいちばん短い物を、
 ## お金が貯まり次第買う (足りない分は毛を売って作る)。買う物が無い時は、持っている道具のうちいちばん速い物で、
 ## きれいさがいちばん低い部屋の毛を取る。
 ##
 ## ゲームの様子 (snapshot) の形 (playtest_bot.gd が作る):
 ## {"money": 所持金, "stock_value": 在庫をすべて売った時の額,
-##  "owned": {道具の id -> {"level", "consumables", "count"}},
+##  "owned": {持っている道具の id -> {"level", "consumables"}},
 ##  "hand_levels": {HandRules.UPGRADE_* -> 段}, "robots": 掃除ロボットの台数,
 ##  "rooms": [{"room_id", "hair_count": 残り, "cleanliness": きれいさ, "mood": 機嫌, "area_m2": 毛の付く表面の面積}],
 ##  "room_tool_surfaces": {部屋ごとにかける道具の id -> 1 部屋あたりのかかる表面の数}, "ready_cat_ids": [ブラシをかけられる猫]}
@@ -67,11 +67,13 @@ const ACTION_WAIT: StringName = &"wait"
 ## 買う物の種類 (bot だけが使う): 掃除ロボット。GameState.purchase ではなく automation.buy_robot で買う
 const PURCHASE_ROBOT: StringName = &"robot"
 
+## 速さで割る時の下限 (本 / 秒)。速さが 0 の時に 0 で割らないための値で、手 1 本の速さ (約 0.5 本 / 秒) より十分小さい
+const MIN_RATE: float = 0.001
 ## 人が持って毛を取る道具の種類 (手のほか。アンドロイドは自分で働くので含めない)
 const MANUAL_TOOL_KINDS: Array[StringName] = [
 	ToolCatalogScript.KIND_SWEEP, ToolCatalogScript.KIND_ROOM, ToolCatalogScript.KIND_SHEET
 ]
-## 毛を取る速さで比べず、毛を取る道具を買い終えた後に安い順に買う道具 (加工機・ダンプカー)
+## 毛を取る速さで比べず、毛を取る道具を買い終えた後にこの順で 1 つずつ買う道具 (加工機・ダンプカー)
 const AFTER_CLEANING_TOOL_IDS: Array[StringName] = [
 	ToolCatalogScript.TOOL_HAIR_PROCESSOR, ToolCatalogScript.TOOL_DUMP_TRUCK
 ]
@@ -134,9 +136,9 @@ static func dirtiest_room(snapshot: Dictionary) -> Dictionary:
 	return best
 
 
-## 次に買う物を返す: {"purchase_kind", "item_id", "price", "gain_per_yen"}。
-## 毛を取る速さ (total_rate) が 1 円あたりいちばん伸びる物を選び、伸びる物が無ければ AFTER_CLEANING_TOOL_IDS を安い順に。
-## 買う物が無ければ空
+## 次に買う物を返す: {"purchase_kind", "item_id", "price", "gain": 速さの伸び, "score_seconds"}。
+## 毛を取る速さ (total_rate) を伸ばす物のうち、score_seconds (purchase_score_seconds) がいちばん短い物を選ぶ。
+## 伸びる物が無ければ AFTER_CLEANING_TOOL_IDS の持っていない物を順に (gain は 0)。買う物が無ければ空
 static func best_purchase(snapshot: Dictionary) -> Dictionary:
 	var base_rate: float = total_rate(snapshot)
 	var best: Dictionary = {}
@@ -144,22 +146,30 @@ static func best_purchase(snapshot: Dictionary) -> Dictionary:
 		var gain: float = total_rate(apply_purchase(snapshot, candidate)) - base_rate
 		if gain <= 0.0:
 			continue
-		var gain_per_yen: float = gain / float(maxi(1, int(candidate["price"])))
-		if best.is_empty() or gain_per_yen > float(best["gain_per_yen"]):
+		var score: float = purchase_score_seconds(int(candidate["price"]), base_rate, gain)
+		if best.is_empty() or score < float(best["score_seconds"]):
 			best = candidate.duplicate()
-			best["gain_per_yen"] = gain_per_yen
+			best["gain"] = gain
+			best["score_seconds"] = score
 	if not best.is_empty():
 		return best
 	for tool_id: StringName in AFTER_CLEANING_TOOL_IDS:
-		var count: int = int(_owned_entry(snapshot, tool_id).get("count", 0))
-		if count < ToolCatalogScript.max_owned(tool_id):
-			return {
-				"purchase_kind": GameStateScript.PURCHASE_TOOL,
-				"item_id": tool_id,
-				"price": int(ToolCatalogScript.find_tool(tool_id)["price"]),
-				"gain_per_yen": 0.0,
-			}
+		if not _owns(snapshot, tool_id):
+			var after: Dictionary = _candidate(
+				GameStateScript.PURCHASE_TOOL,
+				tool_id,
+				int(ToolCatalogScript.find_tool(tool_id)["price"])
+			)
+			after["gain"] = 0.0
+			return after
 	return {}
+
+
+## 値段 price の物を、今の速さ base_rate (本 / 秒。毛 1 本はおよそ 1 円) で貯めて買い、
+## 伸びた速さ gain で元を取るまでの秒 (貯める秒 + 元を取る秒)。短いほど先に買う。
+## 1 円あたりの伸びだけで比べると、今の稼ぎでは何十分も貯める高い物を待ち続けるため、貯める秒も足す
+static func purchase_score_seconds(price: int, base_rate: float, gain: float) -> float:
+	return float(price) / maxf(MIN_RATE, base_rate) + float(price) / maxf(MIN_RATE, gain)
 
 
 ## 今買える候補 (値段の付いた物) の一覧: 毛を取る道具とブラシを買う・持っている道具のレベルを上げる・手の強化・掃除ロボット
@@ -201,7 +211,7 @@ static func apply_purchase(snapshot: Dictionary, candidate: Dictionary) -> Dicti
 		GameStateScript.PURCHASE_TOOL:
 			var tool_def: Dictionary = ToolCatalogScript.find_tool(item_id)
 			after["owned"][item_id] = {
-				"level": 1, "consumables": int(tool_def["initial_consumables"]), "count": 1
+				"level": 1, "consumables": int(tool_def["initial_consumables"])
 			}
 		GameStateScript.PURCHASE_LEVEL_UP:
 			after["owned"][item_id]["level"] = int(after["owned"][item_id]["level"]) + 1
