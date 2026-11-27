@@ -27,6 +27,10 @@ const GAME_STATE_AUTOLOAD: String = "*res://scripts/state/game_state.gd"
 const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## ベンチマークスクリプト (純粋関数の単体検証用)
 const HairbenchScript := preload("res://scripts/dev/hairbench.gd")
+## 開発者向け調整値データ型 (既定の毛の本数の検証用)
+const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
+## メインシーンのスクリプト (残り本数の表示の整形の検証用)
+const MainScript := preload("res://scripts/main.gd")
 ## 屋敷の 1 フレームの時間のベンチマーク (集計の純粋関数の検証用)
 const ScenebenchScript := preload("res://scripts/dev/scenebench.gd")
 ## 音声カタログ (純粋関数)
@@ -113,6 +117,12 @@ func _check_project_settings() -> void:
 		"fps から 1 フレームの時間を出し、fps がまだ 0 の時は 0 にする",
 	)
 	_check_scenebench_summarize()
+	# 既定の毛の本数は issue #56 で決めた 120,000 本で、残り本数の表示では桁区切りで出る
+	_check(
+		MansionTuningScript.DEFAULT_HAIR_COUNT == 120000
+		and MainScript.format_hair_count(MansionTuningScript.DEFAULT_HAIR_COUNT) == "120,000",
+		"既定の毛の本数が 120,000 で、表示が「120,000」 (実際: %d)" % MansionTuningScript.DEFAULT_HAIR_COUNT,
+	)
 	var bus_layout: String = ProjectSettings.get_setting("audio/buses/default_bus_layout", "")
 	_check(
 		bus_layout == BUS_LAYOUT_PATH,

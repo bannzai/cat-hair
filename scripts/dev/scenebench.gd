@@ -26,7 +26,8 @@ const HairbenchScript := preload("res://scripts/dev/hairbench.gd")
 
 ## issue #56 で既定を上げる前の既定の毛の本数。変更の前後を同じ本数で比べるため、今の既定とは別に残す
 const PREVIOUS_DEFAULT_HAIR_COUNT: int = 12000
-## 既定の計測本数 (上げる前の既定、その 5 倍、今の既定、今の既定の 2 倍)
+## 既定の計測本数。変更の前後を比べる 2 点 (上げる前の既定と今の既定) に、既定の本数を決める時に見た目を比べた
+## 中間の点 (上げる前の 5 倍。床の地がまだ目立った本数) と、本数を増やした時の伸び方を見る点 (今の既定の 2 倍) を足した
 const DEFAULT_COUNTS: Array[int] = [
 	PREVIOUS_DEFAULT_HAIR_COUNT,
 	PREVIOUS_DEFAULT_HAIR_COUNT * 5,
@@ -48,7 +49,8 @@ const MEASURE_FRAMES: int = 20
 const AUTOMATION_STEP_SECONDS: float = 0.25
 
 
-## 値の列から中央値・最小・最大・平均を返す (空なら全部 0)
+## 値の列から中央値・最小・最大・平均を返す (空なら全部 0)。0.01 に丸めるのは、ms の値で比べる差
+## (変更の前後で数 ms〜数十 ms) より十分細かく、JSON を読みやすい桁数にするため
 static func summarize(values: Array) -> Dictionary:
 	if values.is_empty():
 		return {"median": 0.0, "min": 0.0, "max": 0.0, "avg": 0.0}
@@ -147,7 +149,7 @@ func _measure_count(main: Node3D, game_state: Node, count: int) -> Dictionary:
 
 	_stand_at_entrance(main, game_state)
 	await physics_frame
-	var enter: Dictionary = await _measure_frames(main, false)
+	var enter_metrics: Dictionary = await _measure_frames(main, false)
 	var png_path: String = "tmp/scenebench-%d.png" % count
 	var save_status: Error = root.get_viewport().get_texture().get_image().save_png(png_path)
 	if save_status != OK:
@@ -165,7 +167,7 @@ func _measure_count(main: Node3D, game_state: Node, count: int) -> Dictionary:
 		)
 	_stand_at_entrance(main, game_state)
 	await physics_frame
-	var robots: Dictionary = await _measure_frames(main, true)
+	var robots_metrics: Dictionary = await _measure_frames(main, true)
 
 	var ok: bool = placed == count and save_status == OK and robots_ok
 	print(
@@ -175,18 +177,19 @@ func _measure_count(main: Node3D, game_state: Node, count: int) -> Dictionary:
 		)
 		% [
 			count, placed, str(ok), rebuild_ms,
-			float(enter["frame_ms"]["median"]), int(enter["primitives"]["median"]),
-			float(robots["frame_ms"]["median"]), float(robots["advance_ms"]["median"]),
+			float(enter_metrics["frame_ms"]["median"]), int(enter_metrics["primitives"]["median"]),
+			float(robots_metrics["frame_ms"]["median"]), float(robots_metrics["advance_ms"]["median"]),
 		]
 	)
 	return {
 		"count": count,
 		"placed": placed,
 		"ok": ok,
+		# 作り直しは数十〜数百 ms で、1 回だけ計るため 0.1 ms より細かい桁は意味を持たない
 		"rebuild_ms": snappedf(rebuild_ms, 0.1),
 		"png_path": png_path,
-		"enter": enter,
-		"robots": robots,
+		"enter": enter_metrics,
+		"robots": robots_metrics,
 	}
 
 
