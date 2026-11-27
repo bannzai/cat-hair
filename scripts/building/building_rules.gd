@@ -82,7 +82,7 @@ static func building_tuning(base_tuning: MansionTuning, index: int) -> MansionTu
 	result.hair_count = roundi(float(base.hair_count) * room_ratio)
 	result.object_count = roundi(float(base.object_count) * room_ratio)
 	result.found_item_count = roundi(float(base.found_item_count) * room_ratio)
-	return result
+	return result.clamped()
 
 
 ## 住人の機嫌の一覧 moods (0〜1) で、住人が 1 人以上いて全員がご機嫌か
@@ -113,7 +113,7 @@ static func returned_found_item_count(found_items: Array[FoundItemProgress]) -> 
 static func make_record(progress: BuildingProgress) -> BuildingRecord:
 	var record: BuildingRecord = BuildingRecordScript.new()
 	record.building_id = progress.building_id
-	record.clear_seconds = progress.elapsed_seconds
+	record.clear_seconds = maxf(0.0, progress.elapsed_seconds)
 	record.returned_found_item_count = returned_found_item_count(progress.found_items)
 	return record
 
