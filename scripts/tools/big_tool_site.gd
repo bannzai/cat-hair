@@ -97,9 +97,7 @@ func step_android() -> Dictionary:
 	)
 	if removed < 0:
 		return {}
-	var hair_field: Node3D = _world.get_hair_field()
-	for hair_id: int in removed_ids:
-		hair_field.remove_hair(hair_id)
+	ToolController.apply_room_removal(_world, plan)
 	_android_room_id = room_id
 	refresh_models()
 	return {"room_id": room_id, "in_range": int(plan["in_range"]), "removed": removed}

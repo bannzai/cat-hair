@@ -54,10 +54,6 @@ const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 
 ## screenshot 専用のセーブパス
 const TEST_SAVE_PATH: String = "user://screenshot_save_data.json"
-## 見た目の試作を撮る時の屋敷全体の毛の本数。既定の 4 部屋で 1 部屋 3 万本前後になり、量の多さが一目で分かる。
-## 屋敷は全部の毛を 1 本ずつ描くため (#9)、CI の lavapipe で 10 万本が 187 ms/frame (ADR 0002 の実測) を大きく
-## 超えない本数にした
-const LOOK_HAIR_COUNT: int = 120000
 ## 部屋に入った直後と自動化の絵で見下ろす角度 (rad)。床と家具の上の毛が画面の下半分を占める角度
 const LOOK_OVERVIEW_PITCH: float = -0.45
 
@@ -129,14 +125,12 @@ func _capture_scenes() -> bool:
 
 
 ## 見た目の試作の部屋を、部屋に入った直後・毛をつまんで引いている途中・自動化が進んだ後の 3 つの状態で撮る。
-## 毛の本数を LOOK_HAIR_COUNT にして屋敷を作り直す (保存はしない)。撮れたら true
+## 毛の本数を新しく始めた屋敷と同じ既定の本数 (MansionTuning の既定値) にして屋敷を作り直す (保存はしない)。撮れたら true
 func _capture_look_prototype(main: Node3D, game_state: Node) -> bool:
 	# マウスの検証が開いた開発者画面を閉じ、屋敷を歩いている時の画面にする
 	main.close_dev_panel()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-	var tuning: MansionTuning = MansionTuningScript.new()
-	tuning.hair_count = LOOK_HAIR_COUNT
-	game_state.apply_tuning_and_rebuild(tuning, false)
+	game_state.apply_tuning_and_rebuild(MansionTuningScript.new(), false)
 	var layout: MansionLayout = game_state.current_layout
 	var player: FirstPersonPlayer = main.get_node("Player")
 	var look_room: LookPrototypeRoom = main.look_room

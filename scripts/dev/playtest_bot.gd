@@ -8,6 +8,8 @@ extends RefCounted
 
 ## 次の 1 手を選ぶ方針
 const PolicyScript := preload("res://scripts/dev/playtest_bot_policy.gd")
+## 毛の描画・管理 (描いている毛の本数の合計を使う)
+const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## 手に持って使う道具の定義
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 手に持って使う道具のルールの計算
@@ -285,7 +287,7 @@ static func _reach_radius(tool_id: StringName) -> float:
 	return float(ToolCatalogScript.find_tool(tool_id)["radius_m"])
 
 
-## 表面 surface_index の毛を一辺 radius × 2 の升目に分け、いちばん多く入った升目の毛のうち、根元の平均にいちばん近い毛の根元を返す
+## 表面 surface_index の描いている毛を一辺 radius × 2 の升目に分け、いちばん多く入った升目の毛のうち、根元の平均にいちばん近い毛の根元を返す
 ## (道具の範囲に入る本数が多い所の近似。毛が無ければ表面の 0 番目の毛の点)
 func _densest_point(surface_index: int, radius: float) -> Vector3:
 	var hair_field: Node3D = _main.mansion_world.get_hair_field()
@@ -295,7 +297,7 @@ func _densest_point(surface_index: int, radius: float) -> Vector3:
 	var points_by_cell: Dictionary = {}
 	var best_cell: Vector3i = Vector3i.ZERO
 	var best_count: int = 0
-	for slot: int in range(hair_field.get_surface_remaining_count(surface_index)):
+	for slot: int in range(hair_field.get_surface_visible_instance_count(surface_index)):
 		var point: Vector3 = hair_field.get_hair_transform(
 			hair_field.get_hair_id_at_slot(surface_index, slot)
 		).origin
@@ -412,7 +414,7 @@ func _sample() -> Dictionary:
 			_game_state.save_data.building_progress.hair_stocks
 		),
 		"remaining_hairs": _game_state.get_total_remaining_hairs(),
-		"drawn_hairs": _main.mansion_world.get_hair_field().get_remaining_count(),
+		"drawn_hairs": HairFieldScript.count_drawn_hairs(_main.mansion_world.get_hair_field()),
 		"moods": moods,
 		"robots": _game_state.automation.get_robots().size(),
 	}
