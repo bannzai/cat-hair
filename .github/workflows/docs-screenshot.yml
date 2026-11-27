@@ -36,10 +36,19 @@ jobs:
           grep -q '<html lang="en">' tmp/site/PrivacyPolicy-en.html
           grep -q '第1条' tmp/site/Terms-ja.html
           ! grep -q '{{' tmp/site/Terms-ja.html
-      # ランナーには日本語のフォントが無く、入れないと文字が四角になる
+      # ランナーには日本語のフォントが無く、入れないと文字が四角になる。
+      # ランナーに入っている Microsoft のリポジトリ (packages.microsoft.com) は 403 を返すことがあり、apt-get update が
+      # exit 100 で止まる (https://github.com/bannzai/cat-hair/issues/54)。fonts-noto-cjk は Ubuntu のリポジトリから取るため、
+      # Microsoft のリポジトリを指す sources のファイルを外してから update する。update は -qq を付けず、取りに行った URL をログに残す
       - name: Install Japanese fonts
         run: |
-          sudo apt-get update -qq
+          grep -rlsZ 'packages.microsoft.com' /etc/apt/sources.list /etc/apt/sources.list.d/ \
+            | xargs -0 -r -t sudo rm -f
+          if grep -rqs 'packages.microsoft.com' /etc/apt/sources.list /etc/apt/sources.list.d/; then
+            echo "::error::Microsoft のリポジトリを指す apt の sources が残っています"
+            exit 1
+          fi
+          sudo apt-get update
           sudo apt-get install -y -qq fonts-noto-cjk
       # 紹介ページは幅 1280 (デスクトップ) と 390 (モバイル) でページ全体を撮り、利用規約は組み立てた HTML の先頭を撮る。
       # 高さはページの全体 (利用規約は先頭の数条) が入る値。撮影の出力先は、Jekyll の action が root の所有で作る tmp/ (書き込めない) と
