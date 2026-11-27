@@ -39,6 +39,10 @@ const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 const TOGGLE_SHOP_KEY: Key = KEY_T
 ## 掃除ロボットの回る順の画面を開閉するキー (Robot の R)
 const TOGGLE_ROBOT_KEY: Key = KEY_R
+## 操作の案内の一覧を閉じる・開くキー (Help の H)
+const TOGGLE_GUIDE_KEY: Key = KEY_H
+## 操作の案内・マウスの捕捉の案内・手で引いている進み具合の表示のスクリプト
+const PlayGuideHudScript := preload("res://scripts/ui/play_guide_hud.gd")
 ## 猫と掃除ロボットを描いて時計を進めるノードのスクリプト
 const AutomationControllerScript := preload("res://scripts/automation/automation_controller.gd")
 ## 買取業者に毛を売れる距離 (m。買取業者の足元からの水平距離)。手の届く距離 (HandController.REACH_M の 2.6 m) より
@@ -64,6 +68,8 @@ var perf_overlay: PerfOverlay = null
 var look_room: LookPrototypeRoom = null
 ## 見た目の試作の画面の表示 (_ready で HUD の子に作る)
 var look_hud: LookPrototypeHud = null
+## 操作の案内・マウスの捕捉の案内・手で引いている進み具合の表示 (_ready で HUD の子に作る)
+var play_guide: PlayGuideHud = null
 
 ## 狙った毛を手でつまんで抜く操作
 var hand: HandController = null
@@ -167,6 +173,8 @@ func _ready() -> void:
 	look_room.setup(player, world_environment)
 	look_hud = LookPrototypeHudScript.new()
 	hud.add_child(look_hud)
+	play_guide = PlayGuideHudScript.new()
+	hud.add_child(play_guide)
 	perf_overlay = PerfOverlayScript.new()
 	hud.add_child(perf_overlay)
 
@@ -202,8 +210,8 @@ func _exit_tree() -> void:
 
 
 ## プレイ中の F1 (開発者調整画面開閉)・B (図鑑開閉)・T (道具を買う画面の開閉)・R (掃除ロボットの回る順の画面の開閉)・
-## F5 (手動セーブ)・F3 (fps と 1 フレームの時間の表示の出し入れ) を処理する。画面は 1 つずつしか開かない
-## (開いている画面と別の画面のキーは何もしない)。F3 は画面を開いていても効く (画面を開いた時の重さも読めるように)
+## F5 (手動セーブ)・F3 (fps と 1 フレームの時間の表示の出し入れ)・H (操作の案内の開閉。画面を開いていない時だけ) を処理する。
+## 画面は 1 つずつしか開かない (開いている画面と別の画面のキーは何もしない)。F3 は画面を開いていても効く (画面を開いた時の重さも読めるように)
 func _unhandled_input(event: InputEvent) -> void:
 	if _is_key_press(event, TOGGLE_PERF_KEY):
 		if _is_playing:
@@ -220,6 +228,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif _is_key_press(event, TOGGLE_ROBOT_KEY):
 		if _is_playing and _no_panel_open_except(robot_route_panel):
 			toggle_robot_route()
+	elif _is_key_press(event, TOGGLE_GUIDE_KEY):
+		if _is_playing and _no_panel_open_except(null):
+			play_guide.toggle_controls_guide()
 	elif event.is_action_pressed("save_game"):
 		if _is_playing and _game_state != null:
 			_game_state.save_current_state()
@@ -242,9 +253,10 @@ func _no_panel_open_except(panel: Control) -> bool:
 	return true
 
 
-## タイトルを閉じて一人称プレイを開始し、屋敷 BGM へ切り替える
+## タイトルを閉じて一人称プレイを開始し、操作の案内の一覧を開いて、屋敷 BGM へ切り替える
 func enter_mansion() -> void:
 	_is_playing = true
+	play_guide.set_controls_guide_open(true)
 	title_overlay.visible = false
 	if settings_panel != null:
 		settings_panel.visible = false
@@ -511,7 +523,7 @@ func _refresh_tool_slots() -> void:
 		ToolShopPanelScript.describe_tool(
 			tools.get_selected_tool_id(), _game_state.find_owned_tool(tools.get_selected_tool_id())
 		)
-		+ "   (T: 道具を買う / R: 掃除ロボット)"
+		+ "   (%s / %s)" % [PlayGuideHudScript.SHOP_KEY_TEXT, PlayGuideHudScript.ROBOT_KEY_TEXT]
 	)
 
 
@@ -534,9 +546,11 @@ func _refresh_room_gauge() -> void:
 
 
 ## プレイ中で、開発者画面・図鑑・道具を買う画面・掃除ロボットの回る順の画面のどれも開いていない時だけ、歩く操作・つまむ操作・道具を使う操作を受け付ける。
-## つまむ操作は手を選んでいる時だけ、道具を使う操作は手以外を選んでいる時だけ受け付ける
+## つまむ操作は手を選んでいる時だけ、道具を使う操作は手以外を選んでいる時だけ受け付ける。
+## 画面を開いている間は操作の案内の一覧を隠す
 func _sync_controls() -> void:
 	var active: bool = _is_playing and _no_panel_open_except(null)
+	play_guide.set_suppressed(not _no_panel_open_except(null))
 	player.controls_enabled = active
 	hand.enabled = active and tools.get_selected_tool_id() == ToolCatalogScript.TOOL_HAND
 	tools.enabled = active
@@ -555,6 +569,8 @@ func _build_hand_ui() -> void:
 	add_child(hand)
 	hand.setup(player.get_camera(), mansion_world, _game_state, player)
 	hand.hairs_plucked.connect(_on_hairs_plucked)
+	hand.pull_progress_changed.connect(_on_pull_progress_changed)
+	hand.pull_failed.connect(_on_pull_failed)
 
 	crosshair = Control.new()
 	crosshair.name = "Crosshair"
@@ -750,6 +766,18 @@ func _on_hairs_plucked(
 			rare_line += " (図鑑に載った)"
 		lines.append(rare_line)
 	_show_popup("\n".join(lines))
+
+
+## 手で引いている進み具合が変わった時に、照準の下のゲージを合わせる。引き始めたら前の抜けなかった理由を消す
+func _on_pull_progress_changed(progress: float, pulling: bool) -> void:
+	play_guide.show_pull_progress(progress, pulling)
+	if pulling:
+		tool_message_label.text = ""
+
+
+## 手で毛を抜けなかった時に、理由を照準の下 (道具の結果と同じ所) に出す
+func _on_pull_failed(reason: StringName) -> void:
+	tool_message_label.text = HandController.failure_message(reason)
 
 
 ## 画面中央に短い知らせ (「+N 本」・入ったお金) を PLUCK_POPUP_SECONDS 秒出す
