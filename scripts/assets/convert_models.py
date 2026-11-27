@@ -35,8 +35,8 @@ BUYER_FLAT_COLORS = {
     "mouth2.000": FACE_SKIN_COLOR,
     "eye.000": EYE_COLOR,
 }
-# 差し替えの単色の画像の大きさ (px)。単色なので小さくてよい
-FLAT_IMAGE_SIZE_PX = 4
+# 腕の肌の粗さ。人の肌は薄く艶があり、布 (0.8) より少しだけ光を返す見当
+SKIN_ROUGHNESS = 0.65
 # 立ち姿として固める動きの名前と、その動きの中の時刻 (frame)。steve_npc1.blend の動きの一覧 (ACTION の行) の、
 # 立って待つ動き idol の最初の形
 STANDING_ACTION_NAME = "idol"
@@ -125,6 +125,9 @@ def attach_skin_texture(texture_path: str) -> None:
         tex = nodes.new("ShaderNodeTexImage")
         tex.image = image
         material.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+        # FBX の材質は金属の値を持ち込み、肌が銅のように光った (PR #69 の最初の撮影)。肌は金属でなく、艶の少ない値にする
+        bsdf.inputs["Metallic"].default_value = 0.0
+        bsdf.inputs["Roughness"].default_value = SKIN_ROUGHNESS
         print("ATTACH", material.name, image.name)
 
 

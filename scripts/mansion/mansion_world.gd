@@ -62,6 +62,8 @@ const KNIT_DRAPE_LENGTH_RATIO: float = 0.2
 const SUIT_RACK_POLE_WIDTH_M: float = 0.03
 ## スーツのラックの台の高さ (m)。床に置く金属の台の板の厚みの見当
 const SUIT_RACK_BASE_HEIGHT_M: float = 0.04
+## スーツの上着の袖の太さ (m)。大人の上着の袖口の幅 (13〜15 cm) より少し細い見当で、上着の前身頃の幅に比べて袖と分かる太さ
+const SUIT_SLEEVE_WIDTH_M: float = 0.11
 ## 買取業者の札の字 (Label3D は UI の theme のフォントを引かないため、日本語の字形を持つフォントを渡す)
 const SIGN_FONT: Font = preload("res://assets/fonts/NotoSansJP[wght].ttf")
 ## 買取業者を立たせる所の、最初の部屋の西の壁からの距離 (m)
@@ -544,6 +546,30 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 			_material_suit,
 			false,
 		)
+		# 上着を掛けるハンガーの横棒と、上着の左右に垂れる袖。袖は前身頃 (毛の面) の左右の外に置き、前の毛を遮らない
+		var jacket_center: Vector3 = MansionBuilderScript.SUIT_JACKET_CENTER_RATIO * obj.size
+		var jacket_size: Vector3 = MansionBuilderScript.SUIT_JACKET_SIZE_RATIO * obj.size
+		_add_static_box(
+			object_root,
+			"Hanger",
+			Vector3(0.0, object_height * 0.95, 0.0),
+			Vector3(object_width * 0.95, SUIT_RACK_POLE_WIDTH_M, SUIT_RACK_POLE_WIDTH_M),
+			_material_metal,
+			false,
+		)
+		for side: float in [-1.0, 1.0]:
+			_add_static_box(
+				object_root,
+				"SleeveLeft" if side < 0.0 else "SleeveRight",
+				Vector3(
+					side * (jacket_size.x * 0.5 + SUIT_SLEEVE_WIDTH_M * 0.5),
+					jacket_center.y + jacket_size.y * 0.05,
+					0.0,
+				),
+				Vector3(SUIT_SLEEVE_WIDTH_M, jacket_size.y * 1.1, jacket_size.z * 0.7),
+				_material_suit,
+				false,
+			)
 	elif obj.object_kind == MansionLayoutScript.OBJECT_KNIT_CHAIR:
 		var throw_center: Vector3 = MansionBuilderScript.KNIT_THROW_CENTER_RATIO * obj.size
 		var throw_size: Vector3 = MansionBuilderScript.KNIT_THROW_SIZE_RATIO * obj.size

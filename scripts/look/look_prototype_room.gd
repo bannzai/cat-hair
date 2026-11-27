@@ -105,8 +105,11 @@ const NODE_MATERIAL_KINDS: Dictionary = {
 	"KnitDrape": &"knit",
 	"SuitJacket": &"suit",
 	"SuitShoulders": &"suit",
+	"SleeveLeft": &"suit",
+	"SleeveRight": &"suit",
 	"Base": &"metal",
 	"Pole": &"metal",
+	"Hanger": &"metal",
 }
 
 ## 掃除ロボットの置き物を置く部屋 (レイアウトの TARGET_ROOM_INDEX の部屋。無い時は null)
