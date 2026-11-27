@@ -62,7 +62,7 @@ func _init() -> void:
 
 	# 文字の大きさ: 所持金 20 px・案内 18 px・道具の名前 16 px。既存の残り本数の文字より小さくし、
 	# 1280x720 で読める下限の 16 px から、目に入る順 (所持金 > 案内 > 道具) に 2 px ずつ大きくした
-	_money_label = _make_label("MoneyLabel", 20, HORIZONTAL_ALIGNMENT_RIGHT)
+	_money_label = make_label("MoneyLabel", 20, HORIZONTAL_ALIGNMENT_RIGHT)
 	# 道具の枠の上に 8 px 空けて置く (所持金は道具を買うためのお金なので道具の並びの上に添える)。
 	# 大きさは 20 px の文字で「所持金 999,999,999 円」が 1 行に収まる幅と、1 行の高さ
 	_anchor_bottom_right(
@@ -70,7 +70,7 @@ func _init() -> void:
 	)
 	add_child(_money_label)
 
-	_guide_label = _make_label("GuideLabel", 18, HORIZONTAL_ALIGNMENT_LEFT)
+	_guide_label = make_label("GuideLabel", 18, HORIZONTAL_ALIGNMENT_LEFT)
 	_guide_label.text = SAMPLE_GUIDE_TEXT
 	# 大きさは 18 px の文字で 30 文字の案内が 1 行に収まる幅 (所持金の左端に届かない幅) と、1 行の高さ。
 	# 道具 8 つの枠は画面の幅の大半を使うため、案内は枠の行ではなく所持金と同じ高さの左に置く
@@ -145,7 +145,7 @@ func _make_tool_slot(tool_index: int, slot_text: String, selected: bool) -> Pane
 	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.add_theme_stylebox_override("panel", style)
 	slot.set_meta("selected", selected)
-	var label: Label = _make_label("ToolName", 16, HORIZONTAL_ALIGNMENT_CENTER)
+	var label: Label = make_label("ToolName", 16, HORIZONTAL_ALIGNMENT_CENTER)
 	label.text = slot_text
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	# 枠の幅に 1 行で収まらない名前 (「4 ゴム手袋とスポンジ」など) は、字を小さくして枠の中で 2 行に折り返す
@@ -158,7 +158,7 @@ func _make_tool_slot(tool_index: int, slot_text: String, selected: bool) -> Pane
 
 
 ## 影付きの文字のラベルを作る
-static func _make_label(
+static func make_label(
 	node_name: String, font_size: int, alignment: HorizontalAlignment
 ) -> Label:
 	var label: Label = Label.new()

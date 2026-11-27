@@ -48,6 +48,45 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_world_hairs_match_progress()
 	suite._check_stretched_hair_transform()
 	suite._check_hair_book_panel()
+	suite._check_failure_messages_and_guide_text()
+
+
+## 抜けなかった理由ごとに別の文言が出て、知らない理由は空文字か。マウスの案内は取られている間だけ Esc で放すことを書くか
+func _check_failure_messages_and_guide_text() -> void:
+	var messages: Array[String] = []
+	for reason: StringName in [
+		HandController.REASON_RELEASED,
+		HandController.REASON_NO_HAIR,
+		HandController.REASON_OUT_OF_REACH,
+		HandController.REASON_BLOCKED,
+	]:
+		messages.append(HandController.failure_message(reason))
+	var distinct: bool = true
+	for index: int in range(messages.size()):
+		distinct = distinct and not messages[index].is_empty()
+		distinct = distinct and messages.find(messages[index]) == index
+	_check(
+		distinct and HandController.failure_message(&"no_such_reason").is_empty(),
+		"抜けなかった 4 つの理由 (途中で離した・毛が無い・届かない・手前に物) の文言がどれも空でなく互いに違い、知らない理由は空文字",
+	)
+	_check(
+		messages[0].contains("離した") and messages[1].contains("毛が無い")
+		and messages[2].contains("届かない")
+		and messages[2].contains("%.1f m" % HandController.REACH_M),
+		"途中で離した・毛が無い・届かない (手の届く距離 REACH_M を添える) の文言が、それぞれの理由の言葉を含む",
+	)
+	# 屋敷に置く前 (カメラ・屋敷を受け取る前) の手は、光線を調べられないので「狙った所に毛が無い」を返す
+	var unprepared_hand: HandController = HandController.new()
+	_check(
+		unprepared_hand.pull_failure_reason() == HandController.REASON_NO_HAIR,
+		"カメラと屋敷を受け取る前の手で抜けなかった理由を求めると、「狙った所に毛が無い」を返す",
+	)
+	unprepared_hand.free()
+	_check(
+		PlayGuideHud.mouse_hint_text(true).contains("Esc: マウスを放す")
+		and not PlayGuideHud.mouse_hint_text(false).contains("Esc"),
+		"マウスの案内は、取られている間は Esc で放すことを、取られていない間は取り方を書く",
+	)
 
 
 ## 検証結果を selfcheck 本体へ記録する
