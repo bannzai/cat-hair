@@ -40,6 +40,7 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await suite._verify_hold_plucks_and_capture_gate(main, game_state)
 	await suite._verify_occluded_aim(main, game_state)
 	await suite._verify_rare_hair_from_pluck(main, game_state)
+	await suite._verify_pluck_on_model_surfaces(main, game_state)
 	main.hand.allow_uncaptured_pluck = false
 	Input.action_release(HandController.ACTION_PLUCK)
 	await checker.process_frame
@@ -394,6 +395,48 @@ func _verify_rare_hair_from_pluck(main: Node3D, game_state: Node) -> void:
 		"珍しい毛を引き当てて抜くと猫のヒゲの在庫が 1 増え、「珍しい毛: 猫のヒゲ」が出る (図鑑に載り済みなので新しくは載らない)",
 	)
 	hand.set_rng_seed(Time.get_ticks_usec())
+
+
+## 既製のモデルに置き換えた家具 (ソファの座面・机とサイドボードの天面・椅子に掛けたニット) とスーツの前面の毛を、
+## 画面中央で狙って手でつまみ、引き終えると 1 本抜けるか (モデルや衝突体が毛の面を手前から遮らないこと)。
+## どの屋敷にもある種類だけを必ず確かめ、置かれていない種類は確かめない (物の種類は屋敷の生成の乱数で決まるため)
+func _verify_pluck_on_model_surfaces(main: Node3D, game_state: Node) -> void:
+	var world: MansionWorld = main.mansion_world
+	var present: Dictionary = {}
+	for surface_idx: int in range(world.get_hair_field().get_surface_count()):
+		var surface: MansionLayout.SurfaceDef = world.get_surface_def(surface_idx)
+		if surface != null:
+			present[surface.surface_type] = true
+	var checked: int = 0
+	for surface_type: StringName in [
+		MansionLayoutScript.SURFACE_SOFA,
+		MansionLayoutScript.SURFACE_FURNITURE,
+		MansionLayoutScript.SURFACE_KNIT,
+		MansionLayoutScript.SURFACE_SUIT,
+	]:
+		if not present.has(surface_type):
+			continue
+		checked += 1
+		var aimed_id: int = await HandAim.aim_at_surface_hair(_checker, main, surface_type)
+		_check(aimed_id >= 0, "「%s」の面の毛を、手の届く所から画面中央で狙える" % surface_type)
+		if aimed_id < 0:
+			continue
+		var before_total: int = game_state.get_total_remaining_hairs()
+		await _press_pluck()
+		var pulled: PackedInt32Array = main.hand.get_pulling_ids()
+		var plucked: int = (
+			main.hand.advance_pull(main.hand.get_pull_duration()) if pulled.size() > 0 else 0
+		)
+		Input.action_release(HandController.ACTION_PLUCK)
+		await _checker.process_frame
+		_check(
+			pulled.has(aimed_id)
+			and plucked == 1
+			and not world.get_hair_field().has_hair(aimed_id)
+			and game_state.get_total_remaining_hairs() == before_total - 1,
+			"「%s」の面の毛を手でつまんで引き終えると、狙った 1 本が抜けて残り本数が 1 減る" % surface_type,
+		)
+	_check(checked >= 2, "家具の毛の検証で、2 種類以上の家具の面を確かめた (%d 種類)" % checked)
 
 
 ## 毛のままの在庫のうち、指定した珍しい毛の本数を返す

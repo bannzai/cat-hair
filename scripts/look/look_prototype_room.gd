@@ -1,17 +1,39 @@
 class_name LookPrototypeRoom
 extends Node3D
-## 見た目の試作 (issue #19) を、屋敷の最初の部屋 (プレイヤーが入る部屋) にだけ重ねるノード。
-## 写実寄りの材質・窓から差す光と影を最初の部屋に付け、光・影・色の環境はその部屋の中にいる間だけ切り替える。
+## 見た目の方向 (issue #19 の試作を、issue #15 で屋敷の全部の部屋に広げた) を、屋敷に重ねるノード。
+## 写実寄りの材質・窓から差す光と影を全部の部屋に付け、光・影・色の環境は屋敷のどこかの部屋の中にいる間だけ切り替える。
 ## 毛と画面の手は MansionWorld と手で毛を取る操作 (#9) が描く物をそのまま使い、ここでは描かない。
-## ほかの部屋の見た目は変えない。MansionWorld の子は作り直しのたびに解放されるため、自分の物は自分の子に置き、
-## MansionWorld のノードには材質と影の設定だけを上書きする。
+## MansionWorld の子は作り直しのたびに解放されるため、自分の物は自分の子に置き、
+## MansionWorld のノードには材質と影の設定だけを上書きする。既製のモデルで描く物 (FurnitureModels) の材質はモデルの物を使う。
 
 ## 屋敷の 3D ノード (壁の厚みの単一の正)
 const MansionWorldScript := preload("res://scripts/mansion/mansion_world.gd")
 
-## 見た目を切り替える部屋の番号。0 はプレイヤーが最初に立つ部屋 (MansionBuilder の初期位置) で、
-## 起動してすぐ試作の見た目を見られるため
+## 掃除ロボットの置き物を置く部屋の番号。0 はプレイヤーが最初に立つ部屋 (MansionBuilder の初期位置) で、
+## 撮影の初期位置から見えるため
 const TARGET_ROOM_INDEX: int = 0
+## 布の写実の素材 (Poly Haven の CC0。出典は assets/CREDITS.md)。色 (Diffuse) と凹凸 (OpenGL の向きの法線)
+const CARPET_ALBEDO: Texture2D = preload(
+	"res://assets/textures/dirty_carpet/dirty_carpet_diff_1k.jpg"
+)
+const CARPET_NORMAL: Texture2D = preload(
+	"res://assets/textures/dirty_carpet/dirty_carpet_nor_gl_1k.jpg"
+)
+const KNIT_ALBEDO: Texture2D = preload(
+	"res://assets/textures/knitted_fleece/knitted_fleece_diff_1k.jpg"
+)
+const KNIT_NORMAL: Texture2D = preload(
+	"res://assets/textures/knitted_fleece/knitted_fleece_nor_gl_1k.jpg"
+)
+const SUIT_ALBEDO: Texture2D = preload(
+	"res://assets/textures/poly_wool_herringbone/poly_wool_herringbone_diff_1k.jpg"
+)
+const SUIT_NORMAL: Texture2D = preload(
+	"res://assets/textures/poly_wool_herringbone/poly_wool_herringbone_nor_gl_1k.jpg"
+)
+## 写真の布の素材が 1 回繰り返す長さ (m)。Poly Haven の布の素材の 1 枚は約 1 m 四方の写真のため、1 m で繰り返すと
+## 編み目と毛足が実物の大きさになる
+const PHOTO_FABRIC_REPEAT_M: float = 1.0
 ## 自動化の構図で掃除ロボットが毛を取った帯の毛を消す高さの上限 (m)。床 (0.01) とカーペット (0.04) の毛だけを消し、
 ## 家具の上の毛を残す高さ
 const ROBOT_CLEAR_MAX_Y_M: float = 0.1
@@ -79,25 +101,18 @@ const NODE_MATERIAL_KINDS: Dictionary = {
 	"FrameTop": &"dark_wood",
 	"CarpetBody": &"carpet",
 	"CarpetTrim": &"carpet_trim",
-	"Seat": &"sofa",
-	"Backrest": &"sofa",
-	"ArmLeft": &"sofa",
-	"ArmRight": &"sofa",
-	"TableTop": &"furniture",
-	"Leg": &"furniture",
-	"Cabinet": &"furniture",
-	"TopTrim": &"dark_wood",
-	"ChairSeat": &"furniture",
-	"ChairBack": &"furniture",
 	"KnitThrow": &"knit",
+	"KnitDrape": &"knit",
 	"SuitJacket": &"suit",
 	"SuitShoulders": &"suit",
 	"Base": &"metal",
 	"Pole": &"metal",
 }
 
-## 見た目を切り替えている部屋 (無い時は null)
+## 掃除ロボットの置き物を置く部屋 (レイアウトの TARGET_ROOM_INDEX の部屋。無い時は null)
 var _room: MansionLayout.RoomDef = null
+## 見た目を重ねたレイアウト (環境を切り替える部屋の範囲。無い時は null)
+var _layout: MansionLayout = null
 ## 部屋の中にいるかを見るプレイヤー
 var _player: Node3D = null
 ## 環境 (光・影・色) を差し替える WorldEnvironment
@@ -140,14 +155,16 @@ func set_playing(playing: bool) -> void:
 	_refresh_active()
 
 
-## レイアウトの最初の部屋に試作の見た目を重ねる。MansionWorld.rebuild の後に毎回呼ぶ (前回の物は消してから作る)。
+## レイアウトの全部の部屋に見た目を重ねる。MansionWorld.rebuild の後に毎回呼ぶ (前回の物は消してから作る)。
 ## layout が null か部屋が無い時は何も重ねない
 func apply(layout: MansionLayout, world: MansionWorld) -> void:
 	_clear_content()
 	_room = null
+	_layout = null
 	if layout == null or layout.rooms.size() <= TARGET_ROOM_INDEX:
 		_refresh_active()
 		return
+	_layout = layout
 	_room = layout.rooms[TARGET_ROOM_INDEX]
 	_content_root = Node3D.new()
 	_content_root.name = "PrototypeContent"
@@ -155,8 +172,12 @@ func apply(layout: MansionLayout, world: MansionWorld) -> void:
 
 	_ensure_materials()
 	_override_room_materials(layout, world)
-	_add_window_and_daylight()
-	_enable_room_light_shadow(world)
+	for room_index: int in range(layout.rooms.size()):
+		var room_content: Node3D = Node3D.new()
+		room_content.name = String(layout.rooms[room_index].room_id)
+		_content_root.add_child(room_content)
+		_add_window_and_daylight(layout.rooms[room_index], room_content)
+		_enable_room_light_shadow(world, room_index)
 	_refresh_active()
 
 
@@ -185,19 +206,28 @@ func show_automation_props(hair_field: Node3D) -> int:
 	return removed
 
 
-## 見た目を切り替えている部屋の id (無い時は空)
+## 掃除ロボットの置き物を置く部屋の id (見た目を重ねていない時は空)
 func get_target_room_id() -> StringName:
 	return _room.room_id if _room != null else &""
 
 
-## 窓のノード (窓を付けなかった時は null)
-func get_window_node() -> Node3D:
-	return _content_root.get_node_or_null("Window") as Node3D if _content_root != null else null
+## 部屋 room_id の窓のノード (窓を付けなかった時は null)。room_id を省くと掃除ロボットを置く部屋
+func get_window_node(room_id: StringName = &"") -> Node3D:
+	return _room_content_child(room_id, "Window") as Node3D
 
 
-## 窓から差す光 (窓を付けなかった時は null)
-func get_daylight() -> SpotLight3D:
-	return _content_root.get_node_or_null("Daylight") as SpotLight3D if _content_root != null else null
+## 部屋 room_id の窓から差す光 (窓を付けなかった時は null)。room_id を省くと掃除ロボットを置く部屋
+func get_daylight(room_id: StringName = &"") -> SpotLight3D:
+	return _room_content_child(room_id, "Daylight") as SpotLight3D
+
+
+## 部屋 room_id (空なら掃除ロボットを置く部屋) に重ねた物のうち、名前が child_name の物 (無い時は null)
+func _room_content_child(room_id: StringName, child_name: String) -> Node:
+	if _content_root == null or _room == null:
+		return null
+	return _content_root.get_node_or_null(
+		"%s/%s" % [String(_room.room_id if room_id.is_empty() else room_id), child_name]
+	)
 
 
 ## 置いた掃除ロボットの台数
@@ -266,15 +296,15 @@ static func build_prototype_environment(base: Environment) -> Environment:
 	return environment
 
 
-## 歩いている間にプレイヤーが試作の部屋の中にいる時だけ、試作の環境を出す
+## 歩いている間にプレイヤーが屋敷のどこかの部屋の中にいる時だけ、試作の環境を出す
 func _refresh_active() -> void:
 	var active: bool = (
 		_playing
-		and _room != null
+		and _layout != null
 		and _player != null
 		and is_instance_valid(_player)
 		and _player.is_inside_tree()
-		and is_inside_room(_room, _player.global_position)
+		and room_at(_layout, _player.global_position) != null
 	)
 	_prototype_active = active
 	var wanted_environment: Environment = _prototype_environment if active else _base_environment
@@ -292,27 +322,29 @@ func _clear_content() -> void:
 	_robots_root = null
 
 
-## 試作の部屋の床・壁・天井と、部屋に置いた物のメッシュに試作の材質を上書きする
+## 全部の部屋の床・壁・天井と、部屋に置いた物のメッシュに試作の材質を上書きする
 func _override_room_materials(layout: MansionLayout, world: MansionWorld) -> void:
 	if world == null:
 		return
-	var room_node: Node = world.get_node_or_null("RoomsRoot/%s" % String(_room.room_id))
-	if room_node != null:
-		_override_meshes_under(room_node)
+	for room: MansionLayout.RoomDef in layout.rooms:
+		var room_node: Node = world.get_node_or_null("RoomsRoot/%s" % String(room.room_id))
+		if room_node != null:
+			_override_meshes_under(room_node)
 	var objects_root: Node = world.get_node_or_null("ObjectsRoot")
 	if objects_root == null:
 		return
 	for obj: MansionLayout.ObjectDef in layout.objects:
-		if obj.room_id != _room.room_id:
-			continue
 		var object_node: Node = objects_root.get_node_or_null(String(obj.object_id))
 		if object_node != null:
 			_override_meshes_under(object_node)
 
 
-## node の下の MeshInstance3D のうち、NODE_MATERIAL_KINDS にある名前のものに試作の材質を付ける
+## node の下の MeshInstance3D のうち、NODE_MATERIAL_KINDS にある名前のものに試作の材質を付ける。
+## 既製のモデル (FurnitureModels が置く "Model") の中はモデルの材質のまま残す
 func _override_meshes_under(node: Node) -> void:
 	for child: Node in node.get_children():
+		if String(child.name) == "Model":
+			continue
 		if child is MeshInstance3D:
 			var mesh_node_name: String = String(
 				child.get_parent().name if child.get_parent() is StaticBody3D else child.name
@@ -324,9 +356,9 @@ func _override_meshes_under(node: Node) -> void:
 		_override_meshes_under(child)
 
 
-## ドアの無い壁に、外の光で明るい窓と、窓から部屋へ差す影付きの光を置く
-func _add_window_and_daylight() -> void:
-	var side: StringName = window_wall_side(_room)
+## 部屋 room のドアの無い壁に、外の光で明るい窓と、窓から部屋へ差す影付きの光を、room_content の子に置く
+func _add_window_and_daylight(room: MansionLayout.RoomDef, room_content: Node3D) -> void:
+	var side: StringName = window_wall_side(room)
 	if side.is_empty():
 		return
 	# 窓から部屋の内側へ向かう向きと、壁の内側の面の位置
@@ -337,23 +369,24 @@ func _add_window_and_daylight() -> void:
 		&"north": Vector3.BACK,
 	}[side]
 	var wall_face: Vector3 = (
-		_room.center
+		room.center
 		- inward * (
-			(_room.size.x if side == &"west" or side == &"east" else _room.size.z) * 0.5
+			(room.size.x if side == &"west" or side == &"east" else room.size.z) * 0.5
 			- MansionWorldScript.WALL_THICKNESS_M
 		)
 		+ Vector3(0.0, WINDOW_CENTER_HEIGHT_M, 0.0)
 	)
 	var window_root: Node3D = Node3D.new()
 	window_root.name = "Window"
-	_place_on_wall(window_root, wall_face, inward)
+	window_root.transform = Transform3D(Basis.looking_at(inward), wall_face)
+	room_content.add_child(window_root)
 	_build_window(window_root)
 
 	var daylight: SpotLight3D = SpotLight3D.new()
 	daylight.name = "Daylight"
 	daylight.light_color = DAYLIGHT_COLOR
 	daylight.light_energy = DAYLIGHT_ENERGY
-	daylight.spot_range = maxf(_room.size.x, _room.size.z) * DAYLIGHT_RANGE_RATIO
+	daylight.spot_range = maxf(room.size.x, room.size.z) * DAYLIGHT_RANGE_RATIO
 	daylight.spot_angle = DAYLIGHT_SPOT_ANGLE_DEG
 	daylight.shadow_enabled = true
 	# 窓の面より 5 cm 内側から、部屋の内側へ向けて下へ傾ける (SpotLight3D は -Z を照らす)
@@ -361,13 +394,7 @@ func _add_window_and_daylight() -> void:
 		Basis.looking_at(inward * cos(DAYLIGHT_TILT_RAD) + Vector3.DOWN * sin(DAYLIGHT_TILT_RAD)),
 		wall_face + inward * 0.05,
 	)
-	_content_root.add_child(daylight)
-
-
-## node を壁の内側の面の位置に置き、ローカルの -Z が部屋の内側を向くよう回す
-func _place_on_wall(node: Node3D, wall_face: Vector3, inward: Vector3) -> void:
-	node.transform = Transform3D(Basis.looking_at(inward), wall_face)
-	_content_root.add_child(node)
+	room_content.add_child(daylight)
 
 
 ## 窓ガラス (外の光で光る面) と木の窓枠・桟をローカルの XY 面に組み立てる
@@ -408,12 +435,12 @@ func _build_window(window_root: Node3D) -> void:
 		_add_box(window_root, frame_def[0], frame_def[1], frame_def[2], frame_material)
 
 
-## MansionWorld が置いた部屋の天井の灯りに影を付ける (光の当たり方だけを変え、灯りの数と位置は変えない)
-func _enable_room_light_shadow(world: MansionWorld) -> void:
+## MansionWorld が置いた room_index 番目の部屋の天井の灯りに影を付ける (光の当たり方だけを変え、灯りの数と位置は変えない)
+func _enable_room_light_shadow(world: MansionWorld, room_index: int) -> void:
 	if world == null:
 		return
 	var room_light: OmniLight3D = world.get_node_or_null(
-		"LightsRoot/RoomLight_%d" % TARGET_ROOM_INDEX
+		"LightsRoot/RoomLight_%d" % room_index
 	) as OmniLight3D
 	if room_light != null:
 		room_light.shadow_enabled = true
@@ -446,48 +473,52 @@ static func _remove_hairs_in_lane(
 	return removed
 
 
-## 円盤型の掃除ロボット 1 台 (本体・上蓋・前の緩衝材・後ろのセンサー) を形だけ置く。衝突体は付けない (歩く邪魔をしないため)
+
+
+## 円盤型の掃除ロボット 1 台を形だけ置く。衝突体は付けない (歩く邪魔をしないため)
 func _add_robot(parent_node: Node3D, robot_name: String, floor_position: Vector3) -> void:
 	var robot: Node3D = Node3D.new()
 	robot.name = robot_name
 	robot.position = floor_position
 	parent_node.add_child(robot)
-	# 本体は艶を抑えた濃い灰色、上蓋は明るい灰色 (実在の製品の配色と意匠を避けた無地)。
-	# 各部の比率は、家庭用の円盤型の掃除ロボットの一般的な形 (本体の上に一回り小さい蓋、後ろ寄りの小さなセンサーの突起、
-	# 前の縁の緩衝材) を、本体の半径と高さに対する割合で置いたもの
-	var body_material: StandardMaterial3D = make_material(
-		Color(0.15, 0.15, 0.16), 0.55
+	add_robot_body(robot)
+
+
+## 円盤型の掃除ロボットの体 (本体・上蓋・前の緩衝材・後ろのセンサー・床との隙間の黒い縁) を、底の中心を原点に、
+## 前 (緩衝材の側) を +X に向けて robot の子に置く。置き物の掃除ロボットと、自動化で走る掃除ロボット
+## (AutomationController) の両方の形の単一情報源。既製の CC0 のモデルが無いため形は自作し (issue #15 で決めた)、
+## 材質を写実に寄せる。各部の比率は、家庭用の円盤型の掃除ロボットの一般的な形 (本体の上に一回り小さい蓋、後ろ寄りの
+## 小さなセンサーの突起、前の縁の緩衝材) を本体の半径と高さに対する割合で置いたもの。実在の製品の配色と意匠を避けた無地
+static func add_robot_body(robot: Node3D) -> void:
+	# 本体: 艶のある濃い灰色の樹脂。上塗り (clearcoat) で窓の光の映り込みを出す
+	var body_material: StandardMaterial3D = make_material(Color(0.12, 0.12, 0.13), 0.35)
+	body_material.clearcoat_enabled = true
+	# 上塗りの強さ 0.6・粗さ 0.2 は、家電の樹脂の照りが見え、鏡のように映り込まない値
+	body_material.clearcoat = 0.6
+	body_material.clearcoat_roughness = 0.2
+	# 上蓋: つや消しの明るい灰色の樹脂。本体との艶の差で蓋の継ぎ目を見せる
+	var lid_material: StandardMaterial3D = make_material(Color(0.42, 0.43, 0.44), 0.6)
+	# 緩衝材と床との隙間: 光をほぼ返さない黒いゴム
+	var rubber_material: StandardMaterial3D = make_material(Color(0.03, 0.03, 0.03), 0.95)
+	_add_cylinder(
+		robot, "Skirt", ROBOT_RADIUS_M * 0.94, ROBOT_HEIGHT_M * 0.12,
+		Vector3(0.0, ROBOT_HEIGHT_M * 0.06, 0.0), rubber_material,
 	)
 	_add_cylinder(
-		robot,
-		"Body",
-		ROBOT_RADIUS_M,
-		ROBOT_HEIGHT_M * 0.8,
-		Vector3(0.0, ROBOT_HEIGHT_M * 0.4, 0.0),
-		body_material,
+		robot, "Body", ROBOT_RADIUS_M, ROBOT_HEIGHT_M * 0.7,
+		Vector3(0.0, ROBOT_HEIGHT_M * 0.47, 0.0), body_material,
 	)
 	_add_cylinder(
-		robot,
-		"Lid",
-		ROBOT_RADIUS_M * 0.88,
-		ROBOT_HEIGHT_M * 0.2,
-		Vector3(0.0, ROBOT_HEIGHT_M * 0.9, 0.0),
-		make_material(Color(0.36, 0.37, 0.38), 0.45),
+		robot, "Lid", ROBOT_RADIUS_M * 0.88, ROBOT_HEIGHT_M * 0.18,
+		Vector3(0.0, ROBOT_HEIGHT_M * 0.91, 0.0), lid_material,
 	)
 	_add_cylinder(
-		robot,
-		"Sensor",
-		ROBOT_RADIUS_M * 0.22,
-		ROBOT_HEIGHT_M * 0.25,
-		Vector3(-ROBOT_RADIUS_M * 0.45, ROBOT_HEIGHT_M * 1.1, 0.0),
-		body_material,
+		robot, "Sensor", ROBOT_RADIUS_M * 0.22, ROBOT_HEIGHT_M * 0.25,
+		Vector3(-ROBOT_RADIUS_M * 0.45, ROBOT_HEIGHT_M * 1.1, 0.0), body_material,
 	)
 	_add_box(
-		robot,
-		"Bumper",
-		Vector3(ROBOT_RADIUS_M * 0.82, ROBOT_HEIGHT_M * 0.35, 0.0),
-		Vector3(0.06, ROBOT_HEIGHT_M * 0.4, ROBOT_RADIUS_M * 1.3),
-		body_material,
+		robot, "Bumper", Vector3(ROBOT_RADIUS_M * 0.82, ROBOT_HEIGHT_M * 0.4, 0.0),
+		Vector3(0.06, ROBOT_HEIGHT_M * 0.4, ROBOT_RADIUS_M * 1.3), rubber_material,
 	)
 
 
@@ -509,7 +540,7 @@ func _add_dock(parent_node: Node3D) -> void:
 
 
 ## 円柱メッシュのノードを parent_node の子に置く
-func _add_cylinder(
+static func _add_cylinder(
 	parent_node: Node3D,
 	node_name: String,
 	radius: float,
@@ -530,7 +561,7 @@ func _add_cylinder(
 
 
 ## 直方体メッシュのノードを parent_node の子に置く
-func _add_box(
+static func _add_box(
 	parent_node: Node3D,
 	node_name: String,
 	box_position: Vector3,
@@ -551,24 +582,18 @@ func _add_box(
 func _ensure_materials() -> void:
 	if not _materials.is_empty():
 		return
-	# ノイズの周波数は、1 画素あたりの変化の速さ。0.32 は毛足の細かい凹凸 (数画素で変わる)、0.12 は編み目や布の
-	# 大きなむら (10 画素前後で変わる) に見える値。種はテクスチャごとに違う模様にするための任意の値
+	# ノイズの周波数は、1 画素あたりの変化の速さ。0.32 は毛足の細かい凹凸 (数画素で変わる) に見える値。
+	# 種はテクスチャごとに違う模様にするための任意の値
 	var wood_height: Image = _make_wood_height_image()
 	var fine_noise: Image = _make_noise_image(0.32, 7)
-	var coarse_noise: Image = _make_noise_image(0.12, 11)
 
-	# 粗さ (roughness) は物の表面の艶で決めた。塗装した木の床 0.62・磨いた家具 0.5・濃い木 0.55 は窓の光を鈍く返す艶、
-	# 壁紙 0.9・ソファ 0.9・スーツ 0.9 は光を返さない紙と布、毛足のある物 (カーペット 0.98・縁 0.95・ニット 0.97) は
+	# 粗さ (roughness) は物の表面の艶で決めた。塗装した木の床 0.62・濃い木 0.55 は窓の光を鈍く返す艶、
+	# 壁紙 0.9・スーツ 0.9 は光を返さない紙と布、毛足のある物 (カーペット 0.98・縁 0.95・ニット 0.97) は
 	# ほぼ光を返さない値
-	# 凹凸の強さ (bump_map_to_normal_map の倍率) は、CI の撮影で凹凸が見え、照明で白く飛ばない範囲から材質ごとに選んだ。
-	# 平らな物 (家具の木 0.6・スーツ 0.8) は弱く、毛足のある物 (カーペット 2.5・ニット 3.0) は強くする
+	# 凹凸の強さ (bump_map_to_normal_map の倍率) は、CI の撮影で凹凸が見え、照明で白く飛ばない範囲から材質ごとに選んだ
 	# 床: 中くらいの茶の木の床板。板ごとの明るさの差・木目・板の継ぎ目の溝
 	_materials[&"floor"] = _make_textured_material(
 		Color(0.50, 0.33, 0.20), 0.62, wood_height, wood_height, 1.2, FLOOR_TEXTURE_REPEAT_M
-	)
-	# 家具: 床より濃いくるみ色の木
-	_materials[&"furniture"] = _make_textured_material(
-		Color(0.34, 0.21, 0.13), 0.5, wood_height, wood_height, 0.6, FLOOR_TEXTURE_REPEAT_M
 	)
 	# 濃い木 (巾木・窓枠・ドア枠): 床より暗くして、床と壁の境目と枠の輪郭が見える色
 	_materials[&"dark_wood"] = make_material(Color(0.22, 0.14, 0.09), 0.55)
@@ -578,30 +603,16 @@ func _ensure_materials() -> void:
 	)
 	# 天井: 漆喰のわずかに暖かい白。灯りを照り返さないよう粗さを高くする
 	_materials[&"ceiling"] = make_material(Color(0.82, 0.81, 0.78), 0.95)
-	# カーペット: 深い臙脂の毛足。細かい凹凸と、毛足の明暗のむら
-	_materials[&"carpet"] = _make_textured_material(
-		Color(0.42, 0.10, 0.11), 0.98, fine_noise, fine_noise, 2.5, FABRIC_TEXTURE_REPEAT_M
+	# カーペット・ニット・スーツは写真の布の素材 (形は既製のモデルが無いため基本の形)。色の掛け合わせは写真の色を
+	# 部屋の色に寄せる割合で、カーペットは臙脂、ニットはからし色、スーツは紺に寄せる (猫の毛が付くと目立つ色を保つ)
+	_materials[&"carpet"] = _make_photo_material(
+		CARPET_ALBEDO, CARPET_NORMAL, Color(0.95, 0.55, 0.55), 0.98
 	)
+	_materials[&"knit"] = _make_photo_material(KNIT_ALBEDO, KNIT_NORMAL, Color(1.0, 0.78, 0.45), 0.97)
+	_materials[&"suit"] = _make_photo_material(SUIT_ALBEDO, SUIT_NORMAL, Color(0.35, 0.38, 0.5), 0.9)
 	# カーペットの縁: くすんだ金茶の房。臙脂の本体との明暗差でカーペットの輪郭が見える色
 	_materials[&"carpet_trim"] = _make_textured_material(
 		Color(0.58, 0.46, 0.24), 0.95, fine_noise, fine_noise, 1.5, FABRIC_TEXTURE_REPEAT_M
-	)
-	# ソファ: 濃い青緑のベルベット。縁の光 (rim) で布の起毛を出す
-	var sofa: StandardMaterial3D = _make_textured_material(
-		Color(0.10, 0.22, 0.24), 0.9, coarse_noise, fine_noise, 1.0, FABRIC_TEXTURE_REPEAT_M
-	)
-	sofa.rim_enabled = true
-	# 縁の光の強さ 0.45 は起毛が見え、布が光って見えない上限。0.6 は縁の光に布の色を混ぜ、白い縁取りにしない割合
-	sofa.rim = 0.45
-	sofa.rim_tint = 0.6
-	_materials[&"sofa"] = sofa
-	# ニット: からし色の毛糸。猫の毛が付くと目立つ明るさで、部屋の暗い色の中で目に入る
-	_materials[&"knit"] = _make_textured_material(
-		Color(0.66, 0.46, 0.20), 0.97, coarse_noise, coarse_noise, 3.0, FABRIC_TEXTURE_REPEAT_M
-	)
-	# スーツ: ほぼ黒の紺。白い猫の毛が付くと最も目立つ色
-	_materials[&"suit"] = _make_textured_material(
-		Color(0.08, 0.085, 0.10), 0.9, fine_noise, fine_noise, 0.8, FABRIC_TEXTURE_REPEAT_M
 	)
 	# 金属: ハンガーラックの柱。鏡面の艶は避け、つや消しの鉄にする
 	var metal: StandardMaterial3D = make_material(Color(0.40, 0.40, 0.42), 0.6)
@@ -702,6 +713,22 @@ static func _make_textured_material(
 		normal.generate_mipmaps()
 		surface_material.normal_enabled = true
 		surface_material.normal_texture = ImageTexture.create_from_image(normal)
+	return surface_material
+
+
+## 写真の素材 (色 albedo と OpenGL の向きの法線 normal) に色 tint を掛け、粗さ roughness_value の材質を作る。
+## テクスチャはワールド座標の 3 方向から投影し (triplanar)、PHOTO_FABRIC_REPEAT_M ごとに繰り返す
+static func _make_photo_material(
+	albedo: Texture2D, normal: Texture2D, tint: Color, roughness_value: float
+) -> StandardMaterial3D:
+	var surface_material: StandardMaterial3D = make_material(tint, roughness_value)
+	surface_material.albedo_texture = albedo
+	surface_material.normal_enabled = true
+	surface_material.normal_texture = normal
+	surface_material.uv1_triplanar = true
+	surface_material.uv1_world_triplanar = true
+	surface_material.uv1_scale = Vector3.ONE / PHOTO_FABRIC_REPEAT_M
+	surface_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return surface_material
 
 

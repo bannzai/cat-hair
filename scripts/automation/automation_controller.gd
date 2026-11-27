@@ -298,23 +298,13 @@ func _build_cat(route: Dictionary) -> Node3D:
 func _build_robot(robot_index: int) -> Node3D:
 	var robot: Node3D = Node3D.new()
 	robot.name = "Robot%d" % robot_index
-	# 本体 8 割・上蓋 2 割の高さで、上蓋を本体より 1 割強細くして縁を見せる (家庭用の円盤型の掃除ロボットの見た目)
-	var shell: CylinderMesh = CylinderMesh.new()
-	shell.top_radius = ROBOT_RADIUS_M
-	shell.bottom_radius = ROBOT_RADIUS_M
-	shell.height = ROBOT_HEIGHT_M * 0.8
-	# 配色は見た目の試作の置き物と同じ (本体は艶を抑えた濃い灰色、上蓋は明るい灰色)。前の小さな緑の灯で動いていると分かるようにする
-	_add_part(
-		robot, shell, Vector3(0.0, ROBOT_HEIGHT_M * 0.4, 0.0), Vector3.ZERO, Color(0.15, 0.15, 0.16)
-	)
-	var lid: CylinderMesh = CylinderMesh.new()
-	lid.top_radius = ROBOT_RADIUS_M * 0.88
-	lid.bottom_radius = ROBOT_RADIUS_M * 0.88
-	lid.height = ROBOT_HEIGHT_M * 0.2
-	_add_part(
-		robot, lid, Vector3(0.0, ROBOT_HEIGHT_M * 0.9, 0.0), Vector3.ZERO, Color(0.36, 0.37, 0.38)
-	)
-	# 灯は本体の 1 割ほどの大きさで、上から見て前の向きが分かる位置に置く
+	# 形は見た目の置き物と同じ (LookPrototypeRoom.add_robot_body)。体の前 (+X) を、走る向きの局所の -Z へ回す
+	var body: Node3D = Node3D.new()
+	body.name = "Body"
+	body.rotation.y = PI * 0.5
+	robot.add_child(body)
+	LookPrototypeRoom.add_robot_body(body)
+	# 前の小さな緑の灯で動いていると分かるようにする。灯は本体の 1 割ほどの大きさで、上から見て前の向きが分かる位置に置く
 	var lamp: SphereMesh = SphereMesh.new()
 	lamp.radius = 0.02
 	lamp.height = 0.03

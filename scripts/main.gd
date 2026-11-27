@@ -48,7 +48,7 @@ const TRADER_RANGE_M: float = 2.0
 const ToolShopPanelScript := preload("res://scripts/ui/tool_shop_panel.gd")
 ## 毛を売る・掃除代の計算 (払う間隔の表示に使う)
 const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
-## 見た目の試作 (issue #19) を屋敷の最初の部屋に重ねるノードのスクリプト
+## 見た目の方向 (写実の材質・窓の光・影) を屋敷の全部の部屋に重ねるノードのスクリプト
 const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room.gd")
 ## 見た目の試作の画面の表示 (所持金・道具の枠・案内) のスクリプト
 const LookPrototypeHudScript := preload("res://scripts/look/look_prototype_hud.gd")
@@ -60,7 +60,7 @@ const PerfOverlayScript := preload("res://scripts/ui/perf_overlay.gd")
 
 ## fps と 1 フレームの時間の表示 (_ready で HUD の子に作る)
 var perf_overlay: PerfOverlay = null
-## 見た目の試作を屋敷の最初の部屋に重ねるノード (_ready で作る)
+## 見た目の方向を屋敷の全部の部屋に重ねるノード (_ready で作る)
 var look_room: LookPrototypeRoom = null
 ## 見た目の試作の画面の表示 (_ready で HUD の子に作る)
 var look_hud: LookPrototypeHud = null
