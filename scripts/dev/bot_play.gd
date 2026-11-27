@@ -1,6 +1,6 @@
 extends SceneTree
 ## 自動テストプレイ。bot (scripts/dev/playtest_bot.gd) が屋敷をはじめから遊ぶ。
-## 引数 --simulate (make simulate): headless で、住人全員がご機嫌になるか MAX_GAME_SECONDS に届くまで 1 フレームの中で遊び切り、
+## 引数 --simulate (make simulate): headless で、3 つの節目にすべて着くか MAX_GAME_SECONDS に届くまで 1 フレームの中で遊び切り、
 ## 節目までのゲーム内の時間を tmp/simulate.json に書いて「simulate OK」を出す。
 ## 引数 --frames=<N> --fps=<N> [--steps-per-frame=<N>] (make playtest): 描画付きで、1 フレームごとに bot の手を
 ## 行い (早送り)、録画を撮って「playtest OK」を出す。
@@ -92,10 +92,10 @@ func _audio_settings_path() -> String:
 	return ProjectSettings.globalize_path("res://tmp/playtest-audio-settings.cfg")
 
 
-## bot を住人全員のご機嫌か MAX_GAME_SECONDS まで遊ばせ、集計を SIMULATE_JSON_PATH に書く。
+## bot を 3 つの節目にすべて着くか MAX_GAME_SECONDS まで遊ばせ、集計を SIMULATE_JSON_PATH に書く。
 ## 書けて、最初の道具を買う節目に届いていたら true
 func _simulate(bot: RefCounted) -> bool:
-	while not bot.all_happy_reached() and bot.elapsed_seconds() < MAX_GAME_SECONDS:
+	while not bot.all_milestones_reached() and bot.elapsed_seconds() < MAX_GAME_SECONDS:
 		bot.step()
 	var report: Dictionary = bot.report()
 	report["max_game_seconds"] = MAX_GAME_SECONDS

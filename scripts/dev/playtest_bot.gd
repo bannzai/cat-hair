@@ -85,9 +85,9 @@ func elapsed_seconds() -> float:
 	return _game_state.save_data.building_progress.elapsed_seconds
 
 
-## 住人全員がご機嫌になったか
-func all_happy_reached() -> bool:
-	return _milestones.has(MILESTONE_ALL_HAPPY)
+## 3 つの節目 (最初の道具・最初の掃除ロボット・住人全員のご機嫌) にすべて着いたか
+func all_milestones_reached() -> bool:
+	return _milestones.has_all([MILESTONE_FIRST_TOOL, MILESTONE_FIRST_ROBOT, MILESTONE_ALL_HAPPY])
 
 
 ## 次の 1 手を選んで行い、その手の秒だけ時計を進める。行った 1 手 (方針の戻り値に、かけた秒 "seconds" を足した物) を返す
@@ -285,13 +285,12 @@ static func _reach_radius(tool_id: StringName) -> float:
 	return float(ToolCatalogScript.find_tool(tool_id)["radius_m"])
 
 
-## 表面 surface_index の毛を一辺 radius × 2 の升目に分け、いちばん多く入った升目の毛の根元の平均の点を返す
+## 表面 surface_index の毛を一辺 radius × 2 の升目に分け、いちばん多く入った升目の毛のうち、根元の平均にいちばん近い毛の根元を返す
 ## (道具の範囲に入る本数が多い所の近似。毛が無ければ表面の 0 番目の毛の点)
 func _densest_point(surface_index: int, radius: float) -> Vector3:
 	var hair_field: Node3D = _main.mansion_world.get_hair_field()
 	var cell_size: float = maxf(0.01, radius * 2.0)
-	var sums: Dictionary = {}
-	var counts: Dictionary = {}
+	var points_by_cell: Dictionary = {}
 	var best_cell: Vector3i = Vector3i.ZERO
 	var best_count: int = 0
 	for slot: int in range(hair_field.get_surface_remaining_count(surface_index)):
@@ -299,14 +298,25 @@ func _densest_point(surface_index: int, radius: float) -> Vector3:
 			hair_field.get_hair_id_at_slot(surface_index, slot)
 		).origin
 		var cell: Vector3i = Vector3i((point / cell_size).floor())
-		sums[cell] = (sums.get(cell, Vector3.ZERO) as Vector3) + point
-		counts[cell] = int(counts.get(cell, 0)) + 1
-		if int(counts[cell]) > best_count:
-			best_count = int(counts[cell])
+		var points: Array = points_by_cell.get(cell, [])
+		points.append(point)
+		points_by_cell[cell] = points
+		if points.size() > best_count:
+			best_count = points.size()
 			best_cell = cell
 	if best_count <= 0:
 		return hair_field.get_hair_transform(hair_field.get_hair_id_at_slot(surface_index, 0)).origin
-	return (sums[best_cell] as Vector3) / float(best_count)
+	# 升目の平均の点の近くに毛があるとは限らない (対角の隅に分かれている等) ため、平均にいちばん近い実在の毛の根元を狙う。
+	# 実在の毛を狙えば、手は少なくともその 1 本をつまめ、同じ取れない点を狙い続けない
+	var mean: Vector3 = Vector3.ZERO
+	for point: Vector3 in points_by_cell[best_cell]:
+		mean += point
+	mean /= float(best_count)
+	var nearest: Vector3 = points_by_cell[best_cell][0]
+	for point: Vector3 in points_by_cell[best_cell]:
+		if point.distance_squared_to(mean) < nearest.distance_squared_to(mean):
+			nearest = point
+	return nearest
 
 
 ## 掃除ロボットを 1 台買い、きれいさがいちばん低い部屋から全部屋を順に回らせる
