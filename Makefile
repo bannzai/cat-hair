@@ -213,10 +213,10 @@ movie: import
 	bash scripts/ci/check-movie-brightness.sh $(LOG_DIR)/movie.mp4
 
 # 各面で歩行・照準・つまみ・途中解放・引き抜きを録り、操作の進行に対応するフレームを動画から切り出す。
-# 3 面で完遂と中断を撮る。実測の約 350 フレームに探索・移動の余裕を持たせ、900 で打ち切る。
+# 3 面で完遂と中断を撮る。30 fps での実測は約 350 フレーム。探索・移動の余裕を含め、撮影時間を 30 秒に制限する。
 movie-pull: import
 	rm -f $(LOG_DIR)/movie-pull.avi $(LOG_DIR)/movie-pull.mp4 $(LOG_DIR)/pull-*.png
-	"$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) --write-movie $(LOG_DIR)/movie-pull.avi --fixed-fps $(MOVIE_FPS) --quit-after 900 --script res://scripts/dev/pull_movie.gd > $(LOG_DIR)/movie-pull.log 2>&1
+	"$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) --write-movie $(LOG_DIR)/movie-pull.avi --fixed-fps $(MOVIE_FPS) --quit-after $$((30 * $(MOVIE_FPS))) --script res://scripts/dev/pull_movie.gd > $(LOG_DIR)/movie-pull.log 2>&1
 	grep -q '^pull movie OK$$' $(LOG_DIR)/movie-pull.log
 	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/movie-pull.log | grep -v $(WINDOWED_LOG_NOISE) | grep -q .
 	ffmpeg -loglevel error -y -i $(LOG_DIR)/movie-pull.avi -c:v libx264 -pix_fmt yuv420p $(LOG_DIR)/movie-pull.mp4

@@ -140,9 +140,15 @@ func show_plucked(pose: Transform3D, color: Color) -> void:
 	_pull_progress = 0.0
 	_retract = create_tween()
 	var snap: Vector3 = get_parent_node_3d().global_basis * Vector3(0.055, 0.045, 0.12)
-	_retract.tween_property(self, "global_position", global_position + snap, 0.075)
+	_retract.tween_method(_lift_step, global_position, global_position + snap, 0.075)
 	_retract.tween_interval(SHOW_HAIR_SECONDS)
 	_retract.tween_callback(_start_return)
+
+
+## 抜いた毛を持ち上げる間も、動いた手首から肩まで腕を結ぶ。
+func _lift_step(wrist_position: Vector3) -> void:
+	global_position = wrist_position
+	_pose_arm()
 
 
 ## 毛から指を離し、現在の姿勢から腕を下ろす
@@ -166,6 +172,7 @@ func _start_return() -> void:
 ## 戻り始めの姿勢 start と現在の肩の間を、経過割合 weight で補間する。
 func _return_step(weight: float, start: Transform3D) -> void:
 	global_transform = start.interpolate_with(_rest_transform(), smoothstep(0.0, 1.0, weight))
+	_pose_arm()
 
 
 ## 下ろした手が腰の外側に来る、右肩を基準にしたワールド姿勢。
