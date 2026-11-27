@@ -1,12 +1,13 @@
 class_name PerfOverlay
 extends Label
-## 遊んでいる間に fps と 1 フレームにかかる時間を画面の左上に出す、切り替えできる小さな表示。
+## 遊んでいる間に fps と 1 フレームにかかる時間を画面の上の中央に出す、切り替えできる小さな表示。
 ## owner が実機で数字を読んで伝えるためのもの。出している間だけ、描画の CPU / GPU の時間の計測を有効にする。
 
 ## 表示を描き直す間隔 (秒)。毎フレーム描き直すと数字が読めないほど変わるため、目で追える 4 回 / 秒にした
 const REFRESH_INTERVAL_SECONDS: float = 0.25
-## 画面の左上からの位置 (px)。残り毛本数の表示 (画面上の中央) と重ならない左端に置く
-const SCREEN_OFFSET: Vector2 = Vector2(12.0, 8.0)
+## 画面の上端からの距離 (px)。左上の住人の表示と右上の残り毛本数の表示の間 (上の中央) に置き、
+## どちらの枠にも重ならない高さにした
+const TOP_MARGIN: float = 8.0
 ## 文字の大きさ (px)。HUD のほかの数字より小さく、1,280 × 720 で 1 行に収まる大きさ
 const FONT_SIZE: int = 16
 
@@ -26,7 +27,10 @@ static func format_metrics(
 ## 位置と文字の見た目を決め、隠した状態で始める
 func _ready() -> void:
 	name = "PerfOverlay"
-	position = SCREEN_OFFSET
+	set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
+	grow_horizontal = Control.GROW_DIRECTION_BOTH
+	offset_top = TOP_MARGIN
+	horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_theme_font_size_override("font_size", FONT_SIZE)
 	add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.9))
