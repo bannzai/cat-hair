@@ -212,13 +212,17 @@ func _verify_room_tool_damages(main: Node3D, game_state: Node) -> void:
 	game_state.purchase(GameStateScript.PURCHASE_TOOL, truck)
 	await _stand_in_room(main, target.room_id)
 	main.tools.select_tool(truck)
-	await _checker.press_and_release_use()
+	var result: Dictionary = main.tools.use_selected_tool_at(_target_at(main, target))
 	await _checker.process_frame
 	_check(
 		game_state.requests.find_item(target.found_item_id).condition
 		== FoundItemProgressScript.Condition.DAMAGED
 		and game_state.requests.find_item(other.found_item_id).condition == other_before,
-		"吸引車を部屋で使うと、その部屋のまだ取っていない探し物は傷み、別の部屋の探し物は変わらない",
+		"吸引車を部屋で使うと、その部屋のまだ取っていない探し物は傷み、別の部屋の探し物は変わらない (実際: %s・%s・%s)"
+		% [
+			str(result), str(target.found_item_id),
+			game_state.requests.find_item(target.found_item_id).condition,
+		],
 	)
 	main.tools.select_tool(ToolCatalogScript.TOOL_HAND)
 
