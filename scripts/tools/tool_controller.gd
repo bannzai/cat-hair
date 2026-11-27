@@ -523,13 +523,13 @@ static func plan_room_removal(
 static func apply_room_removal(world: MansionWorld, plan: Dictionary) -> void:
 	var hair_field: Node3D = world.get_hair_field()
 	# 埋もれた毛を先に消す (描いている毛を先に消すと、描き足しが計画した埋もれた毛を使ってしまい、消し切れずに残るため)
-	for hair_id: int in plan["removed_ids"]:
-		hair_field.remove_hair(hair_id)
 	var buried_by_surface: Dictionary = plan["buried_by_surface"]
 	for surface_index: int in buried_by_surface:
 		var taken: PackedInt32Array = buried_by_surface[surface_index]
 		for group: int in range(taken.size()):
 			HairFieldScript.remove_buried_hairs(hair_field, surface_index, group, taken[group])
+	for hair_id: int in plan["removed_ids"]:
+		hair_field.remove_hair(hair_id)
 
 
 ## 道具をかけた範囲に、表面に沿った半透明の円盤を出す (前の跡は消す)。取りこぼした毛は円盤の中に残って見える

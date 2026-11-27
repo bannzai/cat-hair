@@ -236,7 +236,7 @@ static func remove_picked_hairs(
 		hair_field,
 		surface_index,
 		SurfaceHairScript.STANDARD_COLORS.find(color_id),
-		0,
+		count - picked_ids.size(),
 	)
 	for hair_id: int in picked_ids:
 		hair_field.remove_hair(hair_id)
