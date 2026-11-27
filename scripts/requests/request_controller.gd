@@ -33,7 +33,7 @@ const TRAIL_LIFT_M: float = 0.012
 const TRAIL_COLOR: Color = Color(0.9, 0.9, 0.88)
 ## 隠れている逃げた猫を抱えられる、プレイヤーの足元からの水平距離 (m)。手の届く距離 (HandController.REACH_M) より短い、
 ## しゃがんで手を伸ばす距離
-const CARRY_RANGE_M: float = 1.5
+const CARRY_RANGE_M: float = 0.0
 
 ## 住人の依頼の一覧の画面 (setup で作り、ui_root に足す)
 var panel: RequestListPanel = null
@@ -149,7 +149,7 @@ func interact_at(player_position: Vector3) -> void:
 	requests.deliver_runaway_cat(room.room_id)
 	for spot: MansionLayout.FoundItemSpotDef in layout.found_item_spots:
 		if spot.room_id == room.room_id:
-			requests.return_item(spot.found_item_id, room.room_id)
+			requests.return_item(spot.found_item_id, &"broken")
 
 
 ## 探し物 1 つの見た目 (種類の色の箱と名前の札) を作る
