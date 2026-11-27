@@ -207,11 +207,12 @@ func _advance_building() -> Dictionary:
 	var before_seconds: float = elapsed_seconds()
 	if _game_state.next_building.advance() == null:
 		return {"kind": ACTION_ADVANCE, "seconds": 0.0}
-	_finished_buildings_seconds += before_seconds
-	if true:
+	_finished_buildings_seconds = before_seconds
+	if not _milestones.has(MILESTONE_NEXT_BUILDING):
 		_milestones[MILESTONE_NEXT_BUILDING] = snappedf(before_seconds, 0.01)
 	var key: String = String(ACTION_ADVANCE)
 	_count_by_action[key] = int(_count_by_action.get(key, 0)) + 1
+	_last_room_id = &""
 	_record_sample()
 	return {"kind": ACTION_ADVANCE, "seconds": 0.0}
 
