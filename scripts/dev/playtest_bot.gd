@@ -59,6 +59,10 @@ var _samples: Array[Dictionary] = []
 var _seconds_by_action: Dictionary = {}
 ## 1 手の種類 -> 行った回数
 var _count_by_action: Dictionary = {}
+## 道具の id -> その道具で取った本数の合計 (手を除く)
+var _removed_by_tool: Dictionary = {}
+## 「道具の id: 文言」 -> 道具を使って 1 本も取れなかった回数
+var _empty_results: Dictionary = {}
 ## 最後に毛を取った部屋 (別の部屋に移る時に歩く秒を足す)
 var _last_room_id: StringName = &""
 ## 次に経過を記録するゲーム内の秒
@@ -175,6 +179,8 @@ func report() -> Dictionary:
 		"samples": _samples,
 		"seconds_by_action": _seconds_by_action,
 		"count_by_action": _count_by_action,
+		"removed_by_tool": _removed_by_tool,
+		"empty_results": _empty_results,
 		"final": _sample(),
 	}
 
@@ -222,7 +228,7 @@ func _clean(tool_id: StringName, room_id: StringName) -> float:
 		)
 		_main.player.look_at_point(room.center)
 		_main.tools.select_tool(tool_id)
-		_main.tools.use_selected_tool()
+		_record_tool_result(_main.tools.use_selected_tool())
 		return seconds + PolicyScript.action_seconds(action, 0.0)
 	var target: Dictionary = _hair_target(room_id)
 	if target.is_empty():
@@ -237,8 +243,18 @@ func _clean(tool_id: StringName, room_id: StringName) -> float:
 		hand.advance_pull(pull)
 		return seconds + PolicyScript.action_seconds(action, pull)
 	_main.tools.select_tool(tool_id)
-	_main.tools.use_selected_tool_at(target)
+	_record_tool_result(_main.tools.use_selected_tool_at(target))
 	return seconds + PolicyScript.action_seconds(action, 0.0)
+
+
+## 道具を使った結果 result (ToolController.use_selected_tool_at の戻り値) を、取った本数と、
+## 1 本も取れなかった時の文言の回数に数える (所要時間が伸びた理由を simulate.json で追えるようにする)
+func _record_tool_result(result: Dictionary) -> void:
+	var key: String = String(result.get("tool_id", &""))
+	_removed_by_tool[key] = int(_removed_by_tool.get(key, 0)) + int(result.get("removed", 0))
+	if int(result.get("removed", 0)) <= 0:
+		var message: String = "%s: %s" % [key, str(result.get("message", ""))]
+		_empty_results[message] = int(_empty_results.get(message, 0)) + 1
 
 
 ## 部屋 room_id の表面のうち、残りがいちばん多い表面の 1 本の根元を狙う点 ({"surface_index", "point"}) にする。
@@ -352,6 +368,7 @@ func _sample() -> Dictionary:
 			_game_state.save_data.building_progress.hair_stocks
 		),
 		"remaining_hairs": _game_state.get_total_remaining_hairs(),
+		"drawn_hairs": _main.mansion_world.get_hair_field().get_remaining_count(),
 		"moods": moods,
 		"robots": _game_state.automation.get_robots().size(),
 	}
