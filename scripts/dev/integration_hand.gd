@@ -11,14 +11,14 @@ const HandAim := preload("res://scripts/dev/hand_aim.gd")
 const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
 ## 屋敷ビルダーロジックスクリプト (物の種類の並び)
 const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd")
-## モデル (または自作の形) に置き換えた物の種別から、毛の付く面の種類 (MansionBuilder の物の面の決め方と同じ対応)
-const MODEL_OBJECT_SURFACE_TYPES: Dictionary = {
-	MansionLayoutScript.OBJECT_SOFA: MansionLayoutScript.SURFACE_SOFA,
-	MansionLayoutScript.OBJECT_TABLE: MansionLayoutScript.SURFACE_FURNITURE,
-	MansionLayoutScript.OBJECT_SIDEBOARD: MansionLayoutScript.SURFACE_FURNITURE,
-	MansionLayoutScript.OBJECT_KNIT_CHAIR: MansionLayoutScript.SURFACE_KNIT,
-	MansionLayoutScript.OBJECT_SUIT_RACK: MansionLayoutScript.SURFACE_SUIT,
-}
+## モデル (または自作の形) に置き換えた、毛の面を持つ物の種別 (カーペットは床の上の板で形を変えていないため外す)
+const MODEL_OBJECT_KINDS: Array[StringName] = [
+	MansionLayoutScript.OBJECT_SOFA,
+	MansionLayoutScript.OBJECT_TABLE,
+	MansionLayoutScript.OBJECT_SIDEBOARD,
+	MansionLayoutScript.OBJECT_KNIT_CHAIR,
+	MansionLayoutScript.OBJECT_SUIT_RACK,
+]
 ## 音声カタログ (効果音の出来事名)
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## AudioManager の型解決と実行時取得用スクリプト参照
@@ -727,20 +727,26 @@ func _verify_pluck_on_model_surfaces(main: Node3D, game_state: Node) -> void:
 	game_state.apply_tuning_and_rebuild(all_kinds_tuning, false)
 	await _checker.process_frame
 	var world: MansionWorld = main.mansion_world
-	# 確かめる面の種類は、毛の面からではなく屋敷に置いた物から決める (モデルに置き換えて面が無くなった時に、
-	# 「置かれていない種類」として飛ばさず落とすため)
-	var present: Dictionary = {}
+	# 確かめる物は、毛の面からではなく屋敷に置いた物から決める (モデルに置き換えて面が無くなった時に、
+	# 「置かれていない物」として飛ばさず落とすため)。机とサイドボードは同じ種類の面のため、物ごとに確かめる
+	var model_objects: Array[MansionLayout.ObjectDef] = []
+	var surface_types: Dictionary = {}
 	for obj: MansionLayout.ObjectDef in game_state.current_layout.objects:
-		if MODEL_OBJECT_SURFACE_TYPES.has(obj.object_kind):
-			present[MODEL_OBJECT_SURFACE_TYPES[obj.object_kind]] = true
+		if MODEL_OBJECT_KINDS.has(obj.object_kind):
+			model_objects.append(obj)
+			surface_types[obj.surface_type] = true
 	_check(
-		present.size() == 4,
-		"物 6 個の 1 部屋の屋敷に、ソファ・机の天面・ニット・スーツの 4 種類の面の物が並ぶ (%d 種類)"
-		% present.size(),
+		surface_types.size() == 4 and model_objects.size() == 5,
+		(
+			"物 6 個の 1 部屋の屋敷に、ソファ・机・サイドボード・ニットの椅子・スーツのラックの 5 個が並び、"
+			+ "面は 4 種類 (物 %d 個・面 %d 種類)"
+		) % [model_objects.size(), surface_types.size()],
 	)
-	for surface_type: StringName in present.keys():
-		var aimed_id: int = await HandAim.aim_at_surface_hair(_checker, main, surface_type)
-		_check(aimed_id >= 0, "「%s」の面の毛を、手の届く所から画面中央で狙える" % surface_type)
+	for obj: MansionLayout.ObjectDef in model_objects:
+		var aimed_id: int = await HandAim.aim_at_surface_hair(
+			_checker, main, _object_surface_indices(world, obj)
+		)
+		_check(aimed_id >= 0, "「%s」の面の毛を、手の届く所から画面中央で狙える" % obj.object_kind)
 		if aimed_id < 0:
 			continue
 		var before_total: int = game_state.get_total_remaining_hairs()
@@ -756,10 +762,29 @@ func _verify_pluck_on_model_surfaces(main: Node3D, game_state: Node) -> void:
 			and plucked == 1
 			and not world.get_hair_field().has_hair(aimed_id)
 			and game_state.get_total_remaining_hairs() == before_total - 1,
-			"「%s」の面の毛を手でつまんで引き終えると、狙った 1 本が抜けて残り本数が 1 減る" % surface_type,
+			"「%s」の面の毛を手でつまんで引き終えると、狙った 1 本が抜けて残り本数が 1 減る" % obj.object_kind,
 		)
 	game_state.apply_tuning_and_rebuild(original_tuning, false)
 	await _checker.process_frame
+
+
+## 物 obj の毛の面 (その物の種類の面のうち、面の中心が物の床の上の範囲に入るもの) の番号を返す
+static func _object_surface_indices(
+	world: MansionWorld, obj: MansionLayout.ObjectDef
+) -> Array[int]:
+	var indices: Array[int] = []
+	# 物の床の上の範囲は、回転しても収まるよう幅と奥行の大きい方の半分を半径にした円で見る
+	var reach: float = maxf(obj.size.x, obj.size.z) * 0.5
+	for surface_idx: int in range(world.get_hair_field().get_surface_count()):
+		var surface: MansionLayout.SurfaceDef = world.get_surface_def(surface_idx)
+		if (
+			surface != null
+			and surface.surface_type == obj.surface_type
+			and Vector2(surface.center.x - obj.position.x, surface.center.z - obj.position.z).length()
+			<= reach
+		):
+			indices.append(surface_idx)
+	return indices
 
 
 ## 毛のままの在庫のうち、指定した珍しい毛の本数を返す

@@ -27,7 +27,7 @@ const TRADER_SCENE: PackedScene = preload("res://assets/models/buyer.glb")
 const TRADER_PHOTO_MATERIAL_NAMES: Array[String] = [
 	"headHDmale.000", "ear", "mouth2.000", "eye.000"
 ]
-## 隠した骨とみなす縮めの上限。hand_view.gd の HIDDEN_BONE_SCALE (0.0001) より大きく、見える大きさ (1) より十分小さい
+## 隠した骨とみなす縮めの上限。hand_view.gd の HIDDEN_BONE_SCALE より大きく、見える大きさ (1) より十分小さい
 const HIDDEN_SCALE_MAX: float = 0.01
 
 ## 検証結果を記録する selfcheck の SceneTree 参照
@@ -237,6 +237,26 @@ func _check_furniture_models_fit_box() -> void:
 		"モデルの範囲は、子孫の全部のメッシュを親の位置・倍率を辿って合わせた範囲になる (%s)"
 		% FurnitureModels.merged_mesh_aabb(probe_root),
 	)
+	# 祖先に着く前に Node3D でない親に当たる時は、そこまでの変換で止まる (素の Node の下の位置 (0, 3, 0) の親 → 子の
+	# 位置 (1, 0, 0) なら (1, 3, 0)。祖先 probe_root の位置 (5, 0, 0) は足さない)
+	var plain_parent: Node = Node.new()
+	var mid: Node3D = Node3D.new()
+	mid.position = Vector3(0.0, 3.0, 0.0)
+	plain_parent.add_child(mid)
+	var leaf: Node3D = Node3D.new()
+	leaf.position = Vector3(1.0, 0.0, 0.0)
+	mid.add_child(leaf)
+	probe_root.position = Vector3(5.0, 0.0, 0.0)
+	_check(
+		FurnitureModels.transform_to_ancestor(leaf, probe_root).origin.is_equal_approx(
+			Vector3(1.0, 3.0, 0.0)
+		)
+		and FurnitureModels.transform_to_ancestor(raised_box, probe_root).origin.is_equal_approx(
+			Vector3(0.0, 3.0, 0.0)
+		),
+		"祖先への変換は、祖先に着いたら祖先の位置を含めずに止まり、Node3D でない親に当たったらそこで止まる",
+	)
+	plain_parent.free()
 	probe_root.free()
 	var empty_node: Node3D = Node3D.new()
 	_check(

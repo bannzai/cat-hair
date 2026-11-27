@@ -551,7 +551,6 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 		# 横棒は肩 (高さの 0.88) の少し上の 0.95 に、物の幅の 95% で置き、柱の上端から左右に張り出して見える長さにする。
 		# 袖は上着の高さの 1.1 倍の長さで、中心を上着より高さの 5% 上げる (肩から垂れて上着の裾より少し下まで届く)。
 		# 袖の奥行は上着の奥行の 7 割 (前身頃の面より奥に収め、前から見て前身頃の毛に被らない)
-		var jacket_center: Vector3 = MansionBuilderScript.SUIT_JACKET_CENTER_RATIO * obj.size
 		var jacket_size: Vector3 = MansionBuilderScript.SUIT_JACKET_SIZE_RATIO * obj.size
 		_add_static_box(
 			object_root,
@@ -567,7 +566,8 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 				"SleeveLeft" if side < 0.0 else "SleeveRight",
 				Vector3(
 					side * (jacket_size.x * 0.5 + SUIT_SLEEVE_WIDTH_M * 0.5),
-					jacket_center.y + jacket_size.y * 0.05,
+					MansionBuilderScript.SUIT_JACKET_CENTER_RATIO.y * object_height
+					+ jacket_size.y * 0.05,
 					0.0,
 				),
 				Vector3(SUIT_SLEEVE_WIDTH_M, jacket_size.y * 1.1, jacket_size.z * 0.7),

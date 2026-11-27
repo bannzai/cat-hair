@@ -196,8 +196,8 @@ func _bone_head(bone_name: String) -> Vector3:
 func _bone_tip(bone_name: String) -> Vector3:
 	var bone: int = _skeleton.find_bone(bone_name)
 	var children: PackedInt32Array = _skeleton.get_bone_children(bone)
-	var pose: Transform3D = _skeleton.get_bone_global_rest(bone)
+	var rest: Transform3D = _skeleton.get_bone_global_rest(bone)
 	if not children.is_empty():
 		return _skeleton.get_bone_global_rest(children[0]).origin
-	return pose.origin + pose.basis.y.normalized() * _skeleton.get_bone_rest(bone).origin.length()
+	return rest.origin + rest.basis.y.normalized() * _skeleton.get_bone_rest(bone).origin.length()
 

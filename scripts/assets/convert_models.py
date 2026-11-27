@@ -46,16 +46,16 @@ STANDING_FRAME = 1
 def dump_scene() -> None:
     """読み込んだ場面の物・骨・材質・画像の一覧を出す"""
     for obj in bpy.data.objects:
-        print("OBJECT", obj.name, obj.type, "dims", tuple(round(v, 4) for v in obj.dimensions), "loc",
-              tuple(round(v, 4) for v in obj.location), "parent", obj.parent.name if obj.parent else None)
+        print("OBJECT", obj.name, obj.type, "dims", tuple(round(component, 4) for component in obj.dimensions), "loc",
+              tuple(round(component, 4) for component in obj.location), "parent", obj.parent.name if obj.parent else None)
         if obj.type == "MESH":
             print("  MESH verts", len(obj.data.vertices), "polys", len(obj.data.polygons),
                   "groups", len(obj.vertex_groups), "materials", [slot.name if slot else None for slot in obj.data.materials])
         if obj.type == "ARMATURE":
             for bone in obj.data.bones:
                 print("  BONE", bone.name, "parent", bone.parent.name if bone.parent else None,
-                      "head", tuple(round(v, 4) for v in bone.head_local),
-                      "tail", tuple(round(v, 4) for v in bone.tail_local))
+                      "head", tuple(round(component, 4) for component in bone.head_local),
+                      "tail", tuple(round(component, 4) for component in bone.tail_local))
     for image in bpy.data.images:
         print("IMAGE", image.name, image.filepath, tuple(image.size))
     for action in bpy.data.actions:
@@ -101,7 +101,7 @@ def bake_standing_pose() -> None:
     rig.animation_data_create()
     rig.animation_data.action = bpy.data.actions[STANDING_ACTION_NAME]
     bpy.context.scene.frame_set(STANDING_FRAME)
-    for obj in [o for o in bpy.data.objects if o.type == "MESH"]:
+    for obj in [candidate for candidate in bpy.data.objects if candidate.type == "MESH"]:
         bpy.context.view_layer.objects.active = obj
         for modifier in [candidate for candidate in obj.modifiers if candidate.type == "ARMATURE"]:
             bpy.ops.object.modifier_apply(modifier=modifier.name)
@@ -119,7 +119,7 @@ def attach_skin_texture(texture_path: str) -> None:
     for material in bpy.data.materials:
         material.use_nodes = True
         nodes = material.node_tree.nodes
-        bsdf = next((n for n in nodes if n.type == "BSDF_PRINCIPLED"), None)
+        bsdf = next((node for node in nodes if node.type == "BSDF_PRINCIPLED"), None)
         if bsdf is None or bsdf.inputs["Base Color"].is_linked:
             continue
         texture_node = nodes.new("ShaderNodeTexImage")

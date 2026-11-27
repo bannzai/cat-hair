@@ -21,18 +21,18 @@ static func aim_at_floor_hairs(tree: SceneTree, main: Node3D, radius: float, min
 	return await _aim_at_floor(tree, main, radius, min_hairs)
 
 
-## 種類が surface_type の表面 (家具の座面・スーツの前面・ニットの掛け布等) の毛を順に試し、その毛から水平に
+## 番号が surface_indices の表面 (家具の座面・スーツの前面・ニットの掛け布等) の毛を順に試し、その毛から水平に
 ## 4 方向 (面が縦なら面の外向きを先に) のどれかへ STAND_DISTANCE_M 離れた所に立たせて目線を向ける。画面中央の狙いが
 ## その毛の表面に当たり、その毛をつまめる時、その毛の ID を返す。見つからなければ -1
-static func aim_at_surface_hair(tree: SceneTree, main: Node3D, surface_type: StringName) -> int:
+static func aim_at_surface_hair(tree: SceneTree, main: Node3D, surface_indices: Array[int]) -> int:
 	var world: MansionWorld = main.get_node("MansionWorld")
 	var player: FirstPersonPlayer = main.get_node("Player")
 	var hand: HandController = main.hand
 	var hair_field: Node3D = world.get_hair_field()
 	var tried: int = 0
-	for surface_idx: int in range(hair_field.get_surface_count()):
+	for surface_idx: int in surface_indices:
 		var surface: MansionLayout.SurfaceDef = world.get_surface_def(surface_idx)
-		if surface == null or surface.surface_type != surface_type:
+		if surface == null:
 			continue
 		var outward: Vector3 = Vector3(surface.basis.y.x, 0.0, surface.basis.y.z)
 		var directions: Array[Vector3] = [Vector3.RIGHT, Vector3.BACK, Vector3.LEFT, Vector3.FORWARD]
