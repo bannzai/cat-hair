@@ -16,15 +16,18 @@ ignored_dir=scripts/dev/ci_uidcheck_ignored
 failed=0
 trap 'rm -rf "$probe" "$probe.uid" "$ignored_dir" .godot/ci_uidcheck_probe.gd.uid' EXIT
 
-# make uidcheck を実行し、成否と、ログの uid_check の FAIL の行のうち $probe の行を 1 つの文字列で出す。
-# 前のケースの FAIL の行を読まないよう、実行の前にログを消す。uidcheck.log が無い (import で落ちた) 時は no-log を出す
+# ケースの名前 ($1) のディレクトリ tmp/uidcheck-test/<名前>/ をログの置き場にして make uidcheck を実行し、成否と、
+# ログの uid_check の FAIL の行のうち $probe の行を 1 つの文字列で出す。ケースごとにログを分けて残し
+# (CI の Upload logs が artifact に上げる)、make の出力も make.log に残す。
+# uidcheck.log が無い (import で落ちた) 時は no-log を出す
 run_uidcheck() {
-  local status=0
-  rm -f tmp/uidcheck-test/*.log
-  make --no-print-directory uidcheck GODOT="$godot" LOG_DIR=tmp/uidcheck-test > /dev/null 2>&1 || status=$?
+  local status=0 dir=tmp/uidcheck-test/$1
+  rm -rf "$dir"
+  mkdir -p "$dir"
+  make --no-print-directory uidcheck GODOT="$godot" LOG_DIR="$dir" > "$dir/make.log" 2>&1 || status=$?
   printf '%s %s' "$([ "$status" -eq 0 ] && echo ok || echo failed)" \
-    "$(if [ -f tmp/uidcheck-test/uidcheck.log ]; then
-      grep -oE "uid_check FAIL: res://$probe\.uid .*" tmp/uidcheck-test/uidcheck.log
+    "$(if [ -f "$dir/uidcheck.log" ]; then
+      grep -oE "uid_check FAIL: res://$probe\.uid .*" "$dir/uidcheck.log"
     else
       echo no-log
     fi)"
@@ -40,21 +43,20 @@ check() {
   fi
 }
 
-mkdir -p tmp/uidcheck-test
 printf 'extends Node\n' > "$probe"
 make --no-print-directory uid > /dev/null
-check "make uid の .uid は通る" "$(run_uidcheck)" '^ok $'
+check "make uid の .uid は通る" "$(run_uidcheck case-1)" '^ok $'
 
 printf 'uid://BAD\n' > "$probe.uid"
-check "Godot が読めない .uid (大文字) で落ちる" "$(run_uidcheck)" \
+check "Godot が読めない .uid (大文字) で落ちる" "$(run_uidcheck case-2)" \
   "^failed uid_check FAIL: res://$probe.uid の uid://BAD を Godot が識別子として読めない"
 
 printf 'uid://zz99\n' > "$probe.uid"
-check "Godot の書く表記と違う .uid (z・9 を含む) で落ちる" "$(run_uidcheck)" \
+check "Godot の書く表記と違う .uid (z・9 を含む) で落ちる" "$(run_uidcheck case-3)" \
   "^failed uid_check FAIL: res://$probe.uid の uid://zz99 が Godot の書く表記 uid://01ba と違う"
 
 cp scripts/main.gd.uid "$probe.uid"
-check "別のスクリプトと同じ識別子の .uid で落ちる" "$(run_uidcheck)" \
+check "別のスクリプトと同じ識別子の .uid で落ちる" "$(run_uidcheck case-4)" \
   "^failed uid_check FAIL: res://$probe.uid の識別子 $(cat scripts/main.gd.uid) が res://$probe に結び付いていない"
 
 rm -f "$probe" "$probe.uid"
@@ -62,10 +64,10 @@ mkdir -p "$ignored_dir"
 touch "$ignored_dir/.gdignore"
 printf 'extends Node\n' > "$ignored_dir/x.gd"
 printf 'uid://BAD\n' > "$ignored_dir/x.gd.uid"
-check ".gdignore を置いたディレクトリの .uid は見ない" "$(run_uidcheck)" '^ok $'
+check ".gdignore を置いたディレクトリの .uid は見ない" "$(run_uidcheck case-5)" '^ok $'
 rm -rf "$ignored_dir"
 
 printf 'uid://BAD\n' > .godot/ci_uidcheck_probe.gd.uid
-check ".godot の下の .uid は見ない" "$(run_uidcheck)" '^ok $'
+check ".godot の下の .uid は見ない" "$(run_uidcheck case-6)" '^ok $'
 
 exit "$failed"

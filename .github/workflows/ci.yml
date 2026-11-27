@@ -110,7 +110,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cat-hair-check-logs
-          path: tmp/*.log
+          # tmp/uid-probe/ と tmp/uidcheck-test/<ケース>/ は .uid の検証のログ (上の 2 つの step)
+          path: tmp/**/*.log
           if-no-files-found: warn
           retention-days: 7
       - name: Upload build artifacts
