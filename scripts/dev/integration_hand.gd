@@ -460,6 +460,10 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		and is_equal_approx(
 			main.player.to_local(camera.global_position).y, FirstPersonPlayer.EYE_HEIGHT_M)
 		and shoulder.get_parent() == camera.get_parent().get_parent(), "肩と視点は同じ体にあり、目の高さから見る")
+	# 手の表示だけを 1 フレーム進め、つまんだ位置が待機姿勢に戻らないことを測る。
+	hand.set_process(false)
+	await _checker.process_frame
+	hand.set_process(true)
 	var screen: Rect2 = main.get_viewport().get_visible_rect()
 	for tip_path: String in [
 		"IndexFinger/Joint0/End/Joint1/End/Joint2/End",
@@ -554,9 +558,12 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 	)
 	var before_color: int = surface_hair.count_for_color(plucked_color)
 	var plucked: int = hand.advance_pull(hand.get_pull_duration())
+	var plucked_basis: Basis = hand_view.global_basis
 	_check(detached_hair.visible and detached_hair.is_visible_in_tree(),
 		"引き切った直後に抜いた毛が指先に見える")
 	await _checker.process_frame
+	_check(hand_view.global_basis.is_equal_approx(plucked_basis),
+		"抜いた毛を見せている間はつまんだ手の向きを保つ")
 	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
 	_check(

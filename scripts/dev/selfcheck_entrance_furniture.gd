@@ -8,6 +8,17 @@ static func run(checker: SceneTree, layout: MansionLayout) -> void:
 		checker._check(false, "玄関と同じ配置順を比較できる 7 部屋以上の検証用屋敷がある")
 		return
 	var entrance: MansionLayout.RoomDef = layout.rooms[0]
+	var original_weight: float = MansionBuilder.FLOOR_HAIR_WEIGHT
+	for obj: MansionLayout.ObjectDef in layout.objects:
+		if obj.room_id == entrance.room_id:
+			for preset: Dictionary in MansionBuilder.OBJECT_PRESETS:
+				if preset["kind"] == obj.object_kind:
+					original_weight += float(preset["weight"])
+	var spread_weight: float = 0.0
+	for surface: MansionLayout.SurfaceDef in layout.surfaces:
+		if surface.room_id == entrance.room_id:
+			spread_weight += surface.hair_weight
+	checker._check(is_equal_approx(original_weight, spread_weight), "再配分で玄関全体の毛の重みを保つ")
 	var found_jacket: bool = false
 	for obj: MansionLayout.ObjectDef in layout.objects:
 		if obj.object_kind == MansionLayout.OBJECT_SUIT_RACK:

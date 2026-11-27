@@ -13,7 +13,7 @@ const REST_POSITION: Vector3 = Vector3(0.30, -0.55, 0.0)
 const REST_ROTATION: Vector3 = Vector3(-1.2, 0.15, 0.0)
 ## 照準を右手で覆わず、毛先の左右に指が見える向き。
 const PINCH_ROTATION: Vector3 = Vector3(-0.40, 1.05, -0.28)
-## 抜いた毛と閉じた指先が見える時間、その後で手を下ろす時間
+## 腕を下ろす前に、閉じた指先で抜いた毛をひと目確かめられる間を置く。
 const SHOW_HAIR_SECONDS: float = 0.16
 ## 抜けた瞬間と腕を下ろす動きを別々に追える時間。
 const RETURN_SECONDS: float = 0.24
