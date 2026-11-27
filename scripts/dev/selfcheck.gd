@@ -56,6 +56,8 @@ const SelfcheckBigTools := preload("res://scripts/dev/selfcheck_big_tools.gd")
 const SelfcheckPlaytestBot := preload("res://scripts/dev/selfcheck_playtest_bot.gd")
 ## 人の形 (画面の手と腕・買取業者の体) の検証スイート
 const SelfcheckHuman := preload("res://scripts/dev/selfcheck_human.gd")
+## 次の建物へ進む決まりと入口の検証スイート
+const SelfcheckNextBuilding := preload("res://scripts/dev/selfcheck_next_building.gd")
 
 
 ## 検証をすべて実行して終える
@@ -82,6 +84,7 @@ func _initialize() -> void:
 	SelfcheckBigTools.run_all(self)
 	SelfcheckPlaytestBot.run_all(self)
 	SelfcheckHuman.run_all(self)
+	SelfcheckNextBuilding.run_all(self)
 	_finish()
 
 

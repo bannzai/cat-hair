@@ -52,6 +52,8 @@ const TRADER_RANGE_M: float = 2.0
 const ToolShopPanelScript := preload("res://scripts/ui/tool_shop_panel.gd")
 ## 毛を売る・掃除代の計算 (払う間隔の表示に使う)
 const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
+## 次の建物へ進む決まりの計算 (建物の表示名)
+const BuildingRulesScript := preload("res://scripts/building/building_rules.gd")
 ## 見た目の試作 (issue #19) を屋敷の最初の部屋に重ねるノードのスクリプト
 const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room.gd")
 ## 見た目の試作の画面の表示 (所持金・道具の枠・案内) のスクリプト
@@ -728,6 +730,7 @@ func _build_tool_ui() -> void:
 	tool_shop_panel.purchase_requested.connect(_on_purchase_requested)
 	tool_shop_panel.sell_requested.connect(_on_sell_requested)
 	tool_shop_panel.haul_requested.connect(_on_haul_requested)
+	tool_shop_panel.advance_requested.connect(_on_advance_requested)
 	tool_shop_panel.close_requested.connect(close_tool_shop)
 
 	automation = AutomationControllerScript.new()
@@ -866,6 +869,26 @@ func _on_haul_requested() -> void:
 			"ダンプカーで %d 本分を運んだ +%d 円" % [int(hauled["hauled_hairs"]), int(hauled["earned"])]
 		)
 	tool_shop_panel.refresh(_game_state, is_near_trader())
+
+
+## 道具を買う画面で次の建物へ進んだ時 (住人全員がご機嫌の時だけ進む)。画面を閉じ、終えた建物の成績を知らせる。
+## 次の建物の屋敷は GameState.mansion_rebuilt を受けて組み直す
+func _on_advance_requested() -> void:
+	var record: BuildingRecord = _game_state.next_building.advance()
+	if record == null:
+		tool_shop_panel.refresh(_game_state, is_near_trader())
+		return
+	close_tool_shop()
+	_show_popup(
+		"%sへ進んだ\n%sの成績: かかった時間 %d 分 / 返した探し物 %d 個" % [
+			BuildingRulesScript.building_name(
+				_game_state.save_data.building_progress.building_id
+			),
+			BuildingRulesScript.building_name(record.building_id),
+			floori(record.clear_seconds / 60.0),
+			record.returned_found_item_count,
+		]
+	)
 
 
 ## GameState.mansion_rebuilt シグナル受信ハンドラ

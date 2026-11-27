@@ -51,6 +51,8 @@ const CAT_VIEW_DISTANCE_M: float = 1.4
 const PERF_OVERLAY_WAIT_MSEC: int = 1500
 ## 開発者向け調整値データ型スクリプト (見た目の試作の撮影で毛の本数を変える)
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
+## 住人全員をご機嫌にする処理 (次の建物へ進める道具を買う画面を撮る)
+const SelfcheckNextBuildingScript := preload("res://scripts/dev/selfcheck_next_building.gd")
 
 ## screenshot 専用のセーブパス
 const TEST_SAVE_PATH: String = "user://screenshot_save_data.json"
@@ -366,7 +368,8 @@ func _capture_tools(main: Node3D) -> String:
 	return await _capture_trader_and_shop(main)
 
 
-## 裏口の買取業者 (人型と札の字) と、その近くで開いた道具を買う画面 (毛を売るボタンが押せる) を撮る。
+## 裏口の買取業者 (人型と札の字) と、その近くで開いた道具を買う画面 (毛を売るボタンが押せる) と、
+## 住人全員がご機嫌の時の道具を買う画面 (次の建物へ進むボタンが押せる) を撮る。
 ## 撮れたら空文字、失敗したら理由を返す
 func _capture_trader_and_shop(main: Node3D) -> String:
 	var trader: Vector3 = main.mansion_world.get_trader_position()
@@ -381,7 +384,17 @@ func _capture_trader_and_shop(main: Node3D) -> String:
 	main.open_tool_shop()
 	var shop_ok: bool = await _capture("tmp/screenshot-tool-shop.png")
 	main.close_tool_shop()
-	return "" if shop_ok else "道具を買う画面を保存できない"
+	if not shop_ok:
+		return "道具を買う画面を保存できない"
+	# 住人全員がご機嫌の時の、次の建物へ進むボタンが押せる道具を買う画面 (撮ったら機嫌を戻す)
+	var moods: Dictionary = main.get_game_state().save_data.building_progress.resident_moods
+	var moods_before: Dictionary = moods.duplicate()
+	SelfcheckNextBuildingScript.make_everyone_happy(main.get_game_state())
+	main.open_tool_shop()
+	var advance_ok: bool = await _capture("tmp/screenshot-tool-shop-advance.png")
+	main.close_tool_shop()
+	moods.merge(moods_before, true)
+	return "" if advance_ok else "次の建物へ進める道具を買う画面を保存できない"
 
 
 ## 掃除ロボットの回る順を決める画面 (2 台を買い、1 台目に部屋を 2 つ並べた所)、掃除ロボットが部屋を走って毛を取った跡、

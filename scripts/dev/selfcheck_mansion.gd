@@ -33,6 +33,8 @@ const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 ## 状態管理 autoload スクリプト
 const GameStateScript := preload("res://scripts/state/game_state.gd")
+## 次の建物へ進む決まり (成績が 1 つある保存データの今いる建物の作り)
+const BuildingRulesScript := preload("res://scripts/building/building_rules.gd")
 
 ## selfcheck が使う一時セーブファイルパス
 const TEST_SAVE_PATH: String = "user://selfcheck_save_data.json"
@@ -949,8 +951,11 @@ func _create_rich_save_fixture() -> SaveData:
 	tuning.hair_count = 250
 	tuning.found_item_count = 2
 	tuning.room_size_m = 7.0
-	var layout: MansionLayout = MansionBuilderScript.build_layout(tuning)
-	var progress: BuildingProgress = MansionBuilderScript.build_initial_progress(layout, tuning)
+	# 成績が 1 つ (屋敷を終えた) あるため、今いるのは 2 つ目の建物 (調整値から求めた作り)
+	var hotel_tuning: MansionTuning = BuildingRulesScript.building_tuning(tuning, 1)
+	var layout: MansionLayout = MansionBuilderScript.build_layout(hotel_tuning)
+	var progress: BuildingProgress = MansionBuilderScript.build_initial_progress(layout, hotel_tuning)
+	progress.building_id = BuildingRulesScript.BUILDING_HOTEL
 	progress.money = 4321
 	progress.elapsed_seconds = 123.5
 	progress.surface_hairs[0].hair_counts[SurfaceHairScript.COLOR_WHITE] = 42

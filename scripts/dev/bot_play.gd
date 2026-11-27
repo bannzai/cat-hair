@@ -1,6 +1,6 @@
 extends SceneTree
 ## 自動テストプレイ。bot (scripts/dev/playtest_bot.gd) が屋敷をはじめから遊ぶ。
-## 引数 --simulate (make simulate): headless で、3 つの節目にすべて着くか MAX_GAME_SECONDS に届くまで 1 フレームの中で遊び切り、
+## 引数 --simulate (make simulate): headless で、測る節目にすべて着くか MAX_GAME_SECONDS に届くまで 1 フレームの中で遊び切り、
 ## 節目までのゲーム内の時間を tmp/simulate.json に書いて「simulate OK」を出す。
 ## 引数 --frames=<N> --fps=<N> [--steps-per-frame=<N>] (make playtest): 描画付きで、1 フレームごとに bot の手を
 ## 行い (早送り)、録画を撮って「playtest OK」を出す。
@@ -94,7 +94,7 @@ func _audio_settings_path() -> String:
 	return ProjectSettings.globalize_path("res://tmp/playtest-audio-settings.cfg")
 
 
-## bot を 3 つの節目にすべて着くか打ち切りの秒まで遊ばせ、集計を JSON に書く。
+## bot を測る節目にすべて着くか打ち切りの秒まで遊ばせ、集計を JSON に書く。
 ## 打ち切りの秒は環境変数 SIMULATE_MAX_SECONDS、書き出し先は SIMULATE_JSON で上書きできる
 ## (make failure-path がわざと失敗させるため。未指定の時は make simulate の既定 MAX_GAME_SECONDS・SIMULATE_JSON_PATH)。
 ## 書けて、最初の道具を買う節目に届いていたら true
