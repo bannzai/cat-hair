@@ -52,6 +52,10 @@ const DEFAULT_DRAW_BUDGET: int = 240000
 ## 描き足しの乱数のシードを、配置の乱数のシードからずらす幅。同じシードだと描き足す毛が配置の最初の毛と同じ位置・色の
 ## 列をたどるため、別の列にする。populate の同じシードで描き足しも同じになればよく、1 で足りる
 const REFILL_SEED_OFFSET: int = 1
+## 消した毛の ID を使い直すまでに、後から消す毛の本数。手が引いている途中の毛 (つまめる本数は数本) や、検証が
+## 消した直後に「その ID の毛が無い」ことを確かめる間に、同じ ID が別の毛に付かないよう、その間に消える本数より十分多くする。
+## 逆引き配列は描く本数とこの本数の合計ほどで頭打ちになる
+const ID_REUSE_DELAY: int = 10000
 
 ## 1 本ずつ描く毛の本数の上限 (屋敷全体。0 以下は上限なし)。populate の前に設定する
 var draw_budget: int = DEFAULT_DRAW_BUDGET
@@ -67,6 +71,11 @@ var _refill_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _id_to_surface: PackedInt32Array = PackedInt32Array()
 ## hair_id -> 表面内スロット番号の逆引き配列 (INVALID_SLOT = -1 は削除済み)
 var _id_to_slot: PackedInt32Array = PackedInt32Array()
+## 消した毛の ID を消した順に並べた列。_free_head より前は使い直し済み。新しく描く毛は、ID_REUSE_DELAY 本より前に
+## 消した ID を使い直し、逆引き配列が取った本数に比例して伸び続けないようにする
+var _freed_ids: PackedInt32Array = PackedInt32Array()
+## _freed_ids のうち、次に使い直す ID の位置
+var _free_head: int = 0
 ## 部屋全体で現在残っている毛の総本数
 var _remaining_count: int = 0
 ## 全表面で共有する 1 本の毛メッシュ
@@ -477,7 +486,23 @@ func _erase_drawn(hair_id: int) -> int:
 	multimesh.visible_instance_count = last_slot
 	_id_to_slot[hair_id] = INVALID_SLOT
 	_id_to_surface[hair_id] = INVALID_SLOT
+	_freed_ids.append(hair_id)
 	return surface_index
+
+
+## 新しく描く毛の ID。ID_REUSE_DELAY 本より前に消した ID があれば使い直し、無ければ逆引き配列を 1 つ伸ばした ID
+func _next_hair_id() -> int:
+	if _freed_ids.size() - _free_head <= ID_REUSE_DELAY:
+		_id_to_slot.append(INVALID_SLOT)
+		_id_to_surface.append(INVALID_SLOT)
+		return _id_to_slot.size() - 1
+	var hair_id: int = _freed_ids[_free_head]
+	_free_head += 1
+	# 使い直し済みの先頭が列の半分を超えたら詰め、列が取った本数に比例して伸びないようにする
+	if _free_head * 2 > _freed_ids.size():
+		_freed_ids = _freed_ids.slice(_free_head)
+		_free_head = 0
+	return hair_id
 
 
 ## 表面 surface_index に埋もれた毛があり、描いている本数が draw_cap より少なければ、埋もれた毛から 1 本
@@ -586,9 +611,9 @@ func _place_hair(surface_index: int, xform: Transform3D, color: Color) -> int:
 		# 倍に広げて置き直す回数を本数の log に抑える。0 本の面の最初の枠は、猫が 1 か所に立ち止まる間に落とす 4 本の
 		# 数回分 (16 本) にし、立ち止まるたびに広げ直さない
 		_grow_bucket(bucket, maxi(16, multimesh.instance_count * 2))
-	var hair_id: int = _id_to_slot.size()
-	_id_to_slot.append(slot)
-	_id_to_surface.append(surface_index)
+	var hair_id: int = _next_hair_id()
+	_id_to_slot[hair_id] = slot
+	_id_to_surface[hair_id] = surface_index
 	var hair_ids: PackedInt32Array = bucket["hair_ids"]
 	var colors: PackedColorArray = bucket["colors"]
 	hair_ids[slot] = hair_id
@@ -658,6 +683,8 @@ func clear() -> void:
 	_buckets.clear()
 	_id_to_surface = PackedInt32Array()
 	_id_to_slot = PackedInt32Array()
+	_freed_ids = PackedInt32Array()
+	_free_head = 0
 	_remaining_count = 0
 
 
@@ -819,14 +846,22 @@ func _prepare_shared_resources(total: int) -> void:
 
 
 ## 表面ごとの本数 totals (合計 total) から、表面ごとに 1 本ずつ描く本数を返す。合計が draw_budget 以下 (か上限なし)
-## なら全部描き、超える時は draw_budget を表面の本数に比例して分ける
+## なら全部描き、超える時は毛のある面に 1 本ずつ配ってから、残りの枠を表面の本数に比例して分ける
+## (比例だけで分けると本数の少ない面の枠が 0 本になり、その面の毛を手でも狙った所にかける道具でも取れなくなるため)。
+## 毛のある面が draw_budget より多い時は、描く本数が draw_budget を超えても各面に 1 本ずつ描く
 func _drawn_counts(totals: PackedFloat32Array, total: int) -> PackedInt32Array:
+	var all_counts: PackedInt32Array = PackedInt32Array()
+	for count: float in totals:
+		all_counts.append(int(count))
 	if draw_budget <= 0 or total <= draw_budget:
-		var all_counts: PackedInt32Array = PackedInt32Array()
-		for count: float in totals:
-			all_counts.append(int(count))
 		return all_counts
-	return allocate_counts(draw_budget, totals)
+	var drawn: PackedInt32Array = allocate_counts(
+		maxi(0, draw_budget - (all_counts.size() - all_counts.count(0))), totals
+	)
+	for surface_idx: int in range(drawn.size()):
+		if all_counts[surface_idx] > 0:
+			drawn[surface_idx] = mini(drawn[surface_idx] + 1, all_counts[surface_idx])
+	return drawn
 
 
 ## 表面 surface_index の埋もれた毛の HairColorGroup ごとの本数 (範囲外・未配置は 0 の 3 要素)
