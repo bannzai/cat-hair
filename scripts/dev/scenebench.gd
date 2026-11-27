@@ -47,8 +47,9 @@ const BENCH_SAVE_PATH: String = "user://scenebench_save_data.json"
 ## 屋敷を作り直した後、計測の前に進めるフレーム数 (screenshot.gd の撮影前の 4 フレームと揃え、
 ## パイプラインの生成を含む最初の重いフレームを計測から外すため倍にした)
 const WARMUP_FRAMES: int = 8
-## 1 つの場面で計るフレーム数 (ランナーのぶれを中央値で均すため。毛 24 万本で 1 フレーム 0.5 秒前後と見込み、
-## 4 本数 × 2 場面の合計が job の時間の上限に収まる数)
+## 1 つの場面で計るフレーム数 (ランナーのぶれを中央値で均すため。いちばん重い描く本数 1,000,000 本でも CI の実測
+## (run 45942145058) で 1 フレーム 1 秒前後で、全部の上限 × 2 場面を計っても screenshot-and-movie の job が 7 分前後で
+## 終わり、timeout-minutes に収まった数)
 const MEASURE_FRAMES: int = 20
 ## 掃除ロボットが動いている間の場面で、1 フレームごとに進める時計の秒数 (掃除ロボット 1 台が 1 秒に 1 本取るため、
 ## 持てる上限の台数で 1 フレームあたり 1 本前後を取る速さ)
@@ -86,7 +87,7 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 
-## 全本数のベンチマークを順に実行し、JSON 保存と終了コード出力を行う
+## 描く本数の上限ごとのベンチマークを順に実行し、JSON 保存と終了コード出力を行う
 func _run() -> void:
 	var raw_budgets: String = OS.get_environment("SCENEBENCH_DRAW_BUDGETS")
 	var budgets: Array[int] = (

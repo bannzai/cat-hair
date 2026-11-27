@@ -49,6 +49,9 @@ const EXCLUSION_RETRY_LIMIT: int = 64
 const UPWARD_BASIS: Basis = Basis.IDENTITY
 ## 1 本ずつ描く毛の本数の既定の上限 (屋敷全体)。決めた計測は ADR 0002 の 2026-11-27 (issue #65) の追記
 const DEFAULT_DRAW_BUDGET: int = 240000
+## 描き足しの乱数のシードを、配置の乱数のシードからずらす幅。同じシードだと描き足す毛が配置の最初の毛と同じ位置・色の
+## 列をたどるため、別の列にする。populate の同じシードで描き足しも同じになればよく、1 で足りる
+const REFILL_SEED_OFFSET: int = 1
 
 ## 1 本ずつ描く毛の本数の上限 (屋敷全体。0 以下は上限なし)。populate の前に設定する
 var draw_budget: int = DEFAULT_DRAW_BUDGET
@@ -58,7 +61,7 @@ var _surfaces: Array[Dictionary] = []
 ## 表面ごとの描いている本数は multimesh.visible_instance_count を唯一の SSOT とする。
 ## buried は描いていない埋もれた毛の HairColorGroup ごとの本数、draw_cap は埋もれた毛を描き足して保つ描く本数
 var _buckets: Array[Dictionary] = []
-## 埋もれた毛を描き足す時の位置と色の乱数 (populate のシードから決まる)
+## 埋もれた毛を描き足す時の位置と色の乱数 (populate のシード + REFILL_SEED_OFFSET から決まる)
 var _refill_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## hair_id -> 表面インデックスの逆引き配列 (INVALID_SLOT = -1 は削除済み)
 var _id_to_surface: PackedInt32Array = PackedInt32Array()
@@ -344,16 +347,12 @@ func populate_with_group_counts(
 	var totals: PackedFloat32Array = PackedFloat32Array()
 	var total: int = 0
 	for surface_idx: int in range(_surfaces.size()):
-		var group_counts: PackedInt32Array = PackedInt32Array()
-		group_counts.resize(HairColorGroup.size())
-		group_counts.fill(0)
+		var group_counts: PackedInt32Array = _zero_group_counts()
 		if surface_idx < counts_by_surface.size():
 			var given: PackedInt32Array = counts_by_surface[surface_idx]
 			for group: int in range(mini(given.size(), HairColorGroup.size())):
 				group_counts[group] = maxi(0, given[group])
-		var surface_total: int = 0
-		for count: int in group_counts:
-			surface_total += count
+		var surface_total: int = _sum(group_counts)
 		group_counts_by_surface.append(group_counts)
 		totals.append(float(surface_total))
 		total += surface_total
@@ -362,7 +361,7 @@ func populate_with_group_counts(
 	_prepare_shared_resources(_sum(drawn_by_surface))
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = seed_value
-	_refill_rng.seed = seed_value + 1
+	_refill_rng.seed = seed_value + REFILL_SEED_OFFSET
 	var next_id: int = 0
 	for surface_idx: int in range(_surfaces.size()):
 		var group_counts: PackedInt32Array = group_counts_by_surface[surface_idx]
@@ -408,7 +407,7 @@ func populate(total_count: int, seed_value: int = DEFAULT_SEED) -> int:
 
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = seed_value
-	_refill_rng.seed = seed_value + 1
+	_refill_rng.seed = seed_value + REFILL_SEED_OFFSET
 	var next_id: int = 0
 	# 描く毛の色は pick_hair_color の乱数で選び、埋もれた毛は同じ確率の比で系統に分ける
 	var group_weights: PackedFloat32Array = PackedFloat32Array([
@@ -825,11 +824,15 @@ func _drawn_counts(totals: PackedFloat32Array, total: int) -> PackedInt32Array:
 ## 表面 surface_index の埋もれた毛の HairColorGroup ごとの本数 (範囲外・未配置は 0 の 3 要素)
 func _buried_counts(surface_index: int) -> PackedInt32Array:
 	if surface_index < 0 or surface_index >= _buckets.size():
-		var zeros: PackedInt32Array = PackedInt32Array()
-		zeros.resize(HairColorGroup.size())
-		zeros.fill(0)
-		return zeros
+		return _zero_group_counts()
 	return _buckets[surface_index]["buried"]
+
+
+## HairColorGroup ごとの本数がすべて 0 の配列
+static func _zero_group_counts() -> PackedInt32Array:
+	var zeros: PackedInt32Array = PackedInt32Array()
+	zeros.resize(HairColorGroup.size())
+	return zeros
 
 
 ## 整数の列の合計
