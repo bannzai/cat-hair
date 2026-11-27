@@ -146,7 +146,7 @@ func pull_failure_reason() -> StringName:
 
 
 ## つまんでいる毛のうち、まだ屋敷に残っている毛があるか。引いている途中に道具・自動化が同じ毛を取ると、
-## 全部が無くなる (その時は届かないのではないので、届かない理由を出さない)
+## 全部が無くなる (その時は届かないのでも、遊ぶ人が途中で離したのでもないので、届かない・途中で離したの理由を出さない)
 func _has_pulled_hair() -> bool:
 	if _world == null or _world.get_hair_field() == null:
 		return false
