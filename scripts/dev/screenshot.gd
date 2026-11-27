@@ -45,6 +45,9 @@ const ROBOT_VIEW_DISTANCE_M: float = 1.3
 ## 猫を撮る時に、猫から立つ位置までの水平距離 (m。猫の体と名札が画面に収まる距離)
 const CAT_VIEW_DISTANCE_M: float = 1.4
 
+## fps と 1 フレームの時間の表示を出してから撮るまで待つ実時間 (ms)。fps は 1 秒ごとにしか更新されない
+## (Godot の Performance.TIME_FPS の説明) ため、1 回目の更新と、その後の表示の描き直し (0.25 秒ごと) が済む長さ
+const PERF_OVERLAY_WAIT_MSEC: int = 1500
 ## 開発者向け調整値データ型スクリプト (見た目の試作の撮影で毛の本数を変える)
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 
@@ -237,6 +240,9 @@ func _capture_mansion_scenes(main: Node3D) -> String:
 	main.enter_mansion()
 	if not await _capture("tmp/screenshot-mansion.png"):
 		return "屋敷の画面を保存できない"
+	var perf_error: String = await _capture_perf_overlay(main)
+	if not perf_error.is_empty():
+		return perf_error
 	var pluck_error: String = await _capture_pluck(main)
 	if not pluck_error.is_empty():
 		return pluck_error
@@ -250,6 +256,28 @@ func _capture_mansion_scenes(main: Node3D) -> String:
 		return tool_error
 	main.open_dev_panel()
 	return "" if await _capture("tmp/screenshot-dev-panel.png") else "開発者向け調整画面を保存できない"
+
+
+## F3 で fps と 1 フレームの時間の表示を出した屋敷の画面を撮り、表示を隠して戻す。撮れたら空文字、失敗したら理由を返す
+func _capture_perf_overlay(main: Node3D) -> String:
+	var key_event: InputEventKey = InputEventKey.new()
+	key_event.physical_keycode = MainScript.TOGGLE_PERF_KEY
+	key_event.pressed = true
+	Input.parse_input_event(key_event)
+	await process_frame
+	var release_event: InputEventKey = key_event.duplicate()
+	release_event.pressed = false
+	Input.parse_input_event(release_event)
+	if not main.perf_overlay.visible:
+		return "F3 で fps と 1 フレームの時間の表示が出ない"
+	# fps (Performance.TIME_FPS) は 1 秒ごとにしか更新されないため、実時間で 1 秒を超えて待ってから撮る
+	var deadline_msec: int = Time.get_ticks_msec() + PERF_OVERLAY_WAIT_MSEC
+	while Time.get_ticks_msec() < deadline_msec:
+		await process_frame
+	var ok: bool = await _capture("tmp/screenshot-perf-overlay.png")
+	print("screenshot perf overlay: %s" % main.perf_overlay.text)
+	main.perf_overlay.set_overlay_visible(false)
+	return "" if ok else "fps と 1 フレームの時間の表示を保存できない"
 
 
 ## 道具 (手に持つ道具)・猫と掃除ロボット・大型の道具の場面を順に撮る。撮れたら空文字、失敗したら最初の失敗の理由を返す

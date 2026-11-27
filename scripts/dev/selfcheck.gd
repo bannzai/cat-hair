@@ -13,6 +13,10 @@ const HAIR_PROTOTYPE_SCENE_PATH: String = "res://scenes/hair_prototype.tscn"
 const PROJECT_NAME: String = "Oh My Fur!"
 ## プロジェクト設定のレンダラ (ADR 0002 で Forward+ に決定)
 const RENDERING_METHOD: String = "forward_plus"
+## プロジェクト設定のフレームレートの上限 (documents/DIRECTION.md「決めたこと」の 2026-11-27 の行で 60 に決定)
+const MAX_FPS: int = 60
+## fps と 1 フレームの時間の表示 (文言の組み立ての検証用)
+const PerfOverlayScript := preload("res://scripts/ui/perf_overlay.gd")
 ## プロジェクト設定の音声バスレイアウトのパス
 const BUS_LAYOUT_PATH: String = "res://default_bus_layout.tres"
 ## プロジェクト設定の AudioManager autoload の値
@@ -87,6 +91,18 @@ func _check_project_settings() -> void:
 		rendering_method == RENDERING_METHOD,
 		"rendering/renderer/rendering_method が %s (実際: %s)"
 		% [RENDERING_METHOD, rendering_method]
+	)
+	var max_fps: int = ProjectSettings.get_setting("application/run/max_fps", 0)
+	_check(max_fps == MAX_FPS, "application/run/max_fps が %d (実際: %d)" % [MAX_FPS, max_fps])
+	var vsync_mode: int = ProjectSettings.get_setting("display/window/vsync/vsync_mode", -1)
+	_check(
+		vsync_mode == DisplayServer.VSYNC_ENABLED,
+		"display/window/vsync/vsync_mode が Enabled (実際: %d)" % vsync_mode,
+	)
+	var perf_text: String = PerfOverlayScript.format_metrics(59.6, 16.78, 3.21, 4.5, 9.04)
+	_check(
+		perf_text == "60 fps   1 フレーム 16.8 ms   処理 3.2 ms   描画 CPU 4.5 ms / GPU 9.0 ms",
+		"fps と 1 フレームの時間の表示の文言 (実際: %s)" % perf_text,
 	)
 	var bus_layout: String = ProjectSettings.get_setting("audio/buses/default_bus_layout", "")
 	_check(

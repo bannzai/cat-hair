@@ -782,6 +782,16 @@ func _verify_dev_panel_keys_and_rebuild(main: Node3D, game_state: Node) -> void:
 		"作り直し前の物ノード数が既定値と一致する",
 	)
 
+	# F3 キーで fps と 1 フレームの時間の表示が出て、もう一度押すと隠れる (歩く操作は止めない)
+	await _press_physical_key(KEY_F3)
+	_check(
+		main.perf_overlay.visible and main.perf_overlay.text.contains("fps")
+		and player.controls_enabled,
+		"F3 キー入力で fps と 1 フレームの時間の表示が出て、歩く操作は続けられる",
+	)
+	await _press_physical_key(KEY_F3)
+	_check(not main.perf_overlay.visible, "F3 キーの再入力で fps と 1 フレームの時間の表示が隠れる")
+
 	# F1 キーで開く → F1 キーで閉じるトグル分岐を検証
 	await _press_physical_key(KEY_F1)
 	_check(panel.visible and not player.controls_enabled, "F1 キー入力で開発者向け画面が開く")
