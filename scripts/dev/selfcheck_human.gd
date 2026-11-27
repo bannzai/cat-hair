@@ -35,8 +35,9 @@ func _check(cond: bool, label: String) -> void:
 ## 手が袖・前腕・手のひらと 3 節ずつの 5 本の指を持ち、引き始めは親指と人差し指の先が離れ、
 ## 引く途中 (進み具合 1/3 以降) と引き終えた時は 2 本の先が触れるか
 func _check_hand_view_shape_and_pinch() -> void:
+	# selfcheck は _initialize から同期で走り、root がまだツリーに入っていないため、手はツリーに入れずに
+	# 作った時点の部品 (hand_view.gd の _init で組み立てる) と、手の局所座標での位置で確かめる
 	var hand: Node3D = HandViewScript.new()
-	_checker.root.add_child(hand)
 	var fingers_ok: bool = true
 	for finger_name: String in HandViewScript.FINGER_NAMES + ["Thumb"]:
 		var finger: Node3D = hand.get_node_or_null(finger_name)
@@ -65,25 +66,38 @@ func _check_hand_view_shape_and_pinch() -> void:
 			+ " (開き %.4f・途中 %.4f・終わり %.4f)"
 		) % [PINCH_OPEN_MIN_M, PINCH_CLOSED_MAX_M, open_distance, closed_distance, pulled_distance],
 	)
-	_checker.root.remove_child(hand)
 	hand.free()
 
 
-## 親指と人差し指の、いちばん先の節の端どうしの距離 (m) を返す
+## 親指と人差し指の、いちばん先の節の端どうしの距離 (m。手の局所座標) を返す
 static func _pinch_distance(hand: Node3D) -> float:
-	return _finger_tip(hand.get_node("IndexFinger")).distance_to(
-		_finger_tip(hand.get_node("Thumb"))
+	return _finger_tip(hand, hand.get_node("IndexFinger")).distance_to(
+		_finger_tip(hand, hand.get_node("Thumb"))
 	)
 
 
-## 指の付け根 finger から辿った、いちばん先の節の端 (End) の大域位置を返す
-static func _finger_tip(finger: Node3D) -> Vector3:
+## 指の付け根 finger から辿った、いちばん先の節の端 (End) の位置を、手 hand の局所座標で返す
+static func _finger_tip(hand: Node3D, finger: Node3D) -> Vector3:
 	var ends: Array[Node] = finger.find_children("End", "Node3D", true, false)
 	var deepest: Node3D = ends[0]
 	for end: Node in ends:
-		if end.get_path().get_name_count() > deepest.get_path().get_name_count():
+		if _depth_below(hand, end) > _depth_below(hand, deepest):
 			deepest = end
-	return deepest.global_position
+	var to_hand: Transform3D = Transform3D.IDENTITY
+	var node: Node3D = deepest
+	while node != hand:
+		to_hand = node.transform * to_hand
+		node = node.get_parent()
+	return to_hand.origin
+
+
+## node から祖先 ancestor までの親の段数を返す
+static func _depth_below(ancestor: Node, node: Node) -> int:
+	var depth: int = 0
+	while node != ancestor:
+		node = node.get_parent()
+		depth += 1
+	return depth
 
 
 ## 買取業者が頭・胴・左右の腕と脚を持ち、頭が胴より上・胴が脚より上にあり、顔 (鼻) を部屋の中 (-Z) へ向けているか

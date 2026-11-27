@@ -58,10 +58,9 @@ var _index_finger: Node3D = null
 var _thumb: Node3D = null
 
 
-## ツリーに入った時に手の形を組み立てる
-func _ready() -> void:
-	if _index_finger == null:
-		_build()
+## 作った時に手の形を組み立てる (ツリーに入る前から指の部品を辿れるようにするため、_ready ではなくここで組む)
+func _init() -> void:
+	_build()
 	set_pull_progress(_pull_progress)
 
 
