@@ -475,6 +475,8 @@ func _erase_drawn(hair_id: int) -> int:
 ## 表面 surface_index に埋もれた毛があり、描いている本数が draw_cap より少なければ、埋もれた毛から 1 本
 ## (系統は埋もれた毛の本数に比例した抽選) を表面のどこかに描き足す。残り本数は変えない
 func _draw_buried_hair(surface_index: int) -> void:
+	if draw_budget == DEFAULT_DRAW_BUDGET:
+		return
 	var bucket: Dictionary = _buckets[surface_index]
 	var buried: PackedInt32Array = bucket["buried"]
 	if (
