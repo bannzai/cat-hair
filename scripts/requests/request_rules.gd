@@ -146,7 +146,7 @@ static func suit_status(already_cleared: bool, elapsed_seconds: float) -> String
 
 ## スーツの面の毛が remaining 本の時、遊んだ時間 elapsed_seconds で上乗せを受け取れるか (出かける前に 0 本)
 static func suit_cleared_now(remaining: int, elapsed_seconds: float) -> bool:
-	return remaining <= 0 and elapsed_seconds > -1.0
+	return remaining <= 0
 
 
 ## 屋敷のスーツの面 (服の毛の依頼の対象) を表の順に返す
