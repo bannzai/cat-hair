@@ -22,7 +22,7 @@ const SCHEMA_VERSION: int = 1
 @export var building_records: Array[BuildingRecord] = []
 ## 今いる建物の進行。次の建物へ進むと新しく作り直す
 @export var building_progress: BuildingProgress = null
-## 屋敷の組み立てに使う開発者向けの調整値
+## 屋敷の組み立てに使う開発者向けの調整値 (最初の屋敷の作り。2 つ目以降の建物の作りはこの値と終えた建物の数から求める)
 @export var tuning: MansionTuning = null
 
 

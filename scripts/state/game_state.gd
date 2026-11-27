@@ -36,6 +36,10 @@ const OwnedToolScript := preload("res://scripts/data/owned_tool.gd")
 const ProcessingRulesScript := preload("res://scripts/economy/processing_rules.gd")
 ## 猫と掃除ロボットの状態と入口のスクリプト
 const AutomationStateScript := preload("res://scripts/state/automation_state.gd")
+## 次の建物へ進む入口のスクリプト
+const NextBuildingStateScript := preload("res://scripts/state/next_building_state.gd")
+## 次の建物へ進む決まりの計算 (今いる建物の作りと id)
+const BuildingRulesScript := preload("res://scripts/building/building_rules.gd")
 ## お金で買う物の種類: 道具
 const PURCHASE_TOOL: StringName = &"tool"
 ## お金で買う物の種類: 道具のレベルを 1 上げる
@@ -60,6 +64,8 @@ var launched_with_cmdline_override: bool = false
 ## 猫と掃除ロボットの状態 (時計・猫の通り道) と、時計を進める・掃除ロボットを買う・回る順を変える・猫をブラッシングする入口
 ## (scripts/state/automation_state.gd)
 var automation: RefCounted = null
+## 次の建物へ進む入口 (scripts/state/next_building_state.gd)
+var next_building: RefCounted = null
 ## 部屋ごとの最初の毛の本数 (room_id -> int。きれいさの分母)。屋敷を組み直した時に 1 回だけ求める。
 ## 保存データには入れない (調整値とレイアウトから同じ値が求まるため)
 var _initial_room_hairs: Dictionary = {}
@@ -68,6 +74,7 @@ var _initial_room_hairs: Dictionary = {}
 ## 猫と掃除ロボットの状態を持つ
 func _init() -> void:
 	automation = AutomationStateScript.new(self)
+	next_building = NextBuildingStateScript.new(self)
 
 
 ## autoload 起動時に保存ファイルとコマンドライン引数から初期状態を構築する
@@ -104,7 +111,7 @@ func initialize_from_storage(
 	if loaded_save != null and not launched_with_cmdline_override:
 		save_data = loaded_save
 		loaded_from_save = true
-		current_layout = MansionBuilderScript.build_layout(save_data.tuning)
+		current_layout = MansionBuilderScript.build_layout(_building_tuning())
 		_reconcile_progress_with_layout()
 	else:
 		loaded_from_save = false
@@ -132,7 +139,7 @@ func start_new_game(custom_tuning: MansionTuning = null) -> void:
 	state_changed.emit()
 
 
-## 開発者向けの調整値を適用し、その値の屋敷を作り直す。
+## 開発者向けの調整値 (最初の屋敷の作り) を適用し、今いる建物をその値から求めた作りで作り直す (進行は入った時に戻る)。
 ## persist の既定値を true とするのは、開発者画面からの適用時にそのまま保存して
 ## 次回起動でも同じ調整値の屋敷を再開できるようにするため (保存不要な検証のみ false を渡す)。
 func apply_tuning_and_rebuild(new_tuning: MansionTuning, persist: bool = true) -> void:
@@ -143,11 +150,8 @@ func apply_tuning_and_rebuild(new_tuning: MansionTuning, persist: bool = true) -
 		_create_fresh_save(safe_tuning)
 	else:
 		save_data.tuning = safe_tuning
-		current_layout = MansionBuilderScript.build_layout(safe_tuning)
-		save_data.building_progress = MansionBuilderScript.build_initial_progress(
-			current_layout,
-			safe_tuning,
-		)
+		current_layout = MansionBuilderScript.build_layout(_building_tuning())
+		save_data.building_progress = _build_progress()
 	if persist:
 		launched_with_cmdline_override = false
 		save_current_state()
@@ -529,9 +533,7 @@ func _recompute_initial_room_hairs() -> void:
 	_initial_room_hairs.clear()
 	var initial_surface_hairs: Dictionary = {}
 	if current_layout != null:
-		var initial: BuildingProgress = MansionBuilderScript.build_initial_progress(
-			current_layout, get_tuning()
-		)
+		var initial: BuildingProgress = _build_progress()
 		for surface_def: MansionLayout.SurfaceDef in current_layout.surfaces:
 			var surface: SurfaceHair = initial.find_surface_hair(surface_def.surface_id)
 			var count: int = surface.total_count() if surface != null else 0
@@ -563,15 +565,27 @@ func _add_raw_stock(hair_color: StringName, rare_hair_id: StringName, count: int
 
 ## 指定の調整値から新しいレイアウトと初期 SaveData を生成する
 func _create_fresh_save(target_tuning: MansionTuning) -> void:
-	var safe_tuning: MansionTuning = target_tuning.clamped()
-	current_layout = MansionBuilderScript.build_layout(safe_tuning)
 	save_data = SaveDataScript.new()
 	save_data.schema_version = SaveDataScript.SCHEMA_VERSION
-	save_data.tuning = safe_tuning
-	save_data.building_progress = MansionBuilderScript.build_initial_progress(
-		current_layout,
-		safe_tuning,
+	save_data.tuning = target_tuning.clamped()
+	current_layout = MansionBuilderScript.build_layout(_building_tuning())
+	save_data.building_progress = _build_progress()
+
+
+## 今いる建物 (終えた建物の数で決まる) の作り。開発者向けの調整値 (最初の屋敷の作り) から求める
+func _building_tuning() -> MansionTuning:
+	return BuildingRulesScript.building_tuning(
+		get_tuning(), next_building.building_index()
 	)
+
+
+## 今の屋敷の作り current_layout と今いる建物の作りから、その建物に入った時の進行を作る
+func _build_progress() -> BuildingProgress:
+	var progress: BuildingProgress = MansionBuilderScript.build_initial_progress(
+		current_layout, _building_tuning()
+	)
+	progress.building_id = BuildingRulesScript.building_id_at(next_building.building_index())
+	return progress
 
 
 ## 読み込んだ進行の面・探し物・住人の ID 一覧が現在レイアウトと一致しない場合は
@@ -584,10 +598,7 @@ func _reconcile_progress_with_layout() -> void:
 		or not _found_item_ids_match_layout()
 		or not _resident_ids_match_layout()
 	):
-		save_data.building_progress = MansionBuilderScript.build_initial_progress(
-			current_layout,
-			save_data.tuning,
-		)
+		save_data.building_progress = _build_progress()
 		loaded_from_save = false
 
 

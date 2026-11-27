@@ -2,6 +2,7 @@ class_name ToolShopPanel
 extends PanelContainer
 ## 道具を買う画面。道具ごとに値段・得意な表面・消耗品・探し物を傷めるかを出し、買う・レベルを上げる・消耗品を買い足す。
 ## 手の強化もここで買う。毛を売るのは、裏口の買取業者の近くにいる時だけ押せる。
+## 住人全員がご機嫌の時は、ここから次の建物へ進む。
 ## 状態は持たず、開くたびと買った後に GameState を受け取って描き直す。押した操作はシグナルで main へ渡す。
 
 ## 買う操作をした時 (kind は GameState.PURCHASE_*、item_id は道具の id か手の強化の id)
@@ -10,6 +11,8 @@ signal purchase_requested(kind: StringName, item_id: StringName)
 signal sell_requested
 ## 毛を運ぶダンプカーを呼ぶ操作をした時
 signal haul_requested
+## 次の建物へ進む操作をした時
+signal advance_requested
 ## 画面を閉じる操作をした時
 signal close_requested
 
@@ -27,6 +30,10 @@ const BigToolSiteScript := preload("res://scripts/tools/big_tool_site.gd")
 const ProcessingRulesScript := preload("res://scripts/economy/processing_rules.gd")
 ## 毛・加工品在庫データ型スクリプト (形の定数を使う)
 const HairStockScript := preload("res://scripts/data/hair_stock.gd")
+## 次の建物へ進む決まりの計算 (建物の表示名・ご機嫌の線)
+const BuildingRulesScript := preload("res://scripts/building/building_rules.gd")
+## 掃除代・機嫌の計算 (ご機嫌の線)
+const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
 ## 加工した物の形の表示名 (毛のままは含めない)
 const PRODUCT_NAMES: Dictionary = {
 	HairStockScript.FORM_BALL: "毛玉",
@@ -56,6 +63,8 @@ var _money_label: Label = null
 var _sell_button: Button = null
 ## 毛を運ぶダンプカーを呼ぶボタン (ダンプカーを持っている時だけ見せる)
 var _haul_button: Button = null
+## 次の建物へ進むボタン (住人全員がご機嫌の時だけ押せる)
+var _advance_button: Button = null
 ## 道具の行と手の強化を縦に送って見る枠 (道具の行が画面の高さに収まらないため)
 var _scroll: ScrollContainer = null
 ## 道具ごとの説明の行 (tool_id -> Label)
@@ -100,6 +109,7 @@ func refresh(game_state: Node, near_trader: bool) -> void:
 	_haul_button.text = "毛を運ぶダンプカーで運び出して売る (1 回 %d 本分まで。どこからでも)" % (
 		ProcessingRulesScript.DUMP_TRUCK_CAPACITY_HAIRS
 	)
+	_refresh_advance_button(game_state)
 	for tool_def: Dictionary in ToolCatalogScript.TOOLS:
 		var tool_id: StringName = tool_def["id"]
 		if tool_id == ToolCatalogScript.TOOL_HAND:
@@ -158,6 +168,35 @@ func refresh(game_state: Node, near_trader: bool) -> void:
 			else "%s 段 %d (上限)" % [HAND_UPGRADE_NAMES[upgrade_id], level]
 		)
 		upgrade_button.disabled = not ToolRulesScript.can_afford(money, upgrade_price)
+
+
+## 次の建物へ進むボタンの文言と押せるかを、住人の機嫌と今いる建物で描き直す
+func _refresh_advance_button(game_state: Node) -> void:
+	var index: int = game_state.next_building.building_index()
+	if not BuildingRulesScript.has_next_building(index):
+		_advance_button.text = "最後の建物 (%s) にいる" % BuildingRulesScript.building_name(
+			BuildingRulesScript.building_id_at(index)
+		)
+		_advance_button.disabled = true
+		return
+	var next_name: String = BuildingRulesScript.building_name(
+		BuildingRulesScript.building_id_at(index + 1)
+	)
+	if game_state.next_building.can_advance():
+		_advance_button.text = (
+			"次の建物 (%s) へ進む (手の強化・図鑑・成績を持ち越し、お金と道具は置いていく)" % next_name
+		)
+		_advance_button.disabled = false
+		return
+	var moods: Array[float] = game_state.next_building.resident_moods()
+	var happy: int = 0
+	for mood: float in moods:
+		if EconomyRulesScript.is_happy(mood):
+			happy += 1
+	_advance_button.text = "次の建物 (%s) へ進む (住人全員がご機嫌になると進める。今 %d / %d 人)" % [
+		next_name, happy, moods.size()
+	]
+	_advance_button.disabled = true
 
 
 ## 道具 1 つの説明 (名前・レベル・得意・不得意な表面・消耗品の残り・探し物を傷めるか) を返す。
@@ -233,6 +272,11 @@ static func describe_products(stocks: Array[HairStock]) -> String:
 	return " / " + "・".join(parts) if not parts.is_empty() else ""
 
 
+## 次の建物へ進むボタンを返す (検証用)
+func get_advance_button() -> Button:
+	return _advance_button
+
+
 ## 毛を運ぶダンプカーを呼ぶボタンを返す (検証用)
 func get_haul_button() -> Button:
 	return _haul_button
@@ -269,7 +313,7 @@ func get_sell_button() -> Button:
 	return _sell_button
 
 
-## 見出し・道具の行・手の強化・売る・閉じるボタンを組み立てる
+## 見出し・売る・運ぶ・次の建物へ進む・道具の行・手の強化・閉じるボタンを組み立てる
 func _build() -> void:
 	var background: StyleBoxFlat = StyleBoxFlat.new()
 	background.bg_color = Color(0.16, 0.12, 0.09, 0.96)
@@ -302,6 +346,11 @@ func _build() -> void:
 	_haul_button.visible = false
 	_haul_button.pressed.connect(func() -> void: haul_requested.emit())
 	layout.add_child(_haul_button)
+
+	_advance_button = Button.new()
+	_advance_button.name = "AdvanceButton"
+	_advance_button.pressed.connect(func() -> void: advance_requested.emit())
+	layout.add_child(_advance_button)
 
 	_scroll = ScrollContainer.new()
 	_scroll.name = "Scroll"

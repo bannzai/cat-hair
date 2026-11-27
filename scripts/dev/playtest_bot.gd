@@ -14,7 +14,7 @@ const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 const ToolRulesScript := preload("res://scripts/tools/tool_rules.gd")
 ## 手で毛を取る時のルールの計算 (手の強化の id)
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
-## 掃除代・機嫌の計算 (ご機嫌の線)
+## 掃除代の計算 (住人が払う間隔)
 const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
 ## 在庫の売値の計算
 const ProcessingRulesScript := preload("res://scripts/economy/processing_rules.gd")
@@ -45,6 +45,10 @@ const MILESTONE_FIRST_TOOL: String = "first_tool"
 const MILESTONE_FIRST_ROBOT: String = "first_robot"
 ## 節目の名前: 住人全員がご機嫌になった
 const MILESTONE_ALL_HAPPY: String = "all_happy"
+## 節目の名前: 次の建物へ進んだ (秒は進む直前の、終えた建物で遊んだ時間)
+const MILESTONE_NEXT_BUILDING: String = "next_building"
+## 1 手の種類: 次の建物へ進む (方針は選ばず、進める時に bot が先に行う)
+const ACTION_ADVANCE: StringName = &"advance"
 
 ## 遊ぶメインシーン (scripts/main.gd)
 var _main: Node3D = null
@@ -85,13 +89,18 @@ func elapsed_seconds() -> float:
 	return _game_state.save_data.building_progress.elapsed_seconds
 
 
-## 3 つの節目 (最初の道具・最初の掃除ロボット・住人全員のご機嫌) にすべて着いたか
+## 4 つの節目 (最初の道具・最初の掃除ロボット・住人全員のご機嫌・次の建物へ進む) にすべて着いたか
 func all_milestones_reached() -> bool:
-	return _milestones.has_all([MILESTONE_FIRST_TOOL, MILESTONE_FIRST_ROBOT, MILESTONE_ALL_HAPPY])
+	return _milestones.has_all([
+		MILESTONE_FIRST_TOOL, MILESTONE_FIRST_ROBOT, MILESTONE_ALL_HAPPY, MILESTONE_NEXT_BUILDING
+	])
 
 
-## 次の 1 手を選んで行い、その手の秒だけ時計を進める。行った 1 手 (方針の戻り値に、かけた秒 "seconds" を足した物) を返す
+## 次の 1 手を選んで行い、その手の秒だけ時計を進める。行った 1 手 (方針の戻り値に、かけた秒 "seconds" を足した物) を返す。
+## 住人全員がご機嫌で次の建物へ進める時は、方針を使わずに進む (時計は進めない)
 func step() -> Dictionary:
+	if _game_state.next_building.can_advance():
+		return _advance_building()
 	var action: Dictionary = PolicyScript.choose_action(snapshot())
 	var seconds: float = _execute(action)
 	action["seconds"] = seconds
@@ -177,8 +186,32 @@ func report() -> Dictionary:
 		"count_by_action": _count_by_action,
 		"removed_by_tool": _removed_by_tool,
 		"empty_results": _empty_results,
+		"building_records": _building_records(),
 		"final": _sample(),
 	}
+
+
+## 終えた建物の成績 (BuildingRecord.to_dict の並び)
+func _building_records() -> Array[Dictionary]:
+	var records: Array[Dictionary] = []
+	for record: BuildingRecord in _game_state.save_data.building_records:
+		records.append(record.to_dict())
+	return records
+
+
+## 次の建物へ進む (道具を買う画面の「次の建物へ進む」と同じ入口)。進む直前の秒で節目を付け、進んだ後の建物の様子を
+## 経過に記録する (遊んだ時間は次の建物で 0 から数え直す)。行った 1 手を返す
+func _advance_building() -> Dictionary:
+	var before_seconds: float = elapsed_seconds()
+	if _game_state.next_building.advance() == null:
+		return {"kind": ACTION_ADVANCE, "seconds": 0.0}
+	if not _milestones.has(MILESTONE_NEXT_BUILDING):
+		_milestones[MILESTONE_NEXT_BUILDING] = snappedf(before_seconds, 0.01)
+	var key: String = String(ACTION_ADVANCE)
+	_count_by_action[key] = int(_count_by_action.get(key, 0)) + 1
+	_last_room_id = &""
+	_record_sample()
+	return {"kind": ACTION_ADVANCE, "seconds": 0.0}
 
 
 ## 1 手 action を行い、かかったゲーム内の秒を返す
@@ -378,18 +411,10 @@ func _advance_clock(seconds: float) -> void:
 		var step_seconds: float = minf(CLOCK_STEP_SECONDS, left)
 		_main.advance_play_clock(step_seconds)
 		left -= step_seconds
-		if _everyone_happy():
+		if _game_state.next_building.everyone_happy():
 			_mark(MILESTONE_ALL_HAPPY)
 		if elapsed_seconds() >= _next_sample_seconds:
 			_record_sample()
-
-
-## 住人全員がご機嫌か
-func _everyone_happy() -> bool:
-	for room: MansionLayout.RoomDef in _game_state.current_layout.rooms:
-		if not EconomyRulesScript.is_happy(float(_game_state.get_room_status(room.room_id)["mood"])):
-			return false
-	return true
 
 
 ## 今の経過を記録し、次に記録する秒を決める
@@ -398,7 +423,7 @@ func _record_sample() -> void:
 	_next_sample_seconds = elapsed_seconds() + SAMPLE_INTERVAL_SECONDS
 
 
-## 今の経過 (秒・お金・在庫の額・残りの毛・部屋ごとの機嫌・掃除ロボットの台数)
+## 今の経過 (建物・秒・お金・在庫の額・残りの毛・部屋ごとの機嫌・掃除ロボットの台数・手の強化の段・道具の数)
 func _sample() -> Dictionary:
 	var moods: Dictionary = {}
 	for room: MansionLayout.RoomDef in _game_state.current_layout.rooms:
@@ -406,6 +431,7 @@ func _sample() -> Dictionary:
 			float(_game_state.get_room_status(room.room_id)["mood"]), 0.001
 		)
 	return {
+		"building_id": String(_game_state.save_data.building_progress.building_id),
 		"seconds": snappedf(elapsed_seconds(), 0.01),
 		"money": _game_state.get_money(),
 		"stock_value": ProcessingRulesScript.stock_value(
@@ -415,4 +441,6 @@ func _sample() -> Dictionary:
 		"drawn_hairs": _main.mansion_world.get_hair_field().get_remaining_count(),
 		"moods": moods,
 		"robots": _game_state.automation.get_robots().size(),
+		"hand_levels": _game_state.save_data.hand_upgrade_levels.duplicate(),
+		"owned_tools": _game_state.save_data.building_progress.owned_tools.size(),
 	}

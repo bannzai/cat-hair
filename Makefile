@@ -226,7 +226,7 @@ movie-automation: import
 	bash scripts/ci/check-movie-brightness.sh $(LOG_DIR)/movie-automation.mp4
 
 # 自動テストプレイ。bot (scripts/dev/playtest_bot.gd) が headless で屋敷をはじめから遊び、節目 (最初の道具を買う・
-# 最初の掃除ロボットを置く・住人全員がご機嫌になる) までのゲーム内の時間を tmp/simulate.json に書く。ゲーム内の時間は
+# 最初の掃除ロボットを置く・住人全員がご機嫌になる・次の建物へ進む) までのゲーム内の時間を tmp/simulate.json に書く。ゲーム内の時間は
 # 1 フレームの中で早送りするため、--quit-after の上限には届かない。JSON が無い・古いまま pass しないよう先に消す
 simulate: import
 	rm -f $(LOG_DIR)/simulate.json

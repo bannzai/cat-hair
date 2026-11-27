@@ -4,7 +4,8 @@ extends Resource
 
 ## どの建物か (屋敷・ホテル・猫島・街全体)
 @export var building_id: StringName = &""
-## 住人全員がご機嫌になるまでにかかった時間 (秒)。表示するだけで報酬には効かない
+## かかった時間 (秒)。次の建物へ進んだ時までにこの建物で遊んだ時間で、進めるのは住人全員がご機嫌の時だけ。
+## 表示するだけで報酬には効かない
 @export var clear_seconds: float = 0.0
 ## 住人に返した探し物の数。持ち越す手の強化の量に効く
 @export var returned_found_item_count: int = 0
