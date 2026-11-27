@@ -44,6 +44,17 @@ static func cleanup_audio_manager(
 	remove_file_if_exists(settings_path)
 
 
+## 鳴らした音の解放 (AudioManager.AUDIO_RELEASE_TIME_SEC) を実時間で待つ。timer はフレームの経過時間で減るため、
+## 重いフレーム (多い毛) の直後では実時間より早く終わり、解放が間に合わずリーク警告が出た (PR #30 の CI。1 フレーム
+## 進めてから timer で待っても実時間は 115 ms で、AUDIO_RELEASE_TIME_SEC に届かなかった)
+static func wait_audio_release(tree: SceneTree) -> void:
+	var release_deadline_msec: int = (
+		Time.get_ticks_msec() + int(AudioManagerScript.AUDIO_RELEASE_TIME_SEC * 1000.0)
+	)
+	while Time.get_ticks_msec() < release_deadline_msec:
+		await tree.process_frame
+
+
 ## 検証用の autoload GameState を取得 (未登録なら生成・登録) し、指定セーブパスで初期化する
 static func acquire_game_state(tree_root: Window, target_save_path: String) -> Dictionary:
 	var created: bool = false

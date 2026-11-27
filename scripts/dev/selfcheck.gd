@@ -27,6 +27,8 @@ const GAME_STATE_AUTOLOAD: String = "*res://scripts/state/game_state.gd"
 const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## ベンチマークスクリプト (純粋関数の単体検証用)
 const HairbenchScript := preload("res://scripts/dev/hairbench.gd")
+## 屋敷の 1 フレームの時間のベンチマーク (集計の純粋関数の検証用)
+const ScenebenchScript := preload("res://scripts/dev/scenebench.gd")
 ## 音声カタログ (純粋関数)
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## 音声設定の保存・読み込み・バス適用
@@ -104,6 +106,13 @@ func _check_project_settings() -> void:
 		perf_text == "60 fps   1 フレーム 16.8 ms   処理 3.2 ms   描画 CPU 4.5 ms / GPU 9.0 ms",
 		"fps と 1 フレームの時間の表示の文言 (実際: %s)" % perf_text,
 	)
+	_check(
+		is_equal_approx(PerfOverlayScript.frame_ms_from_fps(50.0), 20.0)
+		and PerfOverlayScript.frame_ms_from_fps(0.0) == 0.0
+		and PerfOverlayScript.frame_ms_from_fps(-1.0) == 0.0,
+		"fps から 1 フレームの時間を出し、fps がまだ 0 の時は 0 にする",
+	)
+	_check_scenebench_summarize()
 	var bus_layout: String = ProjectSettings.get_setting("audio/buses/default_bus_layout", "")
 	_check(
 		bus_layout == BUS_LAYOUT_PATH,
@@ -213,6 +222,30 @@ func _check_hair_allocate_counts() -> void:
 		and mixed_weights[1] == 0
 		and mixed_weights[2] + mixed_weights[3] == 5,
 		"非正の重み混在時に 0/負重みの面は 0 本で合計 5 (実際: %s)" % [str(mixed_weights)]
+	)
+
+
+## 屋敷の 1 フレームの時間のベンチマークの集計 (中央値・最小・最大・平均) が空・奇数個・偶数個で正しいか
+func _check_scenebench_summarize() -> void:
+	var empty: Dictionary = ScenebenchScript.summarize([])
+	_check(
+		empty["median"] == 0.0 and empty["min"] == 0.0 and empty["max"] == 0.0 and empty["avg"] == 0.0,
+		"scenebench の集計: 空なら全部 0 (実際: %s)" % str(empty),
+	)
+	var single: Dictionary = ScenebenchScript.summarize([7.0])
+	_check(
+		single["median"] == 7.0 and single["min"] == 7.0 and single["max"] == 7.0,
+		"scenebench の集計: 1 個ならその値 (実際: %s)" % str(single),
+	)
+	var odd: Dictionary = ScenebenchScript.summarize([9.0, 1.0, 5.0])
+	_check(
+		odd["median"] == 5.0 and odd["min"] == 1.0 and odd["max"] == 9.0 and odd["avg"] == 5.0,
+		"scenebench の集計: 順不同の奇数個は真ん中の値 (実際: %s)" % str(odd),
+	)
+	var even: Dictionary = ScenebenchScript.summarize([4.0, 1.0, 10.0, 2.0])
+	_check(
+		even["median"] == 3.0 and even["min"] == 1.0 and even["max"] == 10.0 and even["avg"] == 4.25,
+		"scenebench の集計: 偶数個は真ん中 2 つの平均 (実際: %s)" % str(even),
 	)
 
 

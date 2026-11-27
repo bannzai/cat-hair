@@ -50,16 +50,18 @@ static func summarize(values: Array) -> Dictionary:
 	var sorted: Array = values.duplicate()
 	sorted.sort()
 	var middle: int = int(floor(sorted.size() * 0.5))
-	var median: float = (
-		float(sorted[middle])
-		if sorted.size() % 2 == 1
-		else (float(sorted[middle - 1]) + float(sorted[middle])) * 0.5
-	)
 	var total: float = 0.0
 	for value: Variant in sorted:
 		total += float(value)
 	return {
-		"median": snappedf(median, 0.01),
+		"median": snappedf(
+			(
+				float(sorted[middle])
+				if sorted.size() % 2 == 1
+				else (float(sorted[middle - 1]) + float(sorted[middle])) * 0.5
+			),
+			0.01
+		),
 		"min": snappedf(float(sorted[0]), 0.01),
 		"max": snappedf(float(sorted[sorted.size() - 1]), 0.01),
 		"avg": snappedf(total / float(sorted.size()), 0.01),
@@ -120,12 +122,7 @@ func _run() -> void:
 		game_state.get_parent().remove_child(game_state)
 		game_state.free()
 	SaveStorageScript.delete_save_file(BENCH_SAVE_PATH)
-	# 音の解放を実時間で待つ (screenshot.gd と同じ理由。重いフレームの直後は timer が実時間より早く終わる)
-	var release_deadline_msec: int = (
-		Time.get_ticks_msec() + int(AudioManagerScript.AUDIO_RELEASE_TIME_SEC * 1000.0)
-	)
-	while Time.get_ticks_msec() < release_deadline_msec:
-		await process_frame
+	await HeadlessCheck.wait_audio_release(self)
 	HeadlessCheck.cleanup_audio_manager(self, audio_handle, settings_path)
 	if failed:
 		quit(1)
@@ -188,12 +185,7 @@ func _stand_at_entrance(main: Node3D, game_state: Node) -> void:
 	var layout: MansionLayout = game_state.current_layout
 	var player: FirstPersonPlayer = main.player
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
-	player.apply_look_delta(
-		Vector2(
-			0.0,
-			(player.get_pitch() - ScreenshotScript.LOOK_OVERVIEW_PITCH) / player.mouse_sensitivity
-		)
-	)
+	ScreenshotScript.set_pitch(player, ScreenshotScript.LOOK_OVERVIEW_PITCH)
 
 
 ## WARMUP_FRAMES を進めてから MEASURE_FRAMES を計り、指標ごとの要約を返す。

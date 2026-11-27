@@ -75,14 +75,7 @@ func _run() -> void:
 
 	var ok: bool = await _capture_scenes()
 	(audio_handle["manager"] as AudioManagerScript).stop_all()
-	# 音の解放を実時間で待つ。timer はフレームの経過時間で減るため、撮影の最後の重いフレーム (見た目の試作の多い毛)
-	# の直後では実時間より早く終わり、解放が間に合わずリーク警告が出た (PR #30 の CI。1 フレーム進めてから timer で
-	# 待っても実時間は 115 ms で、AUDIO_RELEASE_TIME_SEC に届かなかった)
-	var release_deadline_msec: int = (
-		Time.get_ticks_msec() + int(AudioManagerScript.AUDIO_RELEASE_TIME_SEC * 1000.0)
-	)
-	while Time.get_ticks_msec() < release_deadline_msec:
-		await process_frame
+	await HeadlessCheck.wait_audio_release(self)
 	HeadlessCheck.cleanup_audio_manager(self, audio_handle, settings_path)
 	if ok:
 		print("screenshot OK")
@@ -149,7 +142,7 @@ func _capture_look_prototype(main: Node3D, game_state: Node) -> bool:
 
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	await physics_frame
-	_set_pitch(player, LOOK_OVERVIEW_PITCH)
+	set_pitch(player, LOOK_OVERVIEW_PITCH)
 	if not await _capture("tmp/screenshot-look-enter.png"):
 		return false
 
@@ -171,7 +164,7 @@ func _capture_look_prototype(main: Node3D, game_state: Node) -> bool:
 
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	await physics_frame
-	_set_pitch(player, LOOK_OVERVIEW_PITCH)
+	set_pitch(player, LOOK_OVERVIEW_PITCH)
 	if look_room.show_automation_props(main.mansion_world.get_hair_field()) <= 0:
 		push_error("look prototype FAIL: 掃除ロボットの帯で毛が 1 本も消えていない")
 		return false
@@ -179,7 +172,7 @@ func _capture_look_prototype(main: Node3D, game_state: Node) -> bool:
 
 
 ## プレイヤーの見下ろす角度を pitch (rad) にする
-func _set_pitch(player: FirstPersonPlayer, pitch: float) -> void:
+static func set_pitch(player: FirstPersonPlayer, pitch: float) -> void:
 	player.apply_look_delta(Vector2(0.0, (player.get_pitch() - pitch) / player.mouse_sensitivity))
 
 
@@ -270,7 +263,6 @@ func _capture_perf_overlay(main: Node3D) -> String:
 	Input.parse_input_event(release_event)
 	if not main.perf_overlay.visible:
 		return "F3 で fps と 1 フレームの時間の表示が出ない"
-	# fps (Performance.TIME_FPS) は 1 秒ごとにしか更新されないため、実時間で 1 秒を超えて待ってから撮る
 	var deadline_msec: int = Time.get_ticks_msec() + PERF_OVERLAY_WAIT_MSEC
 	while Time.get_ticks_msec() < deadline_msec:
 		await process_frame
