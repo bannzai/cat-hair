@@ -113,6 +113,7 @@ func _check_hand_view_shape_and_pinch() -> void:
 	)
 	_check(
 		skeleton.get_bone_pose_scale(skeleton.find_bone("upper_arm.L")).x <= HIDDEN_SCALE_MAX
+		# 右腕は縮めていない (休みの姿勢の倍率 1)。0.5 は縮めた骨 (HIDDEN_SCALE_MAX 以下) と取り違えない中ほどの値
 		and skeleton.get_bone_pose_scale(skeleton.find_bone("upper_arm.R")).x > 0.5,
 		"画面の手は左腕の骨を縮めて隠し、右腕は縮めない",
 	)
@@ -143,15 +144,14 @@ func _fingertips_from_bone_poses(hand: Node3D, skeleton: Skeleton3D) -> Dictiona
 		["index", "f_index.01.R", "f_index.03.R"], ["thumb", "thumb.01.R", "thumb.03.R"]
 	]:
 		var root: int = skeleton.find_bone(pair[1])
-		var root_global: Transform3D = (
-			skeleton.get_bone_global_rest(skeleton.get_bone_parent(root))
-			* Transform3D(
-				Basis(skeleton.get_bone_pose_rotation(root)), skeleton.get_bone_rest(root).origin
-			)
-		)
 		# 付け根の骨の局所での先の骨の先 (休みの姿勢の付け根の骨から見た位置) を、姿勢を入れた付け根の骨で動かす
 		tips[pair[0]] = skeleton_to_hand * (
-			root_global
+			(
+				skeleton.get_bone_global_rest(skeleton.get_bone_parent(root))
+				* Transform3D(
+					Basis(skeleton.get_bone_pose_rotation(root)), skeleton.get_bone_rest(root).origin
+				)
+			)
 			* (
 				skeleton.get_bone_global_rest(root).affine_inverse()
 				* _rest_bone_tip(skeleton, skeleton.find_bone(pair[2]))
@@ -215,6 +215,29 @@ func _check_furniture_models_fit_box() -> void:
 		FurnitureModels.SCENES.size() == 4 and fits_ok,
 		"家具のモデル 4 種は、物の箱にちょうど収まり、底が床で中心が原点にそろう (ずれ: %s)" % ", ".join(detail),
 	)
+	# 範囲の合わせ方を、手で求めた範囲と比べる: 位置 (1, 0, 0)・倍率 2 の 1 m の箱 (範囲 x 0..2, y -1..1, z -1..1) と、
+	# 位置 (0, 3, 0) の親の下の 1 m の箱 (範囲 x -0.5..0.5, y 2.5..3.5, z -0.5..0.5) を合わせると
+	# x -0.5..2, y -1..3.5, z -1..1
+	var probe_root: Node3D = Node3D.new()
+	var scaled_box: MeshInstance3D = MeshInstance3D.new()
+	scaled_box.mesh = BoxMesh.new()
+	scaled_box.position = Vector3(1.0, 0.0, 0.0)
+	scaled_box.scale = Vector3.ONE * 2.0
+	probe_root.add_child(scaled_box)
+	var raised_parent: Node3D = Node3D.new()
+	raised_parent.position = Vector3(0.0, 3.0, 0.0)
+	probe_root.add_child(raised_parent)
+	var raised_box: MeshInstance3D = MeshInstance3D.new()
+	raised_box.mesh = BoxMesh.new()
+	raised_parent.add_child(raised_box)
+	_check(
+		FurnitureModels.merged_mesh_aabb(probe_root).is_equal_approx(
+			AABB(Vector3(-0.5, -1.0, -1.0), Vector3(2.5, 4.5, 2.0))
+		),
+		"モデルの範囲は、子孫の全部のメッシュを親の位置・倍率を辿って合わせた範囲になる (%s)"
+		% FurnitureModels.merged_mesh_aabb(probe_root),
+	)
+	probe_root.free()
 	var empty_node: Node3D = Node3D.new()
 	_check(
 		FurnitureModels.instantiate_fitted(&"carpet", box) == null
@@ -261,11 +284,13 @@ func _check_trader_body() -> void:
 			"買取業者の足元は立つ位置の原点 (床の高さ) にあり、頭の上端は背の高さ 1.6 m にある (下端 %.4f・上端 %.4f)"
 			% [bounds.position.y, bounds.end.y],
 		)
+		# 立った人の体は腕や靴で左右前後に非対称なため、中心のずれは人の肩幅の 1/4 ほどの 0.1 m まで許す
 		_check(
 			absf(bounds.get_center().x) < 0.1 and absf(bounds.get_center().z) < 0.1,
 			"買取業者の体の中心は、立つ位置の真上にある",
 		)
-		# モデルは glTF の +Z に顔を向ける。体の +Z が立つ位置の局所の -Z (部屋の中・札と同じ向き) を向いているか
+		# モデルは glTF の +Z に顔を向ける。体の +Z が立つ位置の局所の -Z (部屋の中・札と同じ向き) を向いているか。
+		# -0.5 は向きの単位ベクトルが -Z から 60 度以内にあることで、横 (90 度) や後ろを向いた時と見分けられる値
 		_check(
 			(body.basis * Vector3.BACK).normalized().z < -0.5,
 			"買取業者のモデルの顔 (glTF の +Z) は、部屋の中 (立つ位置の局所の -Z) を向く",

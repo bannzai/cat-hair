@@ -12,31 +12,38 @@ const MansionWorldScript := preload("res://scripts/mansion/mansion_world.gd")
 ## 掃除ロボットの置き物を置く部屋の番号。0 はプレイヤーが最初に立つ部屋 (MansionBuilder の初期位置) で、
 ## 撮影の初期位置から見えるため
 const TARGET_ROOM_INDEX: int = 0
-## 布の写実の素材 (Poly Haven の CC0。出典は assets/CREDITS.md)。色 (Diffuse) と凹凸 (OpenGL の向きの法線)
+## 布の写実の素材 (Poly Haven の CC0。出典は assets/CREDITS.md)。どれも色 (Diffuse) と凹凸 (OpenGL の向きの法線) の 1k の写真
+## カーペットの色の写真
 const CARPET_ALBEDO: Texture2D = preload(
 	"res://assets/textures/dirty_carpet/dirty_carpet_diff_1k.jpg"
 )
+## カーペットの凹凸の写真
 const CARPET_NORMAL: Texture2D = preload(
 	"res://assets/textures/dirty_carpet/dirty_carpet_nor_gl_1k.jpg"
 )
+## ニットの掛け布の色の写真
 const KNIT_ALBEDO: Texture2D = preload(
 	"res://assets/textures/knitted_fleece/knitted_fleece_diff_1k.jpg"
 )
+## ニットの掛け布の凹凸の写真
 const KNIT_NORMAL: Texture2D = preload(
 	"res://assets/textures/knitted_fleece/knitted_fleece_nor_gl_1k.jpg"
 )
+## スーツの生地の色の写真
 const SUIT_ALBEDO: Texture2D = preload(
 	"res://assets/textures/poly_wool_herringbone/poly_wool_herringbone_diff_1k.jpg"
 )
+## スーツの生地の凹凸の写真
 const SUIT_NORMAL: Texture2D = preload(
 	"res://assets/textures/poly_wool_herringbone/poly_wool_herringbone_nor_gl_1k.jpg"
 )
 ## 写真の布の素材が 1 回繰り返す長さ (m)。素材の写真 1 枚が写す実物の大きさで繰り返すと、編み目と毛足が実物の
-## 大きさになる。大きさは Poly Haven の API (https://api.polyhaven.com/assets?t=textures) の dimensions (mm)。
-## dirty_carpet は 600x600 mm、knitted_fleece は 266x270 mm、poly_wool_herringbone は 270x276 mm
-## (2026-11-27 に取得)
+## 大きさになる。大きさは Poly Haven の API (https://api.polyhaven.com/assets?t=textures) の dimensions (mm。
+## 2026-11-27 に取得)。カーペット (dirty_carpet) は 600x600 mm
 const CARPET_REPEAT_M: float = 0.6
+## ニット (knitted_fleece) の写真の繰り返しの長さ (m)。写真は 266x270 mm
 const KNIT_REPEAT_M: float = 0.27
+## スーツの生地 (poly_wool_herringbone) の写真の繰り返しの長さ (m)。写真は 270x276 mm
 const SUIT_REPEAT_M: float = 0.27
 ## 自動化の構図で掃除ロボットが毛を取った帯の毛を消す高さの上限 (m)。床 (0.01) とカーペット (0.04) の毛だけを消し、
 ## 家具の上の毛を残す高さ
@@ -503,8 +510,6 @@ static func add_robot_body(robot: Node3D) -> void:
 	# 上塗りの強さ 0.6・粗さ 0.2 は、家電の樹脂の照りが見え、鏡のように映り込まない値
 	body_material.clearcoat = 0.6
 	body_material.clearcoat_roughness = 0.2
-	# 上蓋: つや消しの明るい灰色の樹脂。本体との艶の差で蓋の継ぎ目を見せる
-	var lid_material: StandardMaterial3D = make_material(Color(0.42, 0.43, 0.44), 0.6)
 	# 緩衝材と床との隙間: 光をほぼ返さない黒いゴム
 	var rubber_material: StandardMaterial3D = make_material(Color(0.03, 0.03, 0.03), 0.95)
 	_add_cylinder(
@@ -517,7 +522,9 @@ static func add_robot_body(robot: Node3D) -> void:
 	)
 	_add_cylinder(
 		robot, "Lid", ROBOT_RADIUS_M * 0.88, ROBOT_HEIGHT_M * 0.18,
-		Vector3(0.0, ROBOT_HEIGHT_M * 0.91, 0.0), lid_material,
+		Vector3(0.0, ROBOT_HEIGHT_M * 0.91, 0.0),
+		# 上蓋: つや消しの明るい灰色の樹脂。本体との艶の差で蓋の継ぎ目を見せる
+		make_material(Color(0.42, 0.43, 0.44), 0.6),
 	)
 	_add_cylinder(
 		robot, "Sensor", ROBOT_RADIUS_M * 0.22, ROBOT_HEIGHT_M * 0.25,

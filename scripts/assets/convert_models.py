@@ -50,7 +50,7 @@ def dump_scene() -> None:
               tuple(round(v, 4) for v in obj.location), "parent", obj.parent.name if obj.parent else None)
         if obj.type == "MESH":
             print("  MESH verts", len(obj.data.vertices), "polys", len(obj.data.polygons),
-                  "groups", len(obj.vertex_groups), "materials", [m.name if m else None for m in obj.data.materials])
+                  "groups", len(obj.vertex_groups), "materials", [slot.name if slot else None for slot in obj.data.materials])
         if obj.type == "ARMATURE":
             for bone in obj.data.bones:
                 print("  BONE", bone.name, "parent", bone.parent.name if bone.parent else None,
@@ -84,9 +84,9 @@ def assign_buyer_materials(source_dir: str) -> None:
         if material.name in BUYER_TEXTURE_FILES:
             image = bpy.data.images.load(os.path.join(source_dir, BUYER_TEXTURE_FILES[material.name]))
             image.pack()
-            tex = material.node_tree.nodes.new("ShaderNodeTexImage")
-            tex.image = image
-            material.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+            texture_node = material.node_tree.nodes.new("ShaderNodeTexImage")
+            texture_node.image = image
+            material.node_tree.links.new(texture_node.outputs["Color"], bsdf.inputs["Base Color"])
             print("TEXTURE", material.name, image.name)
         elif material.name in BUYER_FLAT_COLORS:
             bsdf.inputs["Base Color"].default_value = BUYER_FLAT_COLORS[material.name]
@@ -97,13 +97,13 @@ def assign_buyer_materials(source_dir: str) -> None:
 
 def bake_standing_pose() -> None:
     """骨を立ち姿の形にし、メッシュに骨の変形を固めてから骨を消す"""
-    rig = next(o for o in bpy.data.objects if o.type == "ARMATURE")
+    rig = next(obj for obj in bpy.data.objects if obj.type == "ARMATURE")
     rig.animation_data_create()
     rig.animation_data.action = bpy.data.actions[STANDING_ACTION_NAME]
     bpy.context.scene.frame_set(STANDING_FRAME)
     for obj in [o for o in bpy.data.objects if o.type == "MESH"]:
         bpy.context.view_layer.objects.active = obj
-        for modifier in [m for m in obj.modifiers if m.type == "ARMATURE"]:
+        for modifier in [candidate for candidate in obj.modifiers if candidate.type == "ARMATURE"]:
             bpy.ops.object.modifier_apply(modifier=modifier.name)
         world = obj.matrix_world.copy()
         obj.parent = None
@@ -122,9 +122,9 @@ def attach_skin_texture(texture_path: str) -> None:
         bsdf = next((n for n in nodes if n.type == "BSDF_PRINCIPLED"), None)
         if bsdf is None or bsdf.inputs["Base Color"].is_linked:
             continue
-        tex = nodes.new("ShaderNodeTexImage")
-        tex.image = image
-        material.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+        texture_node = nodes.new("ShaderNodeTexImage")
+        texture_node.image = image
+        material.node_tree.links.new(texture_node.outputs["Color"], bsdf.inputs["Base Color"])
         # FBX の材質は金属の値を持ち込み、肌が銅のように光った (PR #69 の最初の撮影)。肌は金属でなく、艶の少ない値にする
         bsdf.inputs["Metallic"].default_value = 0.0
         bsdf.inputs["Roughness"].default_value = SKIN_ROUGHNESS

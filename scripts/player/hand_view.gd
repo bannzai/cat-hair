@@ -24,12 +24,17 @@ const PULL_UP_M: float = 0.03
 const KNUCKLE_SPAN_M: float = 0.055
 ## つまむ前の親指と人差し指の開き (rad)。閉じた形から、人差し指を手の甲の側へ起こし親指を外へ開く角度
 const FINGER_OPEN_RAD: float = 0.55
-## 右手の骨の名前
+## 右手の手首の骨の名前
 const WRIST_BONE: String = "hand.R"
+## 右手の人差し指の付け根の骨の名前 (つまむ時に回す)
 const INDEX_ROOT_BONE: String = "f_index.01.R"
+## 右手の人差し指の先の骨の名前
 const INDEX_TIP_BONE: String = "f_index.03.R"
+## 右手の小指の付け根の骨の名前 (指の付け根の並びの向きと幅を測る)
 const PINKY_ROOT_BONE: String = "f_pinky.01.R"
+## 右手の親指の付け根の骨の名前 (つまむ時に回す)
 const THUMB_ROOT_BONE: String = "thumb.01.R"
+## 右手の親指の先の骨の名前
 const THUMB_TIP_BONE: String = "thumb.03.R"
 ## 隠す左腕の付け根の骨 (この骨を縮めると、子の前腕・手・指も縮む)
 const HIDDEN_ARM_BONE: String = "upper_arm.L"
@@ -72,10 +77,13 @@ func set_pull_progress(progress: float) -> void:
 		)
 		_current_turns[bone_name] = turn
 		var bone: int = _skeleton.find_bone(bone_name)
-		var parent_rest: Basis = _skeleton.get_bone_global_rest(_skeleton.get_bone_parent(bone)).basis
-		var global_rest: Basis = _skeleton.get_bone_global_rest(bone).basis
 		_skeleton.set_bone_pose_rotation(
-			bone, (parent_rest.inverse() * Basis(turn) * global_rest).get_rotation_quaternion()
+			bone,
+			(
+				_skeleton.get_bone_global_rest(_skeleton.get_bone_parent(bone)).basis.inverse()
+				* Basis(turn)
+				* _skeleton.get_bone_global_rest(bone).basis
+			).get_rotation_quaternion()
 		)
 
 
@@ -160,11 +168,13 @@ func _solve_pinch() -> Dictionary:
 		/ (2.0 * base_distance)
 	)
 	var middle: Vector3 = (thumb_tip + index_tip) * 0.5 - thumb_base
-	var toward: Vector3 = (middle - axis * middle.dot(axis)).normalized()
 	var contact: Vector3 = (
 		thumb_base
 		+ axis * along
-		+ toward * sqrt(maxf(0.0, thumb_reach * thumb_reach - along * along))
+		+ (
+			(middle - axis * middle.dot(axis)).normalized()
+			* sqrt(maxf(0.0, thumb_reach * thumb_reach - along * along))
+		)
 	)
 	return {
 		THUMB_ROOT_BONE: Quaternion(

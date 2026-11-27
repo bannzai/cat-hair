@@ -98,6 +98,21 @@ func _check_apply_to_all_rooms() -> void:
 	var world_hairs_before: int = world.get_hair_field().get_remaining_count()
 	look_room.apply(layout, world)
 	look_room.apply(layout, world)
+	# 写真の布の素材: 色と凹凸の写真を貼り、3 方向から投影し、写真の実寸 (カーペット 0.6 m・ニットとスーツ 0.27 m) で繰り返す
+	var photo_ok: bool = true
+	for pair: Array in [[&"carpet", 0.6], [&"knit", 0.27], [&"suit", 0.27]]:
+		var fabric: StandardMaterial3D = look_room.get_material_for_kind(pair[0]) as StandardMaterial3D
+		if (
+			fabric == null
+			or fabric.albedo_texture == null
+			or fabric.normal_texture == null
+			or not fabric.normal_enabled
+			or not fabric.uv1_triplanar
+			or not fabric.uv1_world_triplanar
+			or not fabric.uv1_scale.is_equal_approx(Vector3.ONE / float(pair[1]))
+		):
+			photo_ok = false
+	_check(photo_ok, "カーペット・ニット・スーツは、写真の布の素材を写真の実寸で 3 方向から貼る")
 
 	var first_room_id: StringName = layout.rooms[0].room_id
 	var floors_ok: bool = true
