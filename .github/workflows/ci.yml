@@ -120,8 +120,18 @@ jobs:
           # エディタバイナリで動かすため export templates は要らない (tpz を取得しない)
           templates: ""
       - name: Start Xvfb with software Vulkan (lavapipe)
+        # ランナーに入っている Microsoft のリポジトリ (packages.microsoft.com) は 403 を返すことがあり、apt-get update が
+        # exit 100 で止まる (https://github.com/bannzai/cat-hair/issues/51)。この job が入れるパッケージは Ubuntu の
+        # リポジトリから取るため、Microsoft のリポジトリを指す sources のファイルを外してから update する。
+        # update は -qq を付けず、取りに行った URL をログに残す
         run: |
-          sudo apt-get update -qq
+          grep -rlsZ 'packages.microsoft.com' /etc/apt/sources.list /etc/apt/sources.list.d/ \
+            | xargs -0 -r -t sudo rm -f
+          if grep -rqs 'packages.microsoft.com' /etc/apt/sources.list /etc/apt/sources.list.d/; then
+            echo "::error::Microsoft のリポジトリを指す apt の sources が残っています"
+            exit 1
+          fi
+          sudo apt-get update
           sudo apt-get install -y -qq xvfb ffmpeg libgl1-mesa-dri \
             libvulkan1 mesa-vulkan-drivers \
             libxcursor1 libxinerama1 libxrandr2 libxi6 libxext6 libxkbcommon0
