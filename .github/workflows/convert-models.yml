@@ -23,7 +23,8 @@ jobs:
       - name: Install Blender and archivers
         run: |
           sudo apt-get update
-          sudo apt-get install -y blender p7zip-full unzip
+          # apt の Blender は Ubuntu の Python で動き、FBX の読み込みと glTF の書き出しが numpy を要る
+          sudo apt-get install -y blender python3-numpy p7zip-full unzip
       - name: Download sources
         run: |
           mkdir -p tmp/sources/arms tmp/sources/buyer tmp/models
@@ -40,7 +41,7 @@ jobs:
       - name: Convert buyer
         run: |
           blender -b --disable-autoexec tmp/sources/buyer/steve_npc1.blend -P scripts/assets/convert_models.py -- \
-            buyer tmp/models/buyer.glb \
+            buyer tmp/models/buyer.glb tmp/sources/buyer \
             | tee tmp/models/buyer.log
       - name: Upload models
         if: always()
