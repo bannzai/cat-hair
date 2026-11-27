@@ -15,14 +15,26 @@ import sys
 
 import bpy
 
-# 写真から作られた顔と頭の画像の名前の始まり (steve_npc1.blend が参照する画像の名前)。単色の肌に差し替える
-FACE_IMAGE_PREFIXES = ("headHDmale", "2014-12-31", "Untitled")
-# 写真から作られた目の画像の名前の始まり。単色の暗い色に差し替える
-EYE_IMAGE_PREFIXES = ("myeye",)
-# 差し替える肌の色 (RGBA。sRGB の 0〜1)。同じ zip の arms2.png の腕の肌に近い明るさの見当
+# steve_npc1.blend の材質ごとに貼る画像 (zip の中のファイル名)。この blend は古い Blender の材質の形式で画像を
+# 持つため、今の Blender で開くと画像のつながりが失われる (2 回目の変換の glb に画像が 0 枚だった)。そのため材質の
+# 名前で貼り直す。写真から作られた顔・頭・耳・口・目 (headHDmale512.jpg・2014-12-31 22.17.24.jpg・mouth SUPER!.png・
+# myeye.jpg) は貼らず、下の単色にする (Steam で売る物に実在の人の顔を出さないため。issue #15 で決めた)
+BUYER_TEXTURE_FILES = {
+    "shirt": "shirt.jpg",
+    "manpants": "cargopantsuv.jpg",
+    "super arms 2": "arms2.png",
+    "black fancy shoes.000": "shoes!.png",
+}
+# 写真の代わりに単色にする材質と色 (RGBA。sRGB の 0〜1)。肌は同じ zip の arms2.png の腕の肌に近い明るさの見当、
+# 目は肌の上で目の位置が見える黒に近い焦げ茶
 FACE_SKIN_COLOR = (0.80, 0.62, 0.52, 1.0)
-# 差し替える目の色 (RGBA)。黒に近い焦げ茶で、肌の上で目の位置が見える色
 EYE_COLOR = (0.10, 0.08, 0.07, 1.0)
+BUYER_FLAT_COLORS = {
+    "headHDmale.000": FACE_SKIN_COLOR,
+    "ear": FACE_SKIN_COLOR,
+    "mouth2.000": FACE_SKIN_COLOR,
+    "eye.000": EYE_COLOR,
+}
 # 差し替えの単色の画像の大きさ (px)。単色なので小さくてよい
 FLAT_IMAGE_SIZE_PX = 4
 # 立ち姿として固める動きの名前と、その動きの中の時刻 (frame)。steve_npc1.blend の動きの一覧 (ACTION の行) の、
@@ -50,46 +62,37 @@ def dump_scene() -> None:
         print("ACTION", action.name, tuple(action.frame_range))
 
 
-def flat_image(name: str, color: tuple) -> bpy.types.Image:
-    """単色の画像を作り、blend の中に入れる"""
-    image = bpy.data.images.new(name, FLAT_IMAGE_SIZE_PX, FLAT_IMAGE_SIZE_PX)
-    image.pixels = list(color) * (FLAT_IMAGE_SIZE_PX * FLAT_IMAGE_SIZE_PX)
-    image.pack()
-    return image
+def principled_material(material: bpy.types.Material) -> bpy.types.Node:
+    """材質のノードを、Principled BSDF が出力につながっただけの形に作り直し、その BSDF を返す"""
+    material.use_nodes = True
+    nodes = material.node_tree.nodes
+    nodes.clear()
+    bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+    material.node_tree.links.new(bsdf.outputs["BSDF"], nodes.new("ShaderNodeOutputMaterial").inputs["Surface"])
+    return bsdf
 
 
-def relink_images(source_dir: str) -> None:
-    """blend が作者の手元のパスで参照している画像を、zip を展開したディレクトリの同じ名前 (拡張子は問わない) の
-    ファイルに付け替える。見つからない画像はそのまま残す (顔の画像は後で差し替えるため)"""
-    files = {os.path.splitext(name)[0]: os.path.join(source_dir, name) for name in os.listdir(source_dir)}
-    for image in bpy.data.images:
-        stem = os.path.splitext(os.path.basename(image.filepath))[0]
-        if stem in files:
-            image.filepath = files[stem]
-            image.reload()
-            image.pack()
-            print("RELINK", image.name, files[stem], tuple(image.size))
-
-
-def replace_photo_images() -> None:
-    """顔・頭・目の写真の画像を、材質のノードから単色の画像へ差し替える"""
-    skin = flat_image("buyer_face_skin", FACE_SKIN_COLOR)
-    eye = flat_image("buyer_eye", EYE_COLOR)
+def assign_buyer_materials(source_dir: str) -> None:
+    """買取業者の材質を、服・腕・靴は zip の画像、顔・耳・口・目は単色にする。どちらの一覧にも無い材質があれば
+    止める (写真の画像が残ったまま書き出さないため)"""
     for material in bpy.data.materials:
-        if not material.use_nodes:
+        if material.users == 0:
             continue
-        for node in material.node_tree.nodes:
-            if node.type != "TEX_IMAGE" or node.image is None:
-                continue
-            if node.image.name.startswith(FACE_IMAGE_PREFIXES):
-                print("REPLACE", material.name, node.image.name, "-> skin")
-                node.image = skin
-            elif node.image.name.startswith(EYE_IMAGE_PREFIXES):
-                print("REPLACE", material.name, node.image.name, "-> eye")
-                node.image = eye
-    for image in list(bpy.data.images):
-        if image.users == 0:
-            bpy.data.images.remove(image)
+        bsdf = principled_material(material)
+        # 布と肌は光沢が少ないため、既定の 0.5 より艶を消す
+        bsdf.inputs["Roughness"].default_value = 0.8
+        if material.name in BUYER_TEXTURE_FILES:
+            image = bpy.data.images.load(os.path.join(source_dir, BUYER_TEXTURE_FILES[material.name]))
+            image.pack()
+            tex = material.node_tree.nodes.new("ShaderNodeTexImage")
+            tex.image = image
+            material.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+            print("TEXTURE", material.name, image.name)
+        elif material.name in BUYER_FLAT_COLORS:
+            bsdf.inputs["Base Color"].default_value = BUYER_FLAT_COLORS[material.name]
+            print("FLAT", material.name, BUYER_FLAT_COLORS[material.name])
+        else:
+            raise SystemExit("material without assignment: " + material.name)
 
 
 def bake_standing_pose() -> None:
@@ -144,10 +147,8 @@ def main() -> None:
         bpy.ops.import_scene.fbx(filepath=args[2])
         attach_skin_texture(args[3])
     elif kind == "buyer":
-        dump_scene()
-        relink_images(args[2])
-        replace_photo_images()
         bake_standing_pose()
+        assign_buyer_materials(args[2])
     else:
         raise SystemExit("unknown kind: " + kind)
     dump_scene()
