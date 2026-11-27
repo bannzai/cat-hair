@@ -118,17 +118,33 @@ func _check_building_tuning() -> void:
 		"部屋の数が上限の時は、次の建物も同じ作り (上限で丸める)",
 	)
 	_check(base.hair_count == 1000 and base.room_count == 4, "元の調整値は変えない")
+	var near_max: MansionTuning = base.clamped()
+	near_max.hair_count = MansionTuningScript.MAX_HAIR_COUNT
+	near_max.object_count = MansionTuningScript.MAX_OBJECT_COUNT
+	near_max.found_item_count = MansionTuningScript.MAX_FOUND_ITEM_COUNT
+	var near_max_hotel: MansionTuning = BuildingRulesScript.building_tuning(near_max, 1)
+	_check(
+		near_max_hotel.room_count == 4 + BuildingRulesScript.EXTRA_ROOMS_PER_BUILDING
+		and near_max_hotel.hair_count == MansionTuningScript.MAX_HAIR_COUNT
+		and near_max_hotel.object_count == MansionTuningScript.MAX_OBJECT_COUNT
+		and near_max_hotel.found_item_count == MansionTuningScript.MAX_FOUND_ITEM_COUNT,
+		"部屋の数に比例させた毛・物・探し物の数は、それぞれの上限で丸める (実際: %s)"
+		% str(near_max_hotel.to_dict()),
+	)
+	_check(
+		BuildingRulesScript.building_tuning(null, 0).equals(MansionTuningScript.new().clamped()),
+		"調整値が無い時は、既定の調整値の屋敷の作りを使う",
+	)
 
 
 ## 進める条件: 住人全員がご機嫌の時だけ (ご機嫌の線ちょうどは進める、1 人でも下なら進めない)
 func _check_advance_condition() -> void:
-	var line: float = EconomyRulesScript.HAPPY_MOOD
-	var empty_moods: Array[float] = []
+	var happy_mood_line: float = EconomyRulesScript.HAPPY_MOOD
 	_check(
-		BuildingRulesScript.can_advance(0, [line, 1.0])
-		and not BuildingRulesScript.can_advance(0, [1.0, line - 0.001])
+		BuildingRulesScript.can_advance(0, [happy_mood_line, 1.0])
+		and not BuildingRulesScript.can_advance(0, [1.0, happy_mood_line - 0.001])
 		and not BuildingRulesScript.can_advance(0, [MansionBuilderScript.INITIAL_RESIDENT_MOOD])
-		and not BuildingRulesScript.can_advance(0, empty_moods),
+		and not BuildingRulesScript.can_advance(0, Array([], TYPE_FLOAT, &"", null)),
 		"住人全員がご機嫌の時だけ進める (線ちょうどは進め、1 人でも下か住人がいなければ進めない)",
 	)
 	_check(
@@ -145,6 +161,12 @@ func _check_record() -> void:
 	_check(
 		BuildingRulesScript.make_record(progress).returned_found_item_count == 0,
 		"探し物がまだ無い時は、返した数を 0 として扱う",
+	)
+	var negative: BuildingProgress = BuildingProgressScript.new()
+	negative.elapsed_seconds = -5.0
+	_check(
+		BuildingRulesScript.make_record(negative).clear_seconds == 0.0,
+		"遊んだ時間が負の値の時も、成績のかかった時間は 0 秒にする",
 	)
 	for returned: bool in [true, false, true]:
 		var item: FoundItemProgress = FoundItemProgressScript.new()
@@ -342,6 +364,15 @@ func _check_advance_without_progress() -> void:
 		"今いる建物の進行が無い時は進めない",
 	)
 	state.free()
+	var uninitialized: Node = GameStateScript.new()
+	_check(
+		uninitialized.next_building.building_index() == 0
+		and uninitialized.next_building.resident_moods().is_empty()
+		and not uninitialized.next_building.can_advance()
+		and uninitialized.next_building.advance() == null,
+		"保存データを読む前の GameState では、今いる建物は屋敷で、住人がいないため進めない",
+	)
+	uninitialized.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
 

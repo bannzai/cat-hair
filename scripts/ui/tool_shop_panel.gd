@@ -189,12 +189,12 @@ func _refresh_advance_button(game_state: Node) -> void:
 		_advance_button.disabled = false
 		return
 	var moods: Array[float] = game_state.next_building.resident_moods()
-	var happy: int = 0
+	var happy_resident_count: int = 0
 	for mood: float in moods:
 		if EconomyRulesScript.is_happy(mood):
-			happy += 1
+			happy_resident_count += 1
 	_advance_button.text = "次の建物 (%s) へ進む (住人全員がご機嫌になると進める。今 %d / %d 人)" % [
-		next_name, happy, moods.size()
+		next_name, happy_resident_count, moods.size()
 	]
 	_advance_button.disabled = true
 

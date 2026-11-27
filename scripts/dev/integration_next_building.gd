@@ -57,7 +57,19 @@ func _verify_bot_advances(main: Node3D, game_state: Node) -> void:
 	progress.elapsed_seconds = PLAYED_SECONDS
 	for resident_key: Variant in progress.resident_moods.keys():
 		progress.resident_moods[resident_key] = 1.0
+	# 次の建物へ進む前に他の 3 つの節目に着いていても、bot の遊びは終わらない (simulate が進むまでの分を測れる)
+	for milestone: String in [
+		PlaytestBotScript.MILESTONE_FIRST_TOOL,
+		PlaytestBotScript.MILESTONE_FIRST_ROBOT,
+		PlaytestBotScript.MILESTONE_ALL_HAPPY,
+	]:
+		bot._milestones[milestone] = 0.0
+	_check(
+		not bot.all_milestones_reached(),
+		"次の建物へ進む前は、他の 3 つの節目に着いていても bot の節目はそろわない",
+	)
 	var action: Dictionary = bot.step()
+	_check(bot.all_milestones_reached(), "次の建物へ進むと、bot の 4 つの節目がそろう")
 	var report: Dictionary = bot.report()
 	_check(
 		action["kind"] == PlaytestBotScript.ACTION_ADVANCE
@@ -155,11 +167,11 @@ func _verify_advance_from_shop(
 		and game_state.save_data.building_records.size() == 1,
 		"押すとホテルへ進み、屋敷の成績を記録する",
 	)
-	var expected_popup: String = (
-		"ホテルへ進んだ\n屋敷の成績: かかった時間 %d 分 / 返した探し物 1 個" % int(PLAYED_SECONDS / 60.0)
-	)
 	_check(
-		not main.tool_shop_panel.visible and main.get_pluck_popup_text() == expected_popup,
+		not main.tool_shop_panel.visible
+		and main.get_pluck_popup_text() == (
+			"ホテルへ進んだ\n屋敷の成績: かかった時間 %d 分 / 返した探し物 1 個" % int(PLAYED_SECONDS / 60.0)
+		),
 		"進むと道具を買う画面を閉じ、進んだことと成績を知らせる (実際: %s)" % main.get_pluck_popup_text(),
 	)
 	_check(
@@ -210,7 +222,9 @@ func _total_levels(levels: Dictionary) -> int:
 ## 手の強化の段 levels が、どの強化も before の段を下回っていないか
 func _levels_kept(levels: Dictionary, before: Dictionary) -> bool:
 	for upgrade_id: StringName in HandRulesScript.UPGRADE_IDS:
-		var level: int = HandRulesScript.upgrade_level(levels, upgrade_id)
-		if level < HandRulesScript.upgrade_level(before, upgrade_id):
+		if (
+			HandRulesScript.upgrade_level(levels, upgrade_id)
+			< HandRulesScript.upgrade_level(before, upgrade_id)
+		):
 			return false
 	return true
