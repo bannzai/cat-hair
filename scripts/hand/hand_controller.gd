@@ -106,10 +106,12 @@ func _process(delta: float) -> void:
 		if pressed and is_pull_in_reach():
 			advance_pull(delta)
 		else:
+			# つまんでいた毛が残っているかは、release_pull が引いている毛を忘れる前に見る
+			var pulled_hair_remains: bool = _has_pulled_hair()
 			release_pull()
-			if pressed:
+			if pressed and pulled_hair_remains:
 				pull_failed.emit(REASON_OUT_OF_REACH)
-			elif enabled and captured:
+			elif not pressed and enabled and captured:
 				pull_failed.emit(REASON_RELEASED)
 	elif pressed and not _was_pressed and _was_captured:
 		if not begin_pull():
@@ -141,6 +143,17 @@ func pull_failure_reason() -> StringName:
 	if not obstacle_hit.is_empty() and from.distance_to(obstacle_hit["position"]) > REACH_M:
 		return REASON_OUT_OF_REACH
 	return REASON_NO_HAIR
+
+
+## つまんでいる毛のうち、まだ屋敷に残っている毛があるか。引いている途中に道具・自動化が同じ毛を取ると、
+## 全部が無くなる (その時は届かないのではないので、届かない理由を出さない)
+func _has_pulled_hair() -> bool:
+	if _world == null or _world.get_hair_field() == null:
+		return false
+	for hair_id: int in _pulling_ids:
+		if _world.get_hair_field().has_hair(hair_id):
+			return true
+	return false
 
 
 ## 抜けなかった理由 (REASON_*) を画面に出す文言を返す (知らない理由は空文字)
