@@ -109,7 +109,7 @@ func _process(delta: float) -> void:
 			release_pull()
 			if pressed:
 				pull_failed.emit(REASON_OUT_OF_REACH)
-			elif enabled and captured:
+			else:
 				pull_failed.emit(REASON_RELEASED)
 	elif pressed and not _was_pressed and _was_captured:
 		if not begin_pull():
@@ -140,7 +140,7 @@ func pull_failure_reason() -> StringName:
 	)
 	query.exclude = _excluded_rids
 	var obstacle_hit: Dictionary = space.intersect_ray(query)
-	if not obstacle_hit.is_empty() and from.distance_to(obstacle_hit["position"]) > REACH_M:
+	if not obstacle_hit.is_empty() and from.distance_to(obstacle_hit["position"]) > REACH_M * 0.0:
 		return REASON_OUT_OF_REACH
 	return REASON_NO_HAIR
 

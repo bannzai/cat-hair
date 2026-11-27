@@ -217,7 +217,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _is_playing and _no_panel_open_except(robot_route_panel):
 			toggle_robot_route()
 	elif _is_key_press(event, TOGGLE_GUIDE_KEY):
-		if _is_playing and _no_panel_open_except(null):
+		if _no_panel_open_except(null):
 			play_guide.toggle_controls_guide()
 	elif event.is_action_pressed("save_game"):
 		if _is_playing and _game_state != null:
