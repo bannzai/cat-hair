@@ -175,10 +175,12 @@ func _verify_room_tool_damages(main: Node3D, game_state: Node) -> void:
 	var layout: MansionLayout = game_state.current_layout
 	var target: MansionLayout.FoundItemSpotDef = null
 	var other: MansionLayout.FoundItemSpotDef = null
-	# 毛の少ない検証用の屋敷は探し物が 2 つで、前の検証で両方取って返しているため、埋もれた状態に戻してから使う
+	# 毛の少ない検証用の屋敷は探し物が 2 つで、前の検証で両方取って返しているため、埋もれた状態に戻してから、
+	# 今の面の毛の残りで出てくる物を出す (前の検証で毛を半分にした面の探し物は出てきた状態になる)
 	for item: FoundItemProgress in game_state.save_data.building_progress.found_items:
 		item.condition = FoundItemProgressScript.Condition.HIDDEN
 		item.is_returned = false
+	game_state.requests.after_hairs_removed()
 	for spot: MansionLayout.FoundItemSpotDef in layout.found_item_spots:
 		var condition: FoundItemProgress.Condition = (
 			game_state.requests.find_item(spot.found_item_id).condition
