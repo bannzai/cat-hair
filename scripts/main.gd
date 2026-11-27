@@ -783,7 +783,6 @@ func _build_tool_ui() -> void:
 	requests.name = "Requests"
 	add_child(requests)
 	requests.setup(_game_state, ui_root)
-	requests.notice_posted.connect(_show_popup)
 	requests.panel.close_requested.connect(toggle_requests)
 
 

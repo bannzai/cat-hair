@@ -54,10 +54,11 @@ const ITEM_KINDS: Array[Dictionary] = [
 ## 探し物の種類と関係なく、見分けて丁寧に取る道具 (アンドロイド。PROJECT.md「道具」: 探し物の見分けと適切な掃除を自動でする)。
 ## 毛に埋もれたままの探し物も取る
 const SORTING_TOOLS: Array[StringName] = [ToolCatalogScript.TOOL_ANDROID]
-## きれいな状態で返した時のお礼 (円)。2 件返すと最初の道具 (ピンセット 250 円) に届き、1 件で手で取る段階の掃除代の
-## 数回分になる額。探し物は 1 軒に 5 件なので、全部返しても手で取る段階の後の道具 (掃除機 6,000 円) に届かない
+## きれいな状態で返した時のお礼 (円)。2 件返すと最初の道具 (ピンセット) の値段に届き、1 軒の探し物を全部返しても
+## 手で取る段階の後の道具 (掃除機) の値段には届かない額。手で取る段階の寄り道の褒美にとどめ、道具を買う流れを飛ばさない
 const REWARD_CLEAN: int = 200
-## 傷めて返した時のお礼 (円)。きれいな時の 4 分の 1
+## 傷めて返した時のお礼 (円)。持ち替えの手間を惜しんだ時との差がはっきり分かるよう、きれいな時の 4 分の 1 にする。
+## 0 にしないのは、傷めても返す意味を残し、取り損ねた探し物を放っておかせないため
 const REWARD_DAMAGED: int = 50
 ## 探し物が出てくる、置かれた面の毛の残りの割合 (面の最初の本数に対する割合。この値以下で出てくる)。
 ## 0 に近いと面を片付け切るまで出ず、合う道具へ持ち替える前に傷める道具で取り切ってしまうため、片付けの途中の半分にした
@@ -235,14 +236,14 @@ static func trail_points(layout: MansionLayout) -> Array[Vector3]:
 	return points
 
 
-## 部屋 a と b が隣り合い、間の壁にドアがあるか
-static func _rooms_connected(a: MansionLayout.RoomDef, b: MansionLayout.RoomDef) -> bool:
-	if b.grid_x == a.grid_x + 1 and b.grid_z == a.grid_z:
-		return a.open_east
-	if b.grid_x == a.grid_x - 1 and b.grid_z == a.grid_z:
-		return a.open_west
-	if b.grid_z == a.grid_z + 1 and b.grid_x == a.grid_x:
-		return a.open_south
-	if b.grid_z == a.grid_z - 1 and b.grid_x == a.grid_x:
-		return a.open_north
+## 部屋 room と other が隣り合い、room の側からその壁にドアがあるか
+static func _rooms_connected(room: MansionLayout.RoomDef, other: MansionLayout.RoomDef) -> bool:
+	if other.grid_x == room.grid_x + 1 and other.grid_z == room.grid_z:
+		return room.open_east
+	if other.grid_x == room.grid_x - 1 and other.grid_z == room.grid_z:
+		return room.open_west
+	if other.grid_z == room.grid_z + 1 and other.grid_x == room.grid_x:
+		return room.open_south
+	if other.grid_z == room.grid_z - 1 and other.grid_x == room.grid_x:
+		return room.open_north
 	return false

@@ -58,6 +58,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_runaway_path_on_fixed_layout()
 	suite._check_runaway_timing_and_reset()
 	suite._check_texts()
+	suite._check_suit_without_initial_hairs()
 
 
 ## 検証結果を selfcheck 本体へ記録する
@@ -376,8 +377,8 @@ func _check_save_round_trip() -> void:
 	progress.cleared_suit_surface_ids.append(&"surface_9")
 	progress.runaway_cat_returned = true
 	progress.pending_rewards[&"resident_room_1"] = 250
-	var data: Dictionary = JSON.parse_string(JSON.stringify(progress.to_dict()))
-	var loaded: BuildingProgress = BuildingProgressScript.from_dict(data)
+	var progress_dict: Dictionary = JSON.parse_string(JSON.stringify(progress.to_dict()))
+	var loaded: BuildingProgress = BuildingProgressScript.from_dict(progress_dict)
 	_check(
 		loaded != null and loaded.found_items.size() == 1
 		and loaded.found_items[0].condition == FoundItemProgress.Condition.DAMAGED
@@ -387,7 +388,7 @@ func _check_save_round_trip() -> void:
 		and int(loaded.pending_rewards.get(&"resident_room_1", 0)) == 250,
 		"探し物の状態 (傷んだ・返した)・取り切ったスーツ・猫を届けたか・次の掃除代の上乗せが保存と読み込みで戻る",
 	)
-	var old_save: Dictionary = data.duplicate(true)
+	var old_save: Dictionary = progress_dict.duplicate(true)
 	old_save.erase("cleared_suit_surface_ids")
 	old_save.erase("runaway_cat_returned")
 	old_save.erase("pending_rewards")
@@ -397,18 +398,18 @@ func _check_save_round_trip() -> void:
 		and not old_loaded.runaway_cat_returned and old_loaded.pending_rewards.is_empty(),
 		"依頼を足す前の保存データ (キーが無い) は、依頼を始める前の値で読める",
 	)
-	var bad: Dictionary = data.duplicate(true)
-	bad["runaway_cat_returned"] = "yes"
-	var bad_suits: Dictionary = data.duplicate(true)
+	var returned_not_bool: Dictionary = progress_dict.duplicate(true)
+	returned_not_bool["runaway_cat_returned"] = "yes"
+	var bad_suits: Dictionary = progress_dict.duplicate(true)
 	bad_suits["cleared_suit_surface_ids"] = [3]
-	var bad_rewards: Dictionary = data.duplicate(true)
+	var bad_rewards: Dictionary = progress_dict.duplicate(true)
 	bad_rewards["pending_rewards"] = {"resident_room_1": "many"}
-	var suits_not_array: Dictionary = data.duplicate(true)
+	var suits_not_array: Dictionary = progress_dict.duplicate(true)
 	suits_not_array["cleared_suit_surface_ids"] = "surface_9"
-	var rewards_not_dict: Dictionary = data.duplicate(true)
+	var rewards_not_dict: Dictionary = progress_dict.duplicate(true)
 	rewards_not_dict["pending_rewards"] = [250]
 	_check(
-		BuildingProgressScript.from_dict(bad) == null
+		BuildingProgressScript.from_dict(returned_not_bool) == null
 		and BuildingProgressScript.from_dict(bad_suits) == null
 		and BuildingProgressScript.from_dict(bad_rewards) == null
 		and BuildingProgressScript.from_dict(suits_not_array) == null
@@ -466,13 +467,20 @@ func _check_runaway_cat() -> void:
 		% [dropped_by_runaway, dropped_by_others],
 	)
 	var resident: StringName = MansionBuilderScript.resident_id_for_room(owner_room.room_id)
-	# 届けた時に最大 (1.0) へ上がったと分かるよう、ご機嫌の線 (0.8) より下にしておく
+	# 届けた時に最大 (RequestRules.RUNAWAY_RETURN_MOOD) へ上がったと分かるよう、ご機嫌の線より下にしておく
 	state.save_data.building_progress.resident_moods[resident] = 0.2
 	_check(
 		state.requests.carry_runaway_cat() and state.requests.runaway_status() == &"carried"
 		and not state.requests.deliver_runaway_cat(path[path.size() - 1].room_id),
 		"逃げた猫を抱えられ、持ち主でない部屋では届けられない",
 	)
+	for surface: SurfaceHair in state.save_data.building_progress.surface_hairs:
+		_set_surface_count(surface, 0)
+	var carried_drops: int = 0
+	for drop: Dictionary in state.automation.advance(120.0)["drops"]:
+		if drop["cat_id"] == cat_id:
+			carried_drops += int(drop["count"])
+	_check(carried_drops == 0, "抱えている猫も毛を落とさない (実際: %d 本)" % carried_drops)
 	_check(
 		state.requests.deliver_runaway_cat(owner_room.room_id)
 		and state.requests.runaway_status() == &"returned"
@@ -516,13 +524,17 @@ func _check_reveal_by_tool_and_robot() -> void:
 	var item: FoundItemProgress = state.requests.find_item(spot.found_item_id)
 	var initial: int = state.automation.get_initial_surface_hairs(spot.surface_id)
 	_set_surface_count(progress.find_surface_hair(spot.surface_id), initial)
-	var half: int = floori(initial * RequestRulesScript.REVEAL_REMAINING_RATIO)
-	# 掃除機 (6,000 円) を買える額
+	# 掃除機 (ToolCatalog の値段) を買っても足りなくならない額
 	progress.money = 1000000
 	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_VACUUM)
 	state.apply_tool_sweep(
 		ToolCatalogScript.TOOL_VACUUM,
-		{spot.surface_id: {SurfaceHairScript.COLOR_WHITE: initial - half}},
+		{
+			spot.surface_id: {
+				SurfaceHairScript.COLOR_WHITE:
+				initial - floori(initial * RequestRulesScript.REVEAL_REMAINING_RATIO)
+			}
+		},
 	)
 	_check(
 		item.condition == FoundItemProgress.Condition.FOUND,
@@ -606,23 +618,32 @@ func _check_runaway_path_on_fixed_layout() -> void:
 		"逃げた猫はドアのある部屋だけをたどって最も遠い部屋 C に隠れ、ドアの無い D には入らない (実際: %s)"
 		% str(ids),
 	)
-	var vertical: MansionLayout = _fixed_layout([
+	# 持ち主の部屋を南端・北端・東端に置き、南向き・北向き・西向きのドアをたどることを確かめる。
+	# 東端の間取りには、持ち主の部屋と斜めに接する部屋 (どの向きのドアも開いている) を置き、隣り合う条件の片方だけでは入らないことを見る
+	var south_ids: Array[StringName] = _path_ids(_fixed_layout([
 		[&"room_n", 0, 0, false, false, false, true], [&"room_s", 0, 1, false, false, true, false],
 		[&"room_far", 0, 2, false, false, false, false],
-	])
-	var vertical_ids: Array[StringName] = []
-	for room: MansionLayout.RoomDef in RequestRulesScript.runaway_path(vertical):
-		vertical_ids.append(room.room_id)
-	var single: MansionLayout = _fixed_layout([[&"room_only", 0, 0, false, false, false, false]])
+	]))
+	var north_ids: Array[StringName] = _path_ids(_fixed_layout([
+		[&"room_s", 0, 1, false, false, true, false], [&"room_n", 0, 0, false, false, false, true],
+		[&"room_far", 0, -1, false, false, false, false],
+	]))
+	var west_ids: Array[StringName] = _path_ids(_fixed_layout([
+		[&"room_e", 2, 0, true, false, false, true], [&"room_m", 1, 0, true, true, false, false],
+		[&"room_w", 0, 0, false, true, false, false], [&"room_x", 1, 1, true, true, true, true],
+	]))
 	var empty: MansionLayout = MansionLayout.new()
 	_check(
-		vertical_ids == [&"room_n", &"room_s"]
-		and RequestRulesScript.runaway_path(single).size() == 1
+		south_ids == [&"room_n", &"room_s"] and north_ids == [&"room_s", &"room_n"]
+		and west_ids == [&"room_e", &"room_m", &"room_w"]
+		and RequestRulesScript.runaway_path(
+			_fixed_layout([[&"room_only", 0, 0, false, false, false, false]])
+		).size() == 1
 		and RequestRulesScript.runaway_path(empty).is_empty()
 		and RequestRulesScript.runaway_hiding_point(empty) == Vector3.ZERO
 		and RequestRulesScript.trail_points(empty).is_empty(),
-		"南北のドアもたどってドアの無い部屋で止まり、部屋が 1 つなら持ち主の部屋に隠れ、部屋が無ければ経路も跡も無い (実際: %s)"
-		% str(vertical_ids),
+		"南・北・西のドアもたどってドアの無い部屋と斜めの部屋には入らず、部屋が 1 つなら持ち主の部屋に隠れ、部屋が無ければ経路も跡も無い (実際: %s・%s・%s)"
+		% [str(south_ids), str(north_ids), str(west_ids)],
 	)
 	var trail: Array[Vector3] = RequestRulesScript.trail_points(layout)
 	var spaced: bool = trail.size() >= 9
@@ -748,6 +769,39 @@ func _check_texts() -> void:
 		"隠れている猫は水平に %.1f m の 1 cm 内なら抱えられ (高さは見ない)、1 cm 外では抱えない"
 		% carry_range,
 	)
+
+
+## 最初から毛の無いスーツは、残り 0 本で出かける前でも上乗せせず、依頼の一覧にも出さないか
+func _check_suit_without_initial_hairs() -> void:
+	var state: Node = GameStateScript.new()
+	state.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray(["--hair-count=6000"]))
+	var suit: MansionLayout.SurfaceDef = RequestRulesScript.suit_surfaces(state.current_layout)[0]
+	var initial_hairs: Dictionary = {}
+	for surface_def: MansionLayout.SurfaceDef in state.current_layout.surfaces:
+		initial_hairs[surface_def.surface_id] = state.automation.get_initial_surface_hairs(
+			surface_def.surface_id
+		)
+	initial_hairs[suit.surface_id] = 0
+	state.automation.reset(state.current_layout, initial_hairs)
+	_set_surface_count(state.save_data.building_progress.find_surface_hair(suit.surface_id), 0)
+	state.requests.after_hairs_removed()
+	_check(
+		state.requests.pending_reward(suit.room_id) == 0
+		and not state.requests.suit_requests().any(
+			func(request: Dictionary) -> bool: return request["surface_id"] == suit.surface_id
+		),
+		"最初から毛の無いスーツは、残り 0 本で出かける前でも上乗せせず、依頼の一覧にも出さない",
+	)
+	state.free()
+	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+
+
+## 逃げた猫が通る部屋の id を、持ち主の部屋から隠れる部屋の順に返す
+static func _path_ids(layout: MansionLayout) -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for room: MansionLayout.RoomDef in RequestRulesScript.runaway_path(layout):
+		ids.append(room.room_id)
+	return ids
 
 
 ## rows の [id, grid_x, grid_z, 西のドア, 東のドア, 北のドア, 南のドア] で、4 m 四方の部屋を並べた屋敷を作る

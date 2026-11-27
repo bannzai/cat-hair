@@ -4,7 +4,7 @@ extends Node3D
 ## プレイヤーが隠れている逃げた猫に近づくと抱え、持ち主の部屋に入ると取った探し物を返し、抱えた猫を届ける。
 ## 状態は GameState の依頼の状態 (RequestState) が持ち、このノードは描くだけにする。
 
-## 知らせ (探し物が出てきた・返した等) を画面に出す時 (text は出す文言)
+## 知らせ (探し物が出てきた・返した等) を画面に出した時 (text は出した文言)
 signal notice_posted(text: String)
 
 ## 依頼の計算 (探し物の種類・猫の隠れる所・毛の跡)
@@ -36,6 +36,8 @@ const TRAIL_COLOR: Color = Color(0.9, 0.9, 0.88)
 ## 隠れている逃げた猫を抱えられる、プレイヤーの足元からの水平距離 (m)。手の届く距離 (HandController.REACH_M) より短い、
 ## しゃがんで手を伸ばす距離
 const CARRY_RANGE_M: float = 1.5
+## 知らせを出しておく秒数。毛を抜いた「+N 本」の知らせ (Main.PLUCK_POPUP_SECONDS) より長い文なので、読み切れる長さにする
+const NOTICE_SECONDS: float = 4.0
 
 ## 住人の依頼の一覧の画面 (setup で作り、ui_root に足す)
 var panel: RequestListPanel = null
@@ -45,6 +47,10 @@ var _game_state: Node = null
 var _item_nodes: Dictionary = {}
 ## 毛の跡の毛の塊の親
 var _trail_root: Node3D = null
+## 依頼の知らせを出す Label。毛を抜いた「+N 本」の知らせと別の所に出し、同じフレームの知らせで上書きされないようにする
+var _notice_label: Label = null
+## 知らせを消すまでの残りの秒
+var _notice_remaining: float = 0.0
 
 
 ## GameState・画面のルート (一覧の画面の親) を受け取る
@@ -60,6 +66,23 @@ func setup(game_state: Node, ui_root: Control) -> void:
 	panel.offset_top = -300.0
 	panel.offset_bottom = 300.0
 	ui_root.add_child(panel)
+	_notice_label = Label.new()
+	_notice_label.name = "RequestNotice"
+	_notice_label.visible = false
+	# 文字の色・縁取りは毛を抜いた知らせ (Main の PluckPopup) とそろえ、文が長いので一段小さくする
+	_notice_label.add_theme_font_size_override("font_size", 30)
+	_notice_label.add_theme_color_override("font_color", Color(1.0, 0.92, 0.55))
+	_notice_label.add_theme_color_override("font_outline_color", Color(0.1, 0.08, 0.05))
+	_notice_label.add_theme_constant_override("outline_size", 8)
+	_notice_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# 画面の上の残り本数の段より下、照準と「+N 本」の知らせより上の帯に出す
+	_notice_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_notice_label.offset_left = -560.0
+	_notice_label.offset_right = 560.0
+	_notice_label.offset_top = 150.0
+	_notice_label.offset_bottom = 200.0
+	_notice_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui_root.add_child(_notice_label)
 	if not _game_state.request_event.is_connected(_on_request_event):
 		_game_state.request_event.connect(_on_request_event)
 
@@ -116,6 +139,20 @@ func refresh() -> void:
 		_trail_root.visible = _game_state.requests.runaway_status() == &"escaped"
 	if panel != null and panel.visible:
 		panel.refresh(_game_state)
+
+
+## 出している知らせを、出してから NOTICE_SECONDS 秒たったら消す
+func _process(delta: float) -> void:
+	if _notice_remaining <= 0.0:
+		return
+	_notice_remaining -= delta
+	if _notice_remaining <= 0.0 and _notice_label != null:
+		_notice_label.visible = false
+
+
+## 出している知らせの文言 (出していなければ空。検証用)
+func get_notice_text() -> String:
+	return _notice_label.text if _notice_label != null and _notice_label.visible else ""
 
 
 ## 依頼の一覧を開く
@@ -202,8 +239,13 @@ func _build_item(spot: MansionLayout.FoundItemSpotDef) -> Node3D:
 func _on_request_event(event: Dictionary) -> void:
 	refresh()
 	var text: String = notice_text(event)
-	if not text.is_empty():
-		notice_posted.emit(text)
+	if text.is_empty():
+		return
+	if _notice_label != null:
+		_notice_label.text = text
+		_notice_label.visible = true
+		_notice_remaining = NOTICE_SECONDS
+	notice_posted.emit(text)
 
 
 ## 依頼の出来事 event (RequestState の request_event の辞書) の知らせの文言。出さない出来事は空

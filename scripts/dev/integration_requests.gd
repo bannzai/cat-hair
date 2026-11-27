@@ -55,6 +55,12 @@ func _check(cond: bool, label: String) -> void:
 
 ## J キーで依頼の一覧が開閉し、開いている間は操作が止まって他の画面が開かず、探し物の残りの数が出るか (依頼を聞く)
 func _verify_request_list_screen(main: Node3D, game_state: Node) -> void:
+	main._set_title_mode()
+	await _checker._press_physical_key(KEY_J)
+	var opened_on_title: bool = main.requests.panel.visible
+	main.enter_mansion()
+	await _checker.process_frame
+	_check(not opened_on_title, "タイトル表示中は J キーで依頼の一覧が開かない")
 	var count: int = game_state.current_layout.found_item_spots.size()
 	await _checker._press_physical_key(KEY_J)
 	var panel: RequestListPanel = main.requests.panel
@@ -101,14 +107,14 @@ func _verify_find_take_and_return(main: Node3D, game_state: Node) -> void:
 	_check(
 		item.condition == FoundItemProgressScript.Condition.FOUND
 		and item_node != null and item_node.visible
-		and main.get_pluck_popup_text().begins_with("探し物が出てきた: %s" % kind["name"]),
+		and main.requests.get_notice_text().begins_with("探し物が出てきた: %s" % kind["name"]),
 		"面の毛を手でつまんで半分にすると、%s が毛の上に出てきて知らせが出る (実際: %s)"
-		% [kind["name"], main.get_pluck_popup_text()],
+		% [kind["name"], main.requests.get_notice_text()],
 	)
 	# 持ち主の部屋に立ったまま取ると、取った直後に返してしまうため、別の部屋に立ってから道具をかける
 	await _stand_in_room(main, _other_room_id(game_state, spot.room_id))
 	var match_tool: StringName = kind["match_tool"]
-	# 合う道具と掃除機を買っても足りなくならない額 (どちらも値段は 6,000 円以下)
+	# 合う道具と掃除機を両方買っても足りなくならない額 (ToolCatalog の値段より十分大きい)
 	game_state.save_data.building_progress.money = 100000
 	game_state.purchase(GameStateScript.PURCHASE_TOOL, match_tool)
 	main.tools.select_tool(match_tool)
@@ -190,11 +196,8 @@ func _verify_room_tool_damages(main: Node3D, game_state: Node) -> void:
 		item.is_returned = false
 	game_state.requests.after_hairs_removed()
 	for spot: MansionLayout.FoundItemSpotDef in layout.found_item_spots:
-		var condition: FoundItemProgress.Condition = (
-			game_state.requests.find_item(spot.found_item_id).condition
-		)
 		# 前の検証で毛を減らした面の探し物は出てきている (FOUND) ことがあるため、まだ取っていない物を対象にする
-		if condition not in [
+		if game_state.requests.find_item(spot.found_item_id).condition not in [
 			FoundItemProgressScript.Condition.HIDDEN, FoundItemProgressScript.Condition.FOUND
 		]:
 			continue
@@ -218,7 +221,7 @@ func _verify_room_tool_damages(main: Node3D, game_state: Node) -> void:
 		game_state.requests.find_item(other.found_item_id).condition
 	)
 	var truck: StringName = ToolCatalogScript.TOOL_SUCTION_TRUCK
-	# 吸引車 (45,000 円) を買える額
+	# 吸引車 (ToolCatalog の値段) を買っても足りなくならない額
 	game_state.save_data.building_progress.money = 1000000
 	game_state.purchase(GameStateScript.PURCHASE_TOOL, truck)
 	await _stand_in_room(main, target.room_id)
@@ -285,11 +288,12 @@ func _verify_android_and_same_use_reveal(main: Node3D, game_state: Node) -> void
 	var item: FoundItemProgress = game_state.requests.find_item(spot.found_item_id)
 	item.condition = FoundItemProgressScript.Condition.HIDDEN
 	item.is_returned = false
-	var surface: SurfaceHair = progress.find_surface_hair(spot.surface_id)
-	var initial: int = game_state.automation.get_initial_surface_hairs(spot.surface_id)
 	# 道具の 1 回で 1 本以上取れば境目を越える、半分の境目のすぐ上の本数にする
-	surface.hair_counts = {
-		SurfaceHair.COLOR_WHITE: floori(initial * RequestRulesScript.REVEAL_REMAINING_RATIO) + 1
+	progress.find_surface_hair(spot.surface_id).hair_counts = {
+		SurfaceHair.COLOR_WHITE: floori(
+			game_state.automation.get_initial_surface_hairs(spot.surface_id)
+			* RequestRulesScript.REVEAL_REMAINING_RATIO
+		) + 1
 	}
 	var match_tool: StringName = RequestRulesScript.kind_for_item_id(spot.found_item_id)["match_tool"]
 	game_state.purchase(GameStateScript.PURCHASE_TOOL, match_tool)
@@ -311,6 +315,7 @@ func _verify_runaway_cat(main: Node3D, game_state: Node) -> void:
 	var owner_room: MansionLayout.RoomDef = RequestRulesScript.runaway_owner_room(layout)
 	# 隠れる部屋に立っていると逃げた直後に抱えてしまうため、毛の跡の始まる持ち主の部屋に立つ
 	await _stand_in_room(main, owner_room.room_id)
+	var trail_before_escape: bool = main.requests.get_trail_state()["visible"]
 	game_state.advance_time(RequestRulesScript.RUNAWAY_START_SECONDS)
 	# SceneTree の process_frame はノードの _process より前に出るため、猫の位置を動かす _process を 1 回通すには 2 フレーム待つ
 	await _checker.process_frame
@@ -329,9 +334,9 @@ func _verify_runaway_cat(main: Node3D, game_state: Node) -> void:
 		],
 	)
 	var resident: StringName = MansionBuilderScript.resident_id_for_room(owner_room.room_id)
-	# 届けた時に最大 (1.0) へ上がったと分かるよう、ご機嫌の線 (0.8) より下にしておく
+	# 届けた時に最大 (RequestRules.RUNAWAY_RETURN_MOOD) へ上がったと分かるよう、ご機嫌の線 (EconomyRules.HAPPY_MOOD) より下にしておく
 	game_state.save_data.building_progress.resident_moods[resident] = 0.2
-	# 抱えられる距離 (RequestController.CARRY_RANGE_M = 1.5 m) の内側に立つ
+	# 抱えられる距離 (RequestController.CARRY_RANGE_M) の内側に立つ
 	main.player.set_spawn(hiding + Vector3(0.5, 0.0, 0.0), 0.0)
 	for _frame: int in range(SETTLE_FRAMES):
 		await _checker.physics_frame
@@ -346,11 +351,12 @@ func _verify_runaway_cat(main: Node3D, game_state: Node) -> void:
 	await _stand_in_room(main, owner_room.room_id)
 	_check(
 		game_state.requests.runaway_status() == &"returned" and cat_node.visible
+		and not trail_before_escape and not main.requests.get_trail_state()["visible"]
 		and is_equal_approx(
 			float(game_state.save_data.building_progress.resident_moods[resident]),
 			RequestRulesScript.RUNAWAY_RETURN_MOOD
 		),
-		"抱えた猫を持ち主の部屋に届けると、住人がご機嫌になり、猫が通り道に戻る",
+		"抱えた猫を持ち主の部屋に届けると、住人がご機嫌になり、猫が通り道に戻る。毛の跡は逃げる前と届けた後には出ない",
 	)
 
 
