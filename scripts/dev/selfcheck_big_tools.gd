@@ -119,9 +119,9 @@ func _check_room_tool_miss_ratio() -> void:
 	_check(
 		ToolRulesScript.miss_ratio(truck, 2, MansionLayoutScript.SURFACE_FLOOR)
 		< ToolRulesScript.miss_ratio(truck, 1, MansionLayoutScript.SURFACE_FLOOR)
-		and ToolRulesScript.level_up_price(truck, 1) == 3000
+		and ToolRulesScript.level_up_price(truck, 1) == int(ToolCatalogScript.find_tool(truck)["price"])
 		and ToolRulesScript.level_up_price(ToolCatalogScript.TOOL_HAIR_PROCESSOR, 1) == -1,
-		"吸引車もレベルを上げると取りこぼしが減り (1→2 は買う値段と同じ 3000 円)、加工機にはレベルが無い",
+		"吸引車もレベルを上げると取りこぼしが減り (1→2 は買う値段と同じ)、加工機にはレベルが無い",
 	)
 	_check(
 		ToolRulesScript.miss_ratio(truck, 1, MansionLayoutScript.SURFACE_FLOOR)
@@ -377,15 +377,15 @@ func _check_game_state_processing() -> void:
 		ProcessingRulesScript.stock_value(progress.hair_stocks) == raw_value,
 		"加工機を持っていなければ、時間を進めても在庫は毛のまま",
 	)
-	progress.money = 800 * 7
+	progress.money = 4000 * 7
 	var bought: int = 0
 	for _step: int in range(7):
 		if state.purchase(GameStateScript.PURCHASE_TOOL, processor):
 			bought += 1
 	_check(
 		bought == 6 and ToolRulesScript.count_owned(progress.owned_tools, processor) == 6
-		and state.get_money() == 800,
-		"加工機は 800 円で 6 台まで並べて買え、7 台目は買えずお金が減らない (実際: %d 台)" % bought,
+		and state.get_money() == 4000,
+		"加工機は 4000 円で 6 台まで並べて買え、7 台目は買えずお金が減らない (実際: %d 台)" % bought,
 	)
 	for _step: int in range(5):
 		progress.owned_tools.erase(state.find_owned_tool(processor))
@@ -444,7 +444,7 @@ func _check_game_state_haul() -> void:
 		and progress.hair_stocks[0].count == 6000,
 		"ダンプカーを持っていなければ運び出せず、在庫が変わらない",
 	)
-	progress.money = 2500
+	progress.money = 12500
 	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_DUMP_TRUCK)
 	var first: Dictionary = state.haul_with_dump_truck()
 	_check(
@@ -471,7 +471,7 @@ func _check_game_state_room_tools() -> void:
 	var progress: BuildingProgress = state.save_data.building_progress
 	var world: MansionWorld = MansionWorldScript.new()
 	world.rebuild(state.current_layout, progress)
-	progress.money = 100000
+	progress.money = 1000000
 	for tool_id: StringName in ROOM_TOOLS:
 		state.purchase(GameStateScript.PURCHASE_TOOL, tool_id)
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -779,7 +779,7 @@ func _check_vacuum_pack_in_game_state() -> void:
 	var progress: BuildingProgress = state.save_data.building_progress
 	var vacuum: StringName = ToolCatalogScript.TOOL_VACUUM
 	var exchange: StringName = GameStateScript.PURCHASE_ANDROID_PACK_EXCHANGE
-	progress.money = 400
+	progress.money = int(ToolCatalogScript.find_tool(vacuum)["price"])
 	state.purchase(GameStateScript.PURCHASE_TOOL, vacuum)
 	var owned: OwnedTool = state.find_owned_tool(vacuum)
 	var surface: SurfaceHair = null
@@ -812,7 +812,7 @@ func _check_vacuum_pack_in_game_state() -> void:
 		and owned.consumable_count == 25 and state.get_money() == 970,
 		"空きが満タン (25 回) のパックは交換できず、お金が減らない",
 	)
-	progress.money = 20000 + 1000
+	progress.money = 100000 + 1000
 	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_ANDROID)
 	owned.consumable_count = 3
 	_check(
@@ -848,7 +848,7 @@ func _check_shop_panel() -> void:
 	var panel: PanelContainer = ToolShopPanelScript.new()
 	var processor: StringName = ToolCatalogScript.TOOL_HAIR_PROCESSOR
 	var progress: BuildingProgress = state.save_data.building_progress
-	progress.money = 800
+	progress.money = 4000
 	panel.refresh(state, false)
 	var unowned_text: String = ToolShopPanelScript.describe_tool(processor, null, 0)
 	_check(
@@ -856,7 +856,7 @@ func _check_shop_panel() -> void:
 		"持っていない加工機の説明は「未購入」で、並べた台数を出さない (実際: %s)" % unowned_text,
 	)
 	_check(
-		panel.get_tool_button(processor).text == "買う (800 円)"
+		panel.get_tool_button(processor).text == "買う (4000 円)"
 		and not panel.get_haul_button().visible,
 		"加工機を持っていない時は「買う」で、ダンプカーを持っていなければ運び出すボタンを出さない",
 	)
@@ -869,7 +869,7 @@ func _check_shop_panel() -> void:
 	)
 	panel.get_tool_button(processor).pressed.emit()
 	_check(
-		panel.get_tool_button(processor).text == "もう 1 台並べる (800 円)"
+		panel.get_tool_button(processor).text == "もう 1 台並べる (4000 円)"
 		and requested == [[GameStateScript.PURCHASE_TOOL, processor]]
 		and ToolShopPanelScript.describe_tool(processor, state.find_owned_tool(processor), 1).contains(
 			"1 台 (6 台まで)"

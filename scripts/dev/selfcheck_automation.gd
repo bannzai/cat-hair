@@ -332,7 +332,7 @@ func _check_game_state_robots() -> void:
 		"はじめからの 0 円では掃除ロボットを買えない",
 	)
 	state.save_data.building_progress.money = RobotRulesScript.ROBOT_PRICE - 1
-	_check(not automation.buy_robot(first), "値段 300 円に 1 円足りない時は掃除ロボットを買えない")
+	_check(not automation.buy_robot(first), "値段 1500 円に 1 円足りない時は掃除ロボットを買えない")
 	state.save_data.building_progress.money = RobotRulesScript.ROBOT_PRICE
 	_check(
 		not automation.buy_robot(&"no_such_room")
@@ -345,7 +345,7 @@ func _check_game_state_robots() -> void:
 		bought and state.get_money() == 0 and robots.size() == 1
 		and robots[0].tool_id == RobotRulesScript.ROBOT_TOOL_ID
 		and robots[0].robot_room_ids == [first],
-		"300 円で掃除ロボットを 1 台買うと所持金が 0 円になり、買った部屋だけを回る順で置かれる",
+		"1500 円で掃除ロボットを 1 台買うと所持金が 0 円になり、買った部屋だけを回る順で置かれる",
 	)
 	state.save_data.building_progress.money = RobotRulesScript.ROBOT_PRICE * 10
 	for _extra: int in range(RobotRulesScript.MAX_ROBOTS + 1):

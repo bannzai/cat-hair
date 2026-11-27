@@ -24,12 +24,18 @@ const RARE_HAIR_PRICES: Dictionary = {
 }
 ## 住人が掃除代を払う間隔 (遊んだ時間の秒)。手で毛を抜きながら 1 部屋を歩いて回る間に 1 回は入ったと分かる長さ
 const PAYMENT_INTERVAL_SECONDS: float = 60.0
-## 機嫌が 1.0 (ご機嫌) の住人が 1 回に払う掃除代 (円)。機嫌に比例して減る。4 部屋がご機嫌なら 60 秒で 120 円入り、
-## 最初の道具 (ピンセット 30 円) を 1 回目の支払いで買え、粘着ローラー (150 円) には毛を売るお金も要る額
+## 機嫌が 1.0 (ご機嫌) の住人が 1 回に払う掃除代 (円)。機嫌に比例して減る。4 部屋がご機嫌なら 60 秒で 120 円入る。
+## issue #13 の make simulate で道具の値段を 5 倍にした時も変えず、手で取る段階の稼ぎは毛の売値が主になる
+## (値段を上げて所要時間を伸ばす調整を、稼ぎの増加で打ち消さないため。掃除代を変えた版は測っていない。
+## DIRECTION.md「決めたこと」)
 const BASE_CLEANING_FEE: int = 30
 ## 機嫌が目標 (きれいさ) へ近づく速さ (1 秒あたり)。0 から 1 まで 100 秒で変わり、片付けた部屋の機嫌が
 ## 次の掃除代 (60 秒後) までに目に見えて上がる速さ
 const MOOD_CHANGE_PER_SECOND: float = 0.01
+## 住人がご機嫌になる機嫌の線 (この値以上でご機嫌)。全員がご機嫌になると次の建物へ進める (DIRECTION.md「用語」の機嫌)。
+## 屋敷に入った時の機嫌 (MansionBuilder.INITIAL_RESIDENT_MOOD の 0.5) より上にし、猫が毛を落とし続けても
+## 部屋の毛を最初の 2 割以下に保てばご機嫌でいられる線
+const HAPPY_MOOD: float = 0.8
 
 
 ## 毛のままの 1 本の売値 (円) を返す。珍しい毛は種類の値段、ふつうの毛は色の値段
@@ -56,6 +62,11 @@ static func next_mood(mood: float, target: float, delta_seconds: float) -> float
 		0.0,
 		1.0
 	)
+
+
+## 機嫌 mood の住人がご機嫌か (HAPPY_MOOD 以上)
+static func is_happy(mood: float) -> bool:
+	return mood >= HAPPY_MOOD
 
 
 ## 機嫌 mood の住人が 1 回に払う掃除代 (円) を返す

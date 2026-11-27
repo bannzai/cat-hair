@@ -42,7 +42,7 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	main.tools.allow_uncaptured_use = true
 	main.tools.set_rng_seed(RNG_SEED)
 	main.big_tools.set_rng_seed(RNG_SEED)
-	game_state.save_data.building_progress.money = 100000
+	game_state.save_data.building_progress.money = 1000000
 	await suite._verify_suction_truck(main, game_state)
 	await suite._verify_adhesive_sheet(main, game_state)
 	await suite._verify_android(main, game_state)

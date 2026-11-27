@@ -2,7 +2,8 @@ extends "res://scripts/dev/headless_check.gd"
 ## 純粋なロジックとプロジェクト設定の検証 (headless)。ゲームのルールの計算を足したら、ここに検証を足す。
 ## 屋敷・セーブ・調整値の検証は scripts/dev/selfcheck_mansion.gd、手で毛を取るルールと毛の照会の検証は
 ## scripts/dev/selfcheck_hand.gd、道具・お金・機嫌と掃除代の検証は scripts/dev/selfcheck_tools.gd、猫と掃除ロボットの検証は
-## scripts/dev/selfcheck_automation.gd、大型の道具と加工の検証は scripts/dev/selfcheck_big_tools.gd に分割して実行する。
+## scripts/dev/selfcheck_automation.gd、大型の道具と加工の検証は scripts/dev/selfcheck_big_tools.gd、
+## 自動テストプレイの bot の方針の検証は scripts/dev/selfcheck_playtest_bot.gd に分割して実行する。
 ## 実行方法は AGENTS.md「検証方法」を参照。
 
 ## プロジェクト設定のメインシーンに入っているべきパス
@@ -51,6 +52,8 @@ const SelfcheckTools := preload("res://scripts/dev/selfcheck_tools.gd")
 const SelfcheckAutomation := preload("res://scripts/dev/selfcheck_automation.gd")
 ## 大型の道具 (吸引車・粘着シート・アンドロイド・加工機・ダンプカー) と加工の検証スイート
 const SelfcheckBigTools := preload("res://scripts/dev/selfcheck_big_tools.gd")
+## 自動テストプレイの bot の方針の検証スイート
+const SelfcheckPlaytestBot := preload("res://scripts/dev/selfcheck_playtest_bot.gd")
 ## 人の形 (画面の手と腕・買取業者の体) の検証スイート
 const SelfcheckHuman := preload("res://scripts/dev/selfcheck_human.gd")
 ## 1 本ずつ描く毛の本数の上限と埋もれた毛の検証スイート
@@ -79,6 +82,7 @@ func _initialize() -> void:
 	SelfcheckTools.run_all(self)
 	SelfcheckAutomation.run_all(self)
 	SelfcheckBigTools.run_all(self)
+	SelfcheckPlaytestBot.run_all(self)
 	SelfcheckHuman.run_all(self)
 	SelfcheckHairBudget.run_all(self)
 	_finish()
