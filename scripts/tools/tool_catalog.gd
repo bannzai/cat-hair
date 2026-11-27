@@ -1,8 +1,8 @@
 extends RefCounted
 ## 道具の定義 (値段・レベルごとの取りこぼし・得意な表面・消耗品・探し物を傷めるか)。手に持って使う道具 8 つと、
 ## 大型の道具 (業務用の吸引車・建物を覆う粘着シート・アンドロイド・毛の加工機・毛を運ぶダンプカー) を持つ。
-## 買う値段 (price) は自動テストプレイ (make simulate。issue #13) の結果で、最初に書いた値の 5 倍にした
-## (DIRECTION.md「決めたこと」)。消耗品の値段 (refill_price) とほかの値は、触れる版の感想を取るための仮の値のまま
+## 買う値段 (price) は自動テストプレイ (make simulate。issue #13) の結果で、最初に書いた値の 5 倍にし、手で取る段階を
+## 10〜15 分にするため最初に買うピンセットを 10 倍、次のガムテープをそれより高い 400 円にした (DIRECTION.md「決めたこと」)。消耗品の値段 (refill_price) とほかの値は、触れる版の感想を取るための仮の値のまま
 ## (消耗品は 1 回で取れる毛の売値と釣り合わせてあり、上げると道具を使うほど損になるため変えない)。
 ## 掃除ロボットは issue #11 が足す。
 
@@ -106,7 +106,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_TWEEZERS,
 		"name": "ピンセット",
 		"kind": KIND_SWEEP,
-		"price": 150,
+		"price": 300,
 		"radius_m": 0.12,
 		"max_hairs": 4,
 		"base_miss_ratio": 0.3,
@@ -122,7 +122,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_PACKING_TAPE,
 		"name": "ガムテープ",
 		"kind": KIND_SWEEP,
-		"price": 300,
+		"price": 400,
 		"radius_m": 0.18,
 		"max_hairs": 25,
 		"base_miss_ratio": 0.45,

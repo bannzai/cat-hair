@@ -15,8 +15,8 @@ const MISS_FACTOR_PER_LEVEL: float = 0.75
 const MIN_MISS_RATIO: float = 0.05
 ## 取りこぼしの割合の上限 (不得意な表面でも 1 回で少しは取れる)
 const MAX_MISS_RATIO: float = 0.9
-## 手の強化 1 段目の値段 (円)。段 n から n + 1 へ上げる値段は (n + 1) 倍。最初の道具 (ピンセット 150 円) より
-## 少し高く、手で取る段階に手を育てるか道具を買うかを選べる値段。issue #13 の make simulate の結果で、
+## 手の強化 1 段目の値段 (円)。段 n から n + 1 へ上げる値段は (n + 1) 倍。最初の道具 (ピンセット 300 円) より
+## 安く、手で取る段階に手を育てるか道具を買うかを選べる値段。issue #13 の make simulate の結果で、
 ## 道具の値段と同じく 5 倍にした (DIRECTION.md「決めたこと」)
 const HAND_UPGRADE_BASE_PRICE: int = 200
 ## 手の強化の段の上限 (一度につまめる本数が HandRules.MAX_GRAB_COUNT の 10 本になる段)
