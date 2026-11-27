@@ -47,7 +47,7 @@ MOVIE_AUTOMATION_FRAMES ?= 330
 # hairbench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/hairbench.gd の DEFAULT_COUNTS が SSOT)
 HAIRBENCH_COUNTS ?=
 
-.PHONY: import check selfcheck integration failure-path lint test verify screenshot movie movie-automation hairbench run build-macos build-windows build-linux build-web build-all clean
+.PHONY: import check selfcheck integration failure-path lint check-generated uid uidcheck test verify screenshot movie movie-automation hairbench run build-macos build-windows build-linux build-web build-all clean
 
 # ログ・撮影の出力先。.gdignore を置き、撮影した PNG を Godot に import させない
 $(LOG_DIR)/.gdignore:
@@ -96,6 +96,17 @@ integration: import
 	tail -n 1 $(LOG_DIR)/integration-cmdline.log | grep -q '^exit=0$$'
 	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/integration-cmdline.log
 
+# 全部の .gd.uid を Godot が識別子として読め、Godot の書く表記と一致し、スクリプトに結び付いていることの検証
+# (scripts/dev/uid_check.gd)。make uid が作った .uid を Godot が使えるかを CI で確かめる。Godot を起動するため
+# このマシンでは実行しない (AGENTS.md「検証方法」)
+uidcheck: import
+	"$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/uid_check.gd > $(LOG_DIR)/uidcheck.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/uidcheck.log; \
+	cat $(LOG_DIR)/uidcheck.log
+	grep -q '^uid_check OK$$' $(LOG_DIR)/uidcheck.log
+	tail -n 1 $(LOG_DIR)/uidcheck.log | grep -q '^exit=0$$'
+	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/uidcheck.log
+
 # 検証の土台 (scripts/dev/headless_check.gd) と hairbench.gd の失敗の経路の検証。わざと失敗する条件で動かし、
 # exit code 1 で終わり、完了の行が出ないことを確かめる (失敗を握り潰して常に OK を返す退行を検出する)
 failure-path: import
@@ -121,6 +132,25 @@ failure-path: import
 # GDScript の lint (gdtoolkit の gdlint。設定は ./gdlintrc)
 lint:
 	gdlint scripts/
+
+# Godot が生成する付随ファイルの commit 漏れを、Godot を起動せずに push の前に検査する。.gd の .uid が index に
+# 無いもの (scripts/ci/list-missing-uid.sh) と、作業ツリーにあるが commit されていない .uid / .import
+# (scripts/ci/list-uncommitted-generated.sh。CI の check-and-export と同じ判定) を出して失敗する
+check-generated:
+	@missing=$$(bash scripts/ci/list-missing-uid.sh) || exit $$?; \
+	uncommitted=$$(bash scripts/ci/list-uncommitted-generated.sh) || exit $$?; \
+	found=$$(printf '%s\n%s\n' "$$missing" "$$uncommitted" | grep -v '^$$' | sort -u); \
+	if [ -n "$$found" ]; then \
+		printf '%s\n' "$$found"; \
+		echo "commit されていない .uid / .import が $$(printf '%s\n' "$$found" | wc -l | tr -d ' ') 件あります。.uid は make uid で作り、.import は CI の artifact cat-hair-generated から取り出して commit してください (AGENTS.md「検証方法」)" >&2; \
+		exit 1; \
+	fi
+	@echo "check-generated OK"
+
+# .gd の .uid のうち作業ツリーに無いものを、Godot を起動せずに作る (scripts/ci/create-missing-uid.sh)。
+# 作った .uid は git add して .gd と同じ commit に入れる
+uid:
+	bash scripts/ci/create-missing-uid.sh
 
 # headless 検証の一括実行 (CI の lint job と、check-and-export job のうちエクスポートを除いた部分。描画付きの
 # screenshot / movie は含まない)
@@ -224,7 +254,7 @@ build-all: build-macos build-windows build-linux
 # ディレクトリごとや *.log をまとめては消さない)。ログは target ごとの <target>.log と、ENGINE_LOG の <target>.godot.log
 clean:
 	rm -rf build
-	rm -f $(foreach target,import check selfcheck integration integration-cmdline failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-automation hairbench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
+	rm -f $(foreach target,import check selfcheck integration integration-cmdline uidcheck failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-automation hairbench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
 	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4 $(LOG_DIR)/movie-automation.avi $(LOG_DIR)/movie-automation.mp4
 
 # 引数なしの make で run を実行する (人が手で動作確認するための入口。検査・テストは CI が行う)

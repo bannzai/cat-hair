@@ -27,6 +27,7 @@ jobs:
         run: |
           bash scripts/ci/test/test-check-human-verification.sh
           bash scripts/ci/test/test-list-uncommitted-generated.sh
+          bash scripts/ci/test/test-missing-uid.sh
 
   check-and-export:
     runs-on: ubuntu-24.04
@@ -60,7 +61,7 @@ jobs:
       - name: Package Linux build
         run: tar -czf build/cat-hair-linux.tar.gz -C build linux
       # import が生成した .uid / .import が commit されていなければ失敗させ、artifact に上げる (開発マシンでは Godot を
-      # 起動しないため、ここで取り出して commit する。手順は AGENTS.md「検証方法」)。
+      # 起動しないため、.import はここで取り出して commit する。.uid は手元の make uid で作る。手順は AGENTS.md「検証方法」)。
       # 検証とエクスポートの結果を隠さないよう最後に置く
       - name: Check untracked generated files (.uid / .import)
         id: generated
@@ -78,7 +79,7 @@ jobs:
             fi
           done
           printf '%s\n' "$untracked"
-          echo "::error::未 commit の .uid / .import が $(printf '%s\n' "$untracked" | wc -l) 件あります。artifact cat-hair-generated を取り出して commit してください (AGENTS.md「検証方法」)"
+          echo "::error::未 commit の .uid / .import が $(printf '%s\n' "$untracked" | wc -l) 件あります。.uid は手元で make uid で作り、.import は artifact cat-hair-generated から取り出して commit してください (AGENTS.md「検証方法」)"
           exit 1
       - name: Upload untracked generated files
         if: always() && steps.generated.outcome == 'failure'
@@ -88,12 +89,29 @@ jobs:
           path: tmp/generated/
           if-no-files-found: error
           retention-days: 7
+      # make uid (Godot を起動せずに作る .uid。AGENTS.md「検証方法」) の .uid を Godot が読めて、スクリプトに
+      # 結び付けるかを確かめる。.gd を 1 つ足して make uid で .uid を作り、import の後に make uidcheck
+      # (scripts/dev/uid_check.gd) が全部の .gd.uid を検証する。中身が import の前後で変わらないことも見る。
+      # 上の未 commit の検査が足した .gd を拾わないよう、その後に置く
+      - name: Check that Godot uses the .uid made by make uid
+        run: |
+          printf 'extends Node\n' > scripts/dev/ci_uid_probe.gd
+          make uid
+          made=$(cat scripts/dev/ci_uid_probe.gd.uid)
+          make import GODOT="${{ steps.godot.outputs.godot }}" LOG_DIR=tmp/uid-probe
+          echo "make uid: $made / import の後: $(cat scripts/dev/ci_uid_probe.gd.uid)"
+          test "$(cat scripts/dev/ci_uid_probe.gd.uid)" = "$made"
+          make uidcheck GODOT="${{ steps.godot.outputs.godot }}" LOG_DIR=tmp/uid-probe
+          rm scripts/dev/ci_uid_probe.gd scripts/dev/ci_uid_probe.gd.uid
+      - name: Test uid_check.gd
+        run: bash scripts/ci/test/test-uidcheck.sh "${{ steps.godot.outputs.godot }}"
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cat-hair-check-logs
-          path: tmp/*.log
+          # tmp/uid-probe/ と tmp/uidcheck-test/<ケース>/ は .uid の検証のログ (上の 2 つの step)
+          path: tmp/**/*.log
           if-no-files-found: warn
           retention-days: 7
       - name: Upload build artifacts
