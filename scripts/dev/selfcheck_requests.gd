@@ -638,7 +638,7 @@ func _check_runaway_path_on_fixed_layout() -> void:
 	)
 
 
-## 猫が逃げ出す時刻の境目と、知らせが 1 回だけなこと、抱えたまま屋敷を作り直すと隠れている所に戻ること
+## 猫が逃げ出す時刻の境目と、知らせが 1 回だけなこと、抱えたまま保存して読み込むと隠れている所に戻ること
 func _check_runaway_timing_and_reset() -> void:
 	var state: Node = GameStateScript.new()
 	state.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray(["--hair-count=6000"]))
@@ -660,11 +660,17 @@ func _check_runaway_timing_and_reset() -> void:
 		"逃げ出す時刻をまたいだ時だけ 1 回知らせ、その後に時間が進んでも知らせない (実際: %d 回)" % escaped[0],
 	)
 	state.requests.carry_runaway_cat()
+	state.save_current_state()
+	var loaded: Node = GameStateScript.new()
+	loaded.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray())
+	var loaded_status: StringName = loaded.requests.runaway_status()
 	state.apply_tuning_and_rebuild(state.get_tuning(), false)
 	_check(
-		state.requests.runaway_status() == &"escaped",
-		"猫を抱えたまま屋敷を作り直す・読み込むと、猫は隠れている所に戻る",
+		loaded_status == &"escaped" and state.requests.runaway_status() == &"home",
+		"猫を抱えたまま保存して読み込むと隠れている所に戻り、屋敷を作り直すと逃げる前に戻る (実際: %s・%s)"
+		% [loaded_status, state.requests.runaway_status()],
 	)
+	loaded.free()
 	state.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
