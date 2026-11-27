@@ -97,6 +97,8 @@ func _verify_find_take_and_return(main: Node3D, game_state: Node) -> void:
 		"面の毛を手でつまんで半分にすると、%s が毛の上に出てきて知らせが出る (実際: %s)"
 		% [kind["name"], main.get_pluck_popup_text()],
 	)
+	# 持ち主の部屋に立ったまま取ると、取った直後に返してしまうため、別の部屋に立ってから道具をかける
+	await _stand_in_room(main, _other_room_id(game_state, spot.room_id))
 	var match_tool: StringName = kind["match_tool"]
 	game_state.save_data.building_progress.money = 100000
 	game_state.purchase(GameStateScript.PURCHASE_TOOL, match_tool)
@@ -138,6 +140,7 @@ func _verify_rough_tool_damages(main: Node3D, game_state: Node) -> void:
 	var spot: MansionLayout.FoundItemSpotDef = game_state.current_layout.found_item_spots[1]
 	var item: FoundItemProgress = game_state.requests.find_item(spot.found_item_id)
 	_pluck_until_revealed(game_state, spot)
+	await _stand_in_room(main, _other_room_id(game_state, spot.room_id))
 	var vacuum: StringName = ToolCatalogScript.TOOL_VACUUM
 	game_state.purchase(GameStateScript.PURCHASE_TOOL, vacuum)
 	main.tools.select_tool(vacuum)
@@ -161,7 +164,8 @@ func _verify_rough_tool_damages(main: Node3D, game_state: Node) -> void:
 func _verify_runaway_cat(main: Node3D, game_state: Node) -> void:
 	var layout: MansionLayout = game_state.current_layout
 	var owner_room: MansionLayout.RoomDef = RequestRulesScript.runaway_owner_room(layout)
-	await _stand_in_room(main, _other_room_id(game_state, owner_room.room_id))
+	# 隠れる部屋に立っていると逃げた直後に抱えてしまうため、毛の跡の始まる持ち主の部屋に立つ
+	await _stand_in_room(main, owner_room.room_id)
 	game_state.advance_time(RequestRulesScript.RUNAWAY_START_SECONDS)
 	await _checker.process_frame
 	var cat_node: Node3D = main.automation.get_cat_node(RequestRulesScript.runaway_cat_id())
@@ -171,7 +175,11 @@ func _verify_runaway_cat(main: Node3D, game_state: Node) -> void:
 		and main.requests.get_trail_state()["visible"]
 		and int(main.requests.get_trail_state()["count"]) > 0
 		and Vector2(cat_node.position.x - hiding.x, cat_node.position.z - hiding.z).length() < 0.01,
-		"猫が逃げると、持ち主の部屋から毛の跡が出て、猫は隠れている所にいる",
+		"猫が逃げると、持ち主の部屋から毛の跡が出て、猫は隠れている所にいる (実際: %s・跡 %s・猫 %s / 隠れる所 %s)"
+		% [
+			game_state.requests.runaway_status(), str(main.requests.get_trail_state()),
+			str(cat_node.position), str(hiding),
+		],
 	)
 	var resident: StringName = MansionBuilderScript.resident_id_for_room(owner_room.room_id)
 	game_state.save_data.building_progress.resident_moods[resident] = 0.2
