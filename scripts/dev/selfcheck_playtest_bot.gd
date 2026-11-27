@@ -20,7 +20,7 @@ const GameStateScript := preload("res://scripts/state/game_state.gd")
 const ToolRulesScript := preload("res://scripts/tools/tool_rules.gd")
 ## 大型の道具 (アンドロイドが働く間隔)
 const BigToolSiteScript := preload("res://scripts/tools/big_tool_site.gd")
-## 検証の部屋 1 つの毛の本数 (屋敷の既定 12,000 本を 4 部屋に分けた本数)
+## 検証の部屋 1 つの毛の本数 (方針の検証用に固定した本数。変えると期待値が動く)
 const ROOM_HAIRS: int = 3000
 ## 検証の部屋 1 つの毛の付く表面の面積 (m2。既定の 6 m 四方の部屋の床)
 const ROOM_AREA_M2: float = 36.0

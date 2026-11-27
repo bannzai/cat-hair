@@ -44,13 +44,14 @@ MOVIE_FRAMES ?= 150
 # movie-automation target が録画するフレーム数 (30 fps × 11 秒 = 330)。時計を 4 倍で進めるため、掃除ロボットが
 # 1 部屋に留まる 20 秒より長い 40 秒分を録り、毛を取る様子と残り本数の減り方が見える長さ (倍率は scripts/dev/movie.gd)
 MOVIE_AUTOMATION_FRAMES ?= 330
-# playtest target の固定 FPS とフレーム数 (15 fps × 60 秒 = 900)。CI の lavapipe の実測 (run 45920087313 の
-# movie-automation: 330 フレームを約 74 秒) から、900 フレームは 4 分前後で終わり、screenshot-and-movie job の timeout に収まる
+# playtest target の固定 FPS とフレーム数 (15 fps × 60 秒 = 900)。CI の実測 (run 45944154277) で、毛 120,000 本の屋敷では
+# Playtest movie の step が約 7 分で、screenshot-and-movie job の timeout (30 分) に収まる
 PLAYTEST_FPS ?= 15
 PLAYTEST_FRAMES ?= 900
-# playtest target で bot が 1 フレームに行う手の数 (早送り)。make simulate と同じ屋敷で、約 870 フレーム × 6 手 ≒ 5,200 手
-# (1 手は人の 1〜2 秒で、ゲーム内の 2 時間前後) を録り、最初の道具と最初の掃除ロボット (simulate で 2 時間以内) まで映す
-PLAYTEST_STEPS_PER_FRAME ?= 6
+# playtest target で bot が 1 フレームに行う手の数 (早送り)。make simulate と同じ屋敷で約 870 フレーム × 2 手 ≒ 1,700 手を録る。
+# 6 手の時 (run 45944154277) は約 990 手目 (165 フレーム目) で掃除ロボットが映り、残りの 5 / 6 は残った毛を手で抜く場面だった。
+# 2 手なら最初の道具・掃除ロボットを置く様子が録画の前半から終わりにかけて映る
+PLAYTEST_STEPS_PER_FRAME ?= 2
 # hairbench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/hairbench.gd の DEFAULT_COUNTS が SSOT)
 HAIRBENCH_COUNTS ?=
 # scenebench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/scenebench.gd の DEFAULT_COUNTS が SSOT)
@@ -116,7 +117,8 @@ uidcheck: import
 	tail -n 1 $(LOG_DIR)/uidcheck.log | grep -q '^exit=0$$'
 	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/uidcheck.log
 
-# 検証の土台 (scripts/dev/headless_check.gd) と hairbench.gd の失敗の経路の検証。わざと失敗する条件で動かし、
+# 検証の土台 (scripts/dev/headless_check.gd)・hairbench.gd・bot_play.gd (引数が足りない・最初の道具に届かない・
+# simulate.json を書けない) の失敗の経路の検証。わざと失敗する条件で動かし、
 # exit code 1 で終わり、完了の行が出ないことを確かめる (失敗を握り潰して常に OK を返す退行を検出する)
 failure-path: import
 	"$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/failure_path_check.gd > $(LOG_DIR)/failure-path.log 2>&1; \
@@ -135,7 +137,7 @@ failure-path: import
 	tail -n 1 $(LOG_DIR)/simulate-failure-path.log | grep -q '^exit=1$$'
 	grep -q '最初の道具を買えなかった' $(LOG_DIR)/simulate-failure-path.log
 	! grep -q '^simulate OK$$' $(LOG_DIR)/simulate-failure-path.log
-	SIMULATE_JSON="res://tmp/nonexistent-simulate-dir/out.json" "$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/bot_play.gd -- --simulate > $(LOG_DIR)/simulate-json-failure-path.log 2>&1; \
+	SIMULATE_MAX_SECONDS=60 SIMULATE_JSON="res://tmp/nonexistent-simulate-dir/out.json" "$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/bot_play.gd -- --simulate > $(LOG_DIR)/simulate-json-failure-path.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/simulate-json-failure-path.log; \
 	tail -n 1 $(LOG_DIR)/simulate-json-failure-path.log | grep -q '^exit=1$$'
 	grep -q 'を書けない' $(LOG_DIR)/simulate-json-failure-path.log
