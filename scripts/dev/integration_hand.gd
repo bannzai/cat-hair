@@ -266,10 +266,10 @@ func _verify_obstacle_only_reason(main: Node3D, game_state: Node) -> void:
 
 
 ## 引いている途中に道具を買う画面を開いた時と、マウスの捕捉が外れた時は、遊ぶ人が離したのではないので、
-## 引くのをやめても照準の下に理由を出さないか
+## 引くのをやめても照準の下に理由を出さないか。つまんでいる毛を手以外が取った時も、届かないのではないので出さないか
 func _verify_no_reason_when_interrupted(main: Node3D) -> void:
 	var hand: HandController = main.hand
-	for interruption: String in ["shop", "capture"]:
+	for interruption: String in ["shop", "capture", "taken"]:
 		if await HandAim.aim_at_floor_hair(_checker, main) < 0:
 			_check(false, "中断の検証で床の毛を狙える")
 			return
@@ -279,25 +279,31 @@ func _verify_no_reason_when_interrupted(main: Node3D) -> void:
 			_check(false, "中断の検証で毛をつまめる")
 			Input.action_release(HandController.ACTION_PLUCK)
 			return
-		if interruption == "shop":
-			main.toggle_tool_shop()
-		else:
-			hand.allow_uncaptured_pluck = false
+		match interruption:
+			"shop":
+				main.toggle_tool_shop()
+			"capture":
+				hand.allow_uncaptured_pluck = false
+			"taken":
+				# 掃除ロボットなど、手以外が引いている途中の毛を取った時と同じく、つまんでいる毛を屋敷から消す
+				for hair_id: int in hand._pulling_ids:
+					main.mansion_world.get_hair_field().remove_hair(hair_id)
 		await _checker.process_frame
 		await _checker.process_frame
 		_check(
 			not hand.is_pulling() and main.tool_message_label.text.is_empty(),
-			(
-				"引いている途中に道具を買う画面を開くと、引くのをやめ、照準の下に理由を出さない"
-				if interruption == "shop"
-				else "引いている途中にマウスの捕捉が外れると、引くのをやめ、照準の下に理由を出さない"
-			),
+			{
+				"shop": "引いている途中に道具を買う画面を開くと、引くのをやめ、照準の下に理由を出さない",
+				"capture": "引いている途中にマウスの捕捉が外れると、引くのをやめ、照準の下に理由を出さない",
+				"taken": "押したまま引いている途中に、つまんでいる毛が手以外に取られると、引くのをやめ、「届かない」を出さない",
+			}[interruption],
 		)
 		Input.action_release(HandController.ACTION_PLUCK)
-		if interruption == "shop":
-			main.toggle_tool_shop()
-		else:
-			hand.allow_uncaptured_pluck = true
+		match interruption:
+			"shop":
+				main.toggle_tool_shop()
+			"capture":
+				hand.allow_uncaptured_pluck = true
 		await _checker.process_frame
 
 
