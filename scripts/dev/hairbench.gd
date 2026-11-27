@@ -51,10 +51,10 @@ static func draw_budget_for(target_count: int) -> int:
 	return 0 if target_count <= FULL_DRAW_MAX_COUNT else HairFieldScript.DEFAULT_DRAW_BUDGET
 
 
-## 環境変数のカンマ区切り本数文字列を正の整数配列に解析する (空・全無効なら既定値)
-static func parse_counts(raw: String) -> Array[int]:
+## 環境変数のカンマ区切り本数文字列を正の整数配列に解析する (空・全無効なら fallback。省いた時は hairbench の既定の本数)
+static func parse_counts(raw: String, fallback: Array[int] = DEFAULT_COUNTS) -> Array[int]:
 	if raw.strip_edges().is_empty():
-		return DEFAULT_COUNTS.duplicate()
+		return fallback.duplicate()
 	var parsed: Array[int] = []
 	for token: String in raw.split(","):
 		var trimmed: String = token.strip_edges()
@@ -63,7 +63,7 @@ static func parse_counts(raw: String) -> Array[int]:
 			if parsed_count > 0:
 				parsed.append(parsed_count)
 	if parsed.is_empty():
-		return DEFAULT_COUNTS.duplicate()
+		return fallback.duplicate()
 	return parsed
 
 

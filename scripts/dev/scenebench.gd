@@ -89,11 +89,8 @@ func _initialize() -> void:
 
 ## 描く本数の上限ごとのベンチマークを順に実行し、JSON 保存と終了コード出力を行う
 func _run() -> void:
-	var raw_budgets: String = OS.get_environment("SCENEBENCH_DRAW_BUDGETS")
-	var budgets: Array[int] = (
-		DEFAULT_DRAW_BUDGETS.duplicate()
-		if raw_budgets.strip_edges().is_empty()
-		else HairbenchScript.parse_counts(raw_budgets)
+	var budgets: Array[int] = HairbenchScript.parse_counts(
+		OS.get_environment("SCENEBENCH_DRAW_BUDGETS"), DEFAULT_DRAW_BUDGETS
 	)
 	var json_path: String = HairbenchScript.env_or_default(
 		OS.get_environment("SCENEBENCH_JSON"), DEFAULT_JSON_PATH

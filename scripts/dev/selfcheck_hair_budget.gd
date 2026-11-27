@@ -478,6 +478,15 @@ func _check_bench_budget_rules() -> void:
 		"hairbench は 1,000,000 本まで上限なし (0)、1,000,001 本と 10,000,000 本は既定の上限で描く",
 	)
 	_check(
+		HairbenchScript.parse_counts("invalid", ScenebenchScript.DEFAULT_DRAW_BUDGETS)
+		== ScenebenchScript.DEFAULT_DRAW_BUDGETS
+		and HairbenchScript.parse_counts("", ScenebenchScript.DEFAULT_DRAW_BUDGETS)
+		== ScenebenchScript.DEFAULT_DRAW_BUDGETS
+		and HairbenchScript.parse_counts(" 5000 ", ScenebenchScript.DEFAULT_DRAW_BUDGETS)
+		== [5000],
+		"scenebench の上限の指定が無効・空なら scenebench の既定の上限を使い、正の数ならそれを使う",
+	)
+	_check(
 		ScenebenchScript.is_budget_entry_ok(100, 100, 50, 50)
 		and not ScenebenchScript.is_budget_entry_ok(100, 100, 51, 50)
 		and not ScenebenchScript.is_budget_entry_ok(99, 100, 50, 50),
