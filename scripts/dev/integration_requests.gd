@@ -170,7 +170,7 @@ func _verify_rough_tool_damages(main: Node3D, game_state: Node) -> void:
 	)
 
 
-## 部屋ごとにかける道具 (吸引車) を部屋で使うと、その部屋の探し物は埋もれていても傷み、別の部屋の探し物は変わらないか
+## 部屋ごとにかける道具 (吸引車) を部屋で使うと、その部屋のまだ取っていない探し物は傷み、別の部屋の探し物は変わらないか
 func _verify_room_tool_damages(main: Node3D, game_state: Node) -> void:
 	var layout: MansionLayout = game_state.current_layout
 	var target: MansionLayout.FoundItemSpotDef = null
@@ -179,15 +179,21 @@ func _verify_room_tool_damages(main: Node3D, game_state: Node) -> void:
 		var condition: FoundItemProgress.Condition = (
 			game_state.requests.find_item(spot.found_item_id).condition
 		)
-		if condition != FoundItemProgressScript.Condition.HIDDEN:
+		# 前の検証で毛を減らした面の探し物は出てきている (FOUND) ことがあるため、まだ取っていない物を対象にする
+		if condition not in [
+			FoundItemProgressScript.Condition.HIDDEN, FoundItemProgressScript.Condition.FOUND
+		]:
 			continue
 		if target == null:
 			target = spot
 		elif other == null and spot.room_id != target.room_id:
 			other = spot
-	_check(target != null and other != null, "埋もれた探し物が 2 つの部屋に残っている")
+	_check(target != null and other != null, "まだ取っていない探し物が 2 つの部屋に残っている")
 	if target == null or other == null:
 		return
+	var other_before: FoundItemProgress.Condition = (
+		game_state.requests.find_item(other.found_item_id).condition
+	)
 	var truck: StringName = ToolCatalogScript.TOOL_SUCTION_TRUCK
 	game_state.save_data.building_progress.money = 1000000
 	game_state.purchase(GameStateScript.PURCHASE_TOOL, truck)
@@ -198,9 +204,8 @@ func _verify_room_tool_damages(main: Node3D, game_state: Node) -> void:
 	_check(
 		game_state.requests.find_item(target.found_item_id).condition
 		== FoundItemProgressScript.Condition.DAMAGED
-		and game_state.requests.find_item(other.found_item_id).condition
-		== FoundItemProgressScript.Condition.HIDDEN,
-		"吸引車を部屋で使うと、その部屋の埋もれた探し物は傷み、別の部屋の探し物は変わらない",
+		and game_state.requests.find_item(other.found_item_id).condition == other_before,
+		"吸引車を部屋で使うと、その部屋のまだ取っていない探し物は傷み、別の部屋の探し物は変わらない",
 	)
 	main.tools.select_tool(ToolCatalogScript.TOOL_HAND)
 
