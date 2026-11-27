@@ -500,8 +500,8 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 		_add_collision_box(
 			object_root,
 			"Seat",
-			Vector3(0.0, object_height * 0.5, 0.0),
-			Vector3(object_width, object_height, object_depth),
+			Vector3(0.0, seat_height * 0.5, 0.0),
+			Vector3(object_width, seat_height, object_depth),
 		)
 		_add_collision_box(
 			object_root,
