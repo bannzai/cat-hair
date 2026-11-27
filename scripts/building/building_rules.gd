@@ -38,15 +38,14 @@ const BUILDING_NAMES: Dictionary = {
 	BUILDING_CITY: "街全体",
 }
 ## 建物が 1 つ進むごとに増やす部屋の数。建物そのもの (#17) を作るまでは、屋敷の部屋を増やした物を次の建物にする。
-## 毛・物・探し物の数は部屋の数に比例させ、部屋あたりの量を最初の屋敷と同じにする
-const EXTRA_ROOMS_PER_BUILDING: int = 2
-## 住人に返した探し物 1 つにつき持ち越しで足す手の強化の段の数
+## 毛・物・探し物の数は部屋の数に比例させ、部屋あたりの量を最初の屋敷と同じにする。
+## 2 にしたのは、既定 (MansionTuning.DEFAULT_ROOM_COUNT = 4) の屋敷から街全体 (3 つ進んだ 10 部屋) まで、
+## 部屋の上限 (MansionTuning.MAX_ROOM_COUNT = 16) で
+## 丸めずに建物ごとに広くなるため。値は建物そのものを作る #17 で建物ごとの作りに置き換える
+## 住人に返した探し物 1 つにつき持ち越しで足す手の強化の段の数。1 にしたのは、屋敷の既定の探し物
+## (MansionTuning.DEFAULT_FOUND_ITEM_COUNT = 5 個) を全部返しても、2 種類の強化の合計の上限 18 段の 3 割弱にとどまり、
+## 持ち越しだけで手の強化を買う楽しみが無くならないため
 const HAND_LEVELS_PER_RETURNED_ITEM: int = 1
-## 持ち越しで足す段を割り振る手の強化の並び (段が同じ時は先の物に足す)
-const HAND_UPGRADE_IDS: Array[StringName] = [
-	HandRulesScript.UPGRADE_DEXTERITY,
-	HandRulesScript.UPGRADE_GRAB_COUNT,
-]
 
 
 ## 終えた建物の数 finished_count から、今いる建物の並びの番号 (0 始まり。最後の建物より先へは進まない) を返す
@@ -127,7 +126,7 @@ static func carried_hand_upgrades(levels: Dictionary, returned_count: int) -> Di
 		carried[upgrade_key] = HandRulesScript.upgrade_level(levels, StringName(upgrade_key))
 	for _bonus: int in range(maxi(0, returned_count) * HAND_LEVELS_PER_RETURNED_ITEM):
 		var lowest_id: StringName = &""
-		for upgrade_id: StringName in HAND_UPGRADE_IDS:
+		for upgrade_id: StringName in HandRulesScript.UPGRADE_IDS:
 			var level: int = HandRulesScript.upgrade_level(carried, upgrade_id)
 			if level >= ToolRulesScript.MAX_HAND_UPGRADE_LEVEL:
 				continue

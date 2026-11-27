@@ -429,7 +429,7 @@ func _exchange_pack_by_android(tool_id: StringName) -> bool:
 
 ## 手の強化を 1 段上げる。手の強化の種類でない id・上限・お金が足りない時は false
 func _buy_hand_upgrade(upgrade_id: StringName) -> bool:
-	if upgrade_id not in [HandRulesScript.UPGRADE_DEXTERITY, HandRulesScript.UPGRADE_GRAB_COUNT]:
+	if upgrade_id not in HandRulesScript.UPGRADE_IDS:
 		return false
 	var level: int = get_hand_upgrade_level(upgrade_id)
 	if not _spend(ToolRulesScript.hand_upgrade_price(level)):

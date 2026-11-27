@@ -31,17 +31,13 @@ const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 const TEST_SAVE_PATH: String = "user://selfcheck_next_building_save_data.json"
 ## 検証の屋敷の毛の本数 (組み立てを軽くする本数)
 const TEST_HAIR_COUNT: int = 400
-## 検証の屋敷の部屋の数
+## 検証の屋敷の部屋の数。2 にしたのは、住人が 2 人以上いて「1 人でもご機嫌でなければ進めない」を確かめられる最小の数のため
 const TEST_ROOM_COUNT: int = 2
 ## 道具を買えるよう持たせる所持金
 const PLENTY_OF_MONEY: int = 1000000
 
 ## 検証結果を記録する selfcheck の SceneTree 参照
 var _checker: SceneTree = null
-## 手の強化の id 2 つ (短く書くため)
-var _dex: StringName = HandRulesScript.UPGRADE_DEXTERITY
-## 一度につまめる本数の強化の id
-var _grab: StringName = HandRulesScript.UPGRADE_GRAB_COUNT
 
 
 ## 次の建物へ進む決まりの検証をすべて実行する
@@ -55,6 +51,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_carried_hand_upgrades()
 	suite._check_game_state_advance()
 	suite._check_last_building_and_new_game()
+	suite._check_advance_without_progress()
 
 
 ## 検証結果を selfcheck 本体へ記録する
@@ -165,22 +162,24 @@ func _check_record() -> void:
 
 ## 持ち越す手の強化: 買った段はそのまま残り、返した探し物 1 つにつき 1 段をいちばん低い強化に足す (上限まで)
 func _check_carried_hand_upgrades() -> void:
-	var bought: Dictionary = {_dex: 2, _grab: 0}
+	var bought: Dictionary = {
+		HandRulesScript.UPGRADE_DEXTERITY: 2, HandRulesScript.UPGRADE_GRAB_COUNT: 0
+	}
 	var none_returned: Dictionary = BuildingRulesScript.carried_hand_upgrades(bought, 0)
 	_check(
-		HandRulesScript.upgrade_level(none_returned, _dex) == 2
-		and HandRulesScript.upgrade_level(none_returned, _grab) == 0,
+		HandRulesScript.upgrade_level(none_returned, HandRulesScript.UPGRADE_DEXTERITY) == 2
+		and HandRulesScript.upgrade_level(none_returned, HandRulesScript.UPGRADE_GRAB_COUNT) == 0,
 		"探し物を返していなくても、買った手の強化の段はそのまま持ち越す",
 	)
 	var three_returned: Dictionary = BuildingRulesScript.carried_hand_upgrades(bought, 3)
 	_check(
-		HandRulesScript.upgrade_level(three_returned, _dex) == 3
-		and HandRulesScript.upgrade_level(three_returned, _grab) == 2,
+		HandRulesScript.upgrade_level(three_returned, HandRulesScript.UPGRADE_DEXTERITY) == 3
+		and HandRulesScript.upgrade_level(three_returned, HandRulesScript.UPGRADE_GRAB_COUNT) == 2,
 		"返した探し物 3 つで 3 段を、段の低い強化から足す (実際: %s)" % str(three_returned),
 	)
 	_check(
-		HandRulesScript.upgrade_level(bought, _dex) == 2
-		and HandRulesScript.upgrade_level(bought, _grab) == 0,
+		HandRulesScript.upgrade_level(bought, HandRulesScript.UPGRADE_DEXTERITY) == 2
+		and HandRulesScript.upgrade_level(bought, HandRulesScript.UPGRADE_GRAB_COUNT) == 0,
 		"持ち越しの計算は元の段を変えない",
 	)
 	var previous_total: int = -1
@@ -188,18 +187,23 @@ func _check_carried_hand_upgrades() -> void:
 	for returned: int in range(6):
 		var carried: Dictionary = BuildingRulesScript.carried_hand_upgrades(bought, returned)
 		var total: int = (
-			HandRulesScript.upgrade_level(carried, _dex) + HandRulesScript.upgrade_level(carried, _grab)
+			HandRulesScript.upgrade_level(carried, HandRulesScript.UPGRADE_DEXTERITY)
+			+ HandRulesScript.upgrade_level(carried, HandRulesScript.UPGRADE_GRAB_COUNT)
 		)
 		increasing = increasing and total == 2 + returned and total > previous_total
 		previous_total = total
 	_check(increasing, "返した探し物が多いほど、持ち越す手の強化の段が多い")
 	var max_level: int = ToolRulesScript.MAX_HAND_UPGRADE_LEVEL
 	var near_max: Dictionary = BuildingRulesScript.carried_hand_upgrades(
-		{_dex: max_level, _grab: max_level - 1}, 5
+		{
+			HandRulesScript.UPGRADE_DEXTERITY: max_level,
+			HandRulesScript.UPGRADE_GRAB_COUNT: max_level - 1,
+		},
+		5
 	)
 	_check(
-		HandRulesScript.upgrade_level(near_max, _dex) == max_level
-		and HandRulesScript.upgrade_level(near_max, _grab) == max_level,
+		HandRulesScript.upgrade_level(near_max, HandRulesScript.UPGRADE_DEXTERITY) == max_level
+		and HandRulesScript.upgrade_level(near_max, HandRulesScript.UPGRADE_GRAB_COUNT) == max_level,
 		"持ち越しで足す段は上限 (%d 段) を超えない" % max_level,
 	)
 
@@ -213,7 +217,7 @@ func _check_game_state_advance() -> void:
 	progress.money = PLENTY_OF_MONEY
 	_check(
 		state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_PACKING_TAPE)
-		and state.purchase(GameStateScript.PURCHASE_HAND_UPGRADE, _grab),
+		and state.purchase(GameStateScript.PURCHASE_HAND_UPGRADE, HandRulesScript.UPGRADE_GRAB_COUNT),
 		"検証の前提: 道具と手の強化を買える",
 	)
 	state.save_data.found_rare_hair_ids.append(HandRulesScript.RARE_WHISKER)
@@ -234,8 +238,7 @@ func _check_game_state_advance() -> void:
 		"進めない時は何も変えない",
 	)
 	_make_everyone_happy(state)
-	var moods_but_one: Array = progress.resident_moods.keys()
-	progress.resident_moods[moods_but_one[0]] = EconomyRulesScript.HAPPY_MOOD - 0.01
+	progress.resident_moods[progress.resident_moods.keys()[0]] = EconomyRulesScript.HAPPY_MOOD - 0.01
 	_check(not state.next_building.can_advance(), "1 人でもご機嫌でなければ進めない")
 	_make_everyone_happy(state)
 	_check(state.next_building.can_advance(), "住人全員がご機嫌なら進める")
@@ -276,8 +279,8 @@ func _check_game_state_advance() -> void:
 		"次の建物の住人は入った時の機嫌から始まり、すぐには進めない",
 	)
 	_check(
-		state.get_hand_upgrade_level(_grab) == 1
-		and state.get_hand_upgrade_level(_dex) == 1
+		state.get_hand_upgrade_level(HandRulesScript.UPGRADE_GRAB_COUNT) == 1
+		and state.get_hand_upgrade_level(HandRulesScript.UPGRADE_DEXTERITY) == 1
 		and state.get_found_rare_hair_ids() == [HandRulesScript.RARE_WHISKER]
 		and state.get_tuning().equals(base_tuning),
 		"買った手の強化と返した探し物 1 つ分の 1 段・図鑑を持ち越し、開発者向けの調整値は最初の屋敷のまま",
@@ -292,11 +295,52 @@ func _check_game_state_advance() -> void:
 		and reloaded.get_total_remaining_hairs() == next_tuning.hair_count
 		and reloaded.get_money() == 0
 		and reloaded.save_data.building_records.size() == 1
-		and reloaded.get_hand_upgrade_level(_dex) == 1
-		and reloaded.get_hand_upgrade_level(_grab) == 1,
+		and reloaded.get_hand_upgrade_level(HandRulesScript.UPGRADE_DEXTERITY) == 1
+		and reloaded.get_hand_upgrade_level(HandRulesScript.UPGRADE_GRAB_COUNT) == 1,
 		"進んだ後の保存を読み戻すと、同じ建物・残りの毛・成績・手の強化で続きから遊べる",
 	)
+	_check_room_cleanliness(state, "進んだ直後")
+	_check_room_cleanliness(reloaded, "読み戻した後")
 	reloaded.free()
+	state.free()
+	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+
+
+## 次の建物で増えた部屋 (最後の部屋) の毛を半分にすると、きれいさがその建物に入った時の本数を分母にした値 (0.5 前後) になる。
+## 分母を最初の屋敷の作りから取ると、最初の屋敷に無い部屋の分母が 0 になり、毛が残る間はきれいさが 0 になる
+func _check_room_cleanliness(state: Node, when: String) -> void:
+	var room_id: StringName = state.current_layout.rooms.back().room_id
+	var initial: int = int(state.get_room_status(room_id)["hair_count"])
+	for surface_def: MansionLayout.SurfaceDef in state.current_layout.surfaces:
+		if surface_def.room_id != room_id:
+			continue
+		var surface: SurfaceHair = state.save_data.building_progress.find_surface_hair(
+			surface_def.surface_id
+		)
+		for color_key: Variant in surface.hair_counts.keys():
+			surface.hair_counts[color_key] = int(surface.hair_counts[color_key]) / 2
+	var remaining: int = int(state.get_room_status(room_id)["hair_count"])
+	var cleanliness: float = float(state.get_room_status(room_id)["cleanliness"])
+	_check(
+		remaining < initial
+		and cleanliness > 0.0
+		and is_equal_approx(cleanliness, EconomyRulesScript.cleanliness(remaining, initial)),
+		"%s、次の建物のきれいさはその建物に入った時の部屋の毛 (%d 本) を分母にする (残り %d 本できれいさ %.2f)"
+		% [when, initial, remaining, cleanliness],
+	)
+
+
+## 保存データはあるが今いる建物の進行が無い時は、進めず何も変えない
+func _check_advance_without_progress() -> void:
+	var state: Node = _new_state()
+	_make_everyone_happy(state)
+	state.save_data.building_progress = null
+	_check(
+		not state.next_building.can_advance()
+		and state.next_building.advance() == null
+		and state.save_data.building_records.is_empty(),
+		"今いる建物の進行が無い時は進めない",
+	)
 	state.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
@@ -318,12 +362,12 @@ func _check_last_building_and_new_game() -> void:
 		not state.next_building.can_advance() and state.next_building.advance() == null,
 		"最後の建物 (街全体) では全員がご機嫌でも次へは進まない",
 	)
-	state.set_hand_upgrade_level(_dex, 4)
+	state.set_hand_upgrade_level(HandRulesScript.UPGRADE_DEXTERITY, 4)
 	state.start_new_game()
 	_check(
 		state.save_data.building_progress.building_id == BuildingProgressScript.BUILDING_MANSION
 		and state.save_data.building_records.is_empty()
-		and state.get_hand_upgrade_level(_dex) == 0
+		and state.get_hand_upgrade_level(HandRulesScript.UPGRADE_DEXTERITY) == 0
 		and state.current_layout.rooms.size() == TEST_ROOM_COUNT,
 		"「はじめから」は最初の屋敷の作りに戻し、手の強化と成績も消す",
 	)

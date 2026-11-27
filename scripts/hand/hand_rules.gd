@@ -14,6 +14,8 @@ const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 const UPGRADE_DEXTERITY: StringName = &"dexterity"
 ## 手の強化の種類: 一度につまめる本数。保存データの hand_upgrade_levels のキー
 const UPGRADE_GRAB_COUNT: StringName = &"grab_count"
+## 手の強化の種類の一覧 (買える強化と、次の建物へ持ち越しで段を足す順。段が同じ時は先の物に足す)
+const UPGRADE_IDS: Array[StringName] = [UPGRADE_DEXTERITY, UPGRADE_GRAB_COUNT]
 ## 器用さ 1 段ごとに引く時間に掛ける倍率 (1 段で 15% 短くなる)
 const DEXTERITY_TIME_FACTOR_PER_LEVEL: float = 0.85
 ## どれだけ器用になっても、伸びて抜ける演出が見える最短の引く時間 (秒)
