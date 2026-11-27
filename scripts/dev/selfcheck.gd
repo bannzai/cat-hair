@@ -13,6 +13,10 @@ const HAIR_PROTOTYPE_SCENE_PATH: String = "res://scenes/hair_prototype.tscn"
 const PROJECT_NAME: String = "Oh My Fur!"
 ## プロジェクト設定のレンダラ (ADR 0002 で Forward+ に決定)
 const RENDERING_METHOD: String = "forward_plus"
+## プロジェクト設定のフレームレートの上限 (documents/DIRECTION.md「決めたこと」の 2026-11-27 の行で 60 に決定)
+const MAX_FPS: int = 60
+## fps と 1 フレームの時間の表示 (文言の組み立ての検証用)
+const PerfOverlayScript := preload("res://scripts/ui/perf_overlay.gd")
 ## プロジェクト設定の音声バスレイアウトのパス
 const BUS_LAYOUT_PATH: String = "res://default_bus_layout.tres"
 ## プロジェクト設定の AudioManager autoload の値
@@ -23,6 +27,12 @@ const GAME_STATE_AUTOLOAD: String = "*res://scripts/state/game_state.gd"
 const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## ベンチマークスクリプト (純粋関数の単体検証用)
 const HairbenchScript := preload("res://scripts/dev/hairbench.gd")
+## 開発者向け調整値データ型 (既定の毛の本数の検証用)
+const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
+## メインシーンのスクリプト (残り本数の表示の整形の検証用)
+const MainScript := preload("res://scripts/main.gd")
+## 屋敷の 1 フレームの時間のベンチマーク (集計の純粋関数の検証用)
+const ScenebenchScript := preload("res://scripts/dev/scenebench.gd")
 ## 音声カタログ (純粋関数)
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## 音声設定の保存・読み込み・バス適用
@@ -87,6 +97,31 @@ func _check_project_settings() -> void:
 		rendering_method == RENDERING_METHOD,
 		"rendering/renderer/rendering_method が %s (実際: %s)"
 		% [RENDERING_METHOD, rendering_method]
+	)
+	var max_fps: int = ProjectSettings.get_setting("application/run/max_fps", 0)
+	_check(max_fps == MAX_FPS, "application/run/max_fps が %d (実際: %d)" % [MAX_FPS, max_fps])
+	var vsync_mode: int = ProjectSettings.get_setting("display/window/vsync/vsync_mode", -1)
+	_check(
+		vsync_mode == DisplayServer.VSYNC_ENABLED,
+		"display/window/vsync/vsync_mode が Enabled (実際: %d)" % vsync_mode,
+	)
+	var perf_text: String = PerfOverlayScript.format_metrics(59.6, 16.78, 3.21, 4.5, 9.04)
+	_check(
+		perf_text == "60 fps   1 フレーム 16.8 ms   処理 3.2 ms   描画 CPU 4.5 ms / GPU 9.0 ms",
+		"fps と 1 フレームの時間の表示の文言 (実際: %s)" % perf_text,
+	)
+	_check(
+		is_equal_approx(PerfOverlayScript.frame_ms_from_fps(50.0), 20.0)
+		and PerfOverlayScript.frame_ms_from_fps(0.0) == 0.0
+		and PerfOverlayScript.frame_ms_from_fps(-1.0) == 0.0,
+		"fps から 1 フレームの時間を出し、fps がまだ 0 の時は 0 にする",
+	)
+	_check_scenebench_summarize()
+	# 既定の毛の本数は issue #56 で決めた 120,000 本で、残り本数の表示では桁区切りで出る
+	_check(
+		MansionTuningScript.DEFAULT_HAIR_COUNT == 120000
+		and MainScript.format_hair_count(MansionTuningScript.DEFAULT_HAIR_COUNT) == "120,000",
+		"既定の毛の本数が 120,000 で、表示が「120,000」 (実際: %d)" % MansionTuningScript.DEFAULT_HAIR_COUNT,
 	)
 	var bus_layout: String = ProjectSettings.get_setting("audio/buses/default_bus_layout", "")
 	_check(
@@ -200,6 +235,30 @@ func _check_hair_allocate_counts() -> void:
 	)
 
 
+## 屋敷の 1 フレームの時間のベンチマークの集計 (中央値・最小・最大・平均) が空・奇数個・偶数個で正しいか
+func _check_scenebench_summarize() -> void:
+	var empty: Dictionary = ScenebenchScript.summarize([])
+	_check(
+		empty["median"] == 0.0 and empty["min"] == 0.0 and empty["max"] == 0.0 and empty["avg"] == 0.0,
+		"scenebench の集計: 空なら全部 0 (実際: %s)" % str(empty),
+	)
+	var single: Dictionary = ScenebenchScript.summarize([7.0])
+	_check(
+		single["median"] == 7.0 and single["min"] == 7.0 and single["max"] == 7.0,
+		"scenebench の集計: 1 個ならその値 (実際: %s)" % str(single),
+	)
+	var odd: Dictionary = ScenebenchScript.summarize([9.0, 1.0, 5.0])
+	_check(
+		odd["median"] == 5.0 and odd["min"] == 1.0 and odd["max"] == 9.0 and odd["avg"] == 5.0,
+		"scenebench の集計: 順不同の奇数個は真ん中の値 (実際: %s)" % str(odd),
+	)
+	var even: Dictionary = ScenebenchScript.summarize([4.0, 1.0, 10.0, 2.0])
+	_check(
+		even["median"] == 3.0 and even["min"] == 1.0 and even["max"] == 10.0 and even["avg"] == 4.25,
+		"scenebench の集計: 偶数個は真ん中 2 つの平均 (実際: %s)" % str(even),
+	)
+
+
 ## 1 本の毛メッシュが細い曲がった形状 (複数頂点・横と高さのカーブあり) であるか
 func _check_hair_mesh_shape() -> void:
 	var mesh: ArrayMesh = HairFieldScript.build_hair_mesh()
@@ -207,8 +266,8 @@ func _check_hair_mesh_shape() -> void:
 	var arrays: Array = mesh.surface_get_arrays(0)
 	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
-	_check(vertices.size() == 7, "毛メッシュの頂点数が 7 (実際: %d)" % vertices.size())
-	_check(indices.size() == 15, "毛メッシュのインデックス数が 15 = 5 三角形 (実際: %d)" % indices.size())
+	_check(vertices.size() == 5, "毛メッシュの頂点数が 5 (実際: %d)" % vertices.size())
+	_check(indices.size() == 9, "毛メッシュのインデックス数が 9 = 3 三角形 (実際: %d)" % indices.size())
 	var max_x: float = 0.0
 	var max_y: float = 0.0
 	var max_z: float = 0.0
@@ -220,11 +279,9 @@ func _check_hair_mesh_shape() -> void:
 		max_x > 0.005 and max_y > 0.003 and max_z > 0.03,
 		"毛メッシュが長さ・曲がり・浮きを持つ (x=%.4f y=%.4f z=%.4f)" % [max_x, max_y, max_z]
 	)
-	# 第 1〜第 3 断面の幅ベクトルが同じ向きを向き、根元でリボンがねじれないこと
-	var mid_width_vec: Vector3 = vertices[3] - vertices[2]
+	# 根元と中ほどの断面の幅ベクトルが同じ向きを向き、根元でリボンがねじれないこと
 	_check(
-		(vertices[1] - vertices[0]).dot(mid_width_vec) > 0.0
-		and mid_width_vec.dot(vertices[5] - vertices[4]) > 0.0,
+		(vertices[1] - vertices[0]).dot(vertices[3] - vertices[2]) > 0.0,
 		"毛メッシュの隣接断面の幅方向が一貫しねじれが無い"
 	)
 	var mesh_aabb: AABB = HairFieldScript.compute_mesh_aabb(mesh)
@@ -286,7 +343,7 @@ func _check_hair_field_populate_and_remove() -> void:
 
 	# 10 本配置 (floor 7 本: ID 0..6, sofa 3 本: ID 7..9)
 	_check(field.populate(10, 12345) == 10 and field.get_remaining_count() == 10, "10 本配置できる")
-	# 配置した毛が Identity ではなく実座標と非透明色を持ち、全 7 頂点が表面高さ以上に収まること
+	# 配置した毛が Identity ではなく実座標と非透明色を持ち、全頂点が表面高さ以上に収まること
 	var hair_vertices: PackedVector3Array = HairFieldScript.build_hair_mesh().surface_get_arrays(0)[
 		Mesh.ARRAY_VERTEX
 	]
