@@ -217,16 +217,16 @@ func _on_automation_advanced(changes: Dictionary) -> void:
 		)
 
 
-## world の表面 surface_index から、色 color_id の毛を count 本、near に近い描いている毛から消す (掃除ロボットが取った毛)。
+## world の表面 surface_index から、色 color_id の毛を count 本、near_point に近い描いている毛から消す (掃除ロボットが取った毛)。
 ## 描いている同じ色の毛が足りない分は埋もれた毛から消し、GameState と同じ本数を減らす。
 ## 描いている毛を消すと埋もれた毛から描き足すため、埋もれた毛を先に消す
 static func remove_picked_hairs(
-	world: MansionWorld, surface_index: int, color_id: StringName, count: int, near: Vector3
+	world: MansionWorld, surface_index: int, color_id: StringName, count: int, near_point: Vector3
 ) -> void:
 	var hair_field: Node3D = world.get_hair_field()
 	var picked_ids: PackedInt32Array = PackedInt32Array()
 	for hair_id: int in hair_field.find_hairs_near(
-		surface_index, near, INF, hair_field.get_surface_remaining_count(surface_index)
+		surface_index, near_point, INF, hair_field.get_surface_remaining_count(surface_index)
 	):
 		if picked_ids.size() >= count:
 			break

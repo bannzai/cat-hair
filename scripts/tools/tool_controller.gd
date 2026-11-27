@@ -496,14 +496,14 @@ static func plan_room_removal(
 		in_range += on_surface
 		var ratio: float = ToolRulesScript.miss_ratio(tool_id, level, surface_def.surface_type)
 		var counts_by_color: Dictionary = {}
-		var visible: int = hair_field.get_surface_visible_instance_count(surface_index)
+		var surface_drawn_count: int = hair_field.get_surface_visible_instance_count(surface_index)
 		var buried_left: PackedInt32Array = HairFieldScript.buried_group_counts(hair_field, surface_index)
 		var buried_taken: PackedInt32Array = PackedInt32Array()
 		buried_taken.resize(HairFieldScript.HairColorGroup.size())
 		for slot: int in range(ToolRulesScript.touchable_count(on_surface, int(tool_def["max_hairs"]))):
 			if ToolRulesScript.is_missed(rng.randf(), ratio):
 				continue
-			if slot < visible:
+			if slot < surface_drawn_count:
 				var hair_id: int = hair_field.get_hair_id_at_slot(surface_index, slot)
 				var color_id: StringName = world.get_hair_color_id(hair_id)
 				counts_by_color[color_id] = int(counts_by_color.get(color_id, 0)) + 1

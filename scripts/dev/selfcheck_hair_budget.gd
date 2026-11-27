@@ -42,6 +42,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_budget_boundary()
 	suite._check_every_surface_with_hairs_is_drawn()
 	suite._check_hair_ids_are_reused()
+	suite._check_surfaces_over_budget()
 	suite._check_remove_buried_out_of_range()
 	# 埋もれた毛が十分にある屋敷と、描いている毛より少ない屋敷 (描き足しで先に尽きやすい) の両方で確かめる
 	suite._check_room_tool_takes_buried(6000)
@@ -121,7 +122,8 @@ func _check_remove_refills_until_buried_runs_out() -> void:
 		"1 本ずつ 100 本消すと残り本数は 1 本ずつ減り、描いている本数は埋もれた毛が尽きるまで 10 本のまま、最後は 0 本",
 	)
 	field.free()
-
+## 上限に達した面に猫が落とした毛は落とした所に描き、描いていた別の 1 本を埋もれた毛へ戻すか。毛の無い面には描くか。
+## 埋もれた毛からは系統ごとに取れるか
 
 ## 上限に達した面に猫が落とした毛は埋もれた毛に数え、毛の無い面には描き、埋もれた毛からは系統ごとに取れるか
 func _check_add_and_remove_buried() -> void:
@@ -261,31 +263,78 @@ func _check_every_surface_with_hairs_is_drawn() -> void:
 
 
 ## 埋もれた毛から描き足し続けても、消した毛の ID を使い直して毛の ID が描く本数と ID_REUSE_DELAY の合計ほどで
-## 頭打ちになるか。消した直後の ID は別の毛に付かないか
+## 頭打ちになるか。消した直後の ID は別の毛に付かないか。使い直し済みの列を詰めた後 (ID_REUSE_DELAY の 3 倍を消すと
+## 2 回以上詰める) も、描いている毛の ID が重ならず、ID から引いた表面と位置が合うか。clear の後に置き直すと ID が 0 から振られるか
 func _check_hair_ids_are_reused() -> void:
 	var field: Node3D = HairFieldScript.new()
 	field.draw_budget = SMALL_BUDGET
 	field.add_oriented_surface("a", Transform3D.IDENTITY, Vector2(2.0, 2.0), 1.0)
-	var removals: int = HairFieldScript.ID_REUSE_DELAY * 2
+	var removals: int = HairFieldScript.ID_REUSE_DELAY * 3
 	field.populate_with_group_counts(_counts([PackedInt32Array([removals + SMALL_BUDGET, 0, 0])]), 5)
 	var max_id: int = 0
 	var fresh_id_kept_free: bool = true
+	var ids_consistent: bool = true
 	for _i: int in range(removals):
 		var hair_id: int = field.get_hair_id_at_slot(0, 0)
 		field.remove_hair(hair_id)
 		if field.has_hair(hair_id):
 			fresh_id_kept_free = false
+		var seen: Dictionary = {}
 		for slot: int in range(field.get_surface_visible_instance_count(0)):
-			max_id = maxi(max_id, field.get_hair_id_at_slot(0, slot))
+			var drawn_id: int = field.get_hair_id_at_slot(0, slot)
+			max_id = maxi(max_id, drawn_id)
+			if seen.has(drawn_id) or not field.has_hair(drawn_id):
+				ids_consistent = false
+			seen[drawn_id] = true
 	_check(
-		fresh_id_kept_free
+		fresh_id_kept_free and ids_consistent
 		and max_id < SMALL_BUDGET + HairFieldScript.ID_REUSE_DELAY + 1
 		and field.get_surface_visible_instance_count(0) == SMALL_BUDGET
 		and field.get_remaining_count() == SMALL_BUDGET,
-		"%d 本を 1 本ずつ消して描き足すと、消した直後の ID は別の毛に付かず、毛の ID は %d 未満に収まる (最大 %d)"
+		"%d 本を 1 本ずつ消して描き足すと、消した直後の ID は別の毛に付かず、描いている毛の ID は重ならず、%d 未満に収まる (最大 %d)"
 		% [removals, SMALL_BUDGET + HairFieldScript.ID_REUSE_DELAY + 1, max_id],
 	)
+	field.populate_with_group_counts(_counts([PackedInt32Array([SMALL_BUDGET * 2, 0, 0])]), 5)
+	var max_after_clear: int = 0
+	for slot: int in range(field.get_surface_visible_instance_count(0)):
+		max_after_clear = maxi(max_after_clear, field.get_hair_id_at_slot(0, slot))
+	_check(
+		max_after_clear == SMALL_BUDGET - 1,
+		"置き直すと毛の ID は 0 から振り直され、描いている %d 本の ID の最大は %d (実際 %d)"
+		% [SMALL_BUDGET, SMALL_BUDGET - 1, max_after_clear],
+	)
 	field.free()
+
+
+## 毛のある面の数が上限ちょうどの時と上限 + 1 の時も、各面に 1 本ずつ描き、残り本数はそのままか
+## (上限 + 1 の時は描く本数が上限を 1 本超える)
+func _check_surfaces_over_budget() -> void:
+	for surface_count: int in [SMALL_BUDGET, SMALL_BUDGET + 1]:
+		var field: Node3D = HairFieldScript.new()
+		field.draw_budget = SMALL_BUDGET
+		var rows: Array = []
+		for index: int in range(surface_count):
+			field.add_oriented_surface(
+				"s%d" % index,
+				Transform3D(Basis.IDENTITY, Vector3(float(index) * 3.0, 0.0, 0.0)),
+				Vector2(1.0, 1.0),
+				1.0,
+			)
+			rows.append(PackedInt32Array([5, 0, 0]))
+		field.populate_with_group_counts(_counts(rows), 3)
+		var each_drawn_once: bool = true
+		for index: int in range(surface_count):
+			if field.get_surface_visible_instance_count(index) != 1:
+				each_drawn_once = false
+		_check(
+			each_drawn_once
+			and HairFieldScript.count_drawn_hairs(field) == surface_count
+			and field.get_remaining_count() == surface_count * 5,
+			"上限 %d 本で毛 5 本の面が %d 面ある時、各面に 1 本ずつ描き (計 %d 本)、残りは %d 本のまま"
+			% [SMALL_BUDGET, surface_count, HairFieldScript.count_drawn_hairs(field), surface_count * 5],
+		)
+		field.free()
+
 
 ## 全部の毛を描いている面 (埋もれた毛が無い) に落とした毛は、描いている毛を埋もれた毛へ戻さずに描き足すか
 func _check_drop_on_fully_drawn_surface() -> void:

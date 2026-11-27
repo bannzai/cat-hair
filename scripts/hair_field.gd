@@ -205,7 +205,8 @@ static func remove_buried_hairs(field: Node3D, surface_index: int, group: int, c
 	return field._remove_buried(surface_index, group, count)
 
 
-## field の全部の表面で 1 本ずつ描いている毛の本数の合計 (埋もれた毛を含めない。draw_budget を超えない)
+## field の全部の表面で 1 本ずつ描いている毛の本数の合計 (埋もれた毛を含めない。ふだんは draw_budget 以下だが、毛のある面が
+## draw_budget より多い時と、埋もれた毛の無い面に猫が毛を落とした時は超える)
 static func count_drawn_hairs(field: Node3D) -> int:
 	var drawn: int = 0
 	for surface_index: int in range(field.get_surface_count()):
@@ -543,7 +544,7 @@ func _remove_buried(surface_index: int, group: int, count: int) -> int:
 
 ## field の表面 surface_index の、point (ワールド座標) から面に沿って spread 以内のどこかに、色の系統 group の毛を
 ## 1 本足し、足した毛の ID を返す (猫が落とした毛)。point は面の矩形の中に収め、置けない時 (表面が無い・未配置) は
-## INVALID_SLOT。MultiMesh の枠が足りない時は枠を倍に広げて、CPU 側の配列から今の毛を置き直す。
+## INVALID_SLOT。
 ## 埋もれた毛がある表面で描いている本数が draw_cap に達している時は、描いている毛を 1 本 (乱数で選ぶ) 埋もれた毛へ戻してから
 ## 落とした毛を描く (描く本数を draw_budget で頭打ちに保ち、落とした毛は見せるため)。
 ## 公開の関数の数の上限 (gdlint の max-public-methods) に収めるため、count_surface_groups と同じく field を受け取る形にする
