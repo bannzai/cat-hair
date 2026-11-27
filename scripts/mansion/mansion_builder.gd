@@ -280,7 +280,7 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		var slot: Dictionary = ROOM_SLOTS[local_idx % ROOM_SLOTS.size()]
 		if room_idx == 0 and obj.object_kind == MansionLayoutScript.OBJECT_TABLE and local_idx == 2:
 			# 壁掛けの前に立てるよう、机は部屋の入口側へ置く。
-			slot = {"rx": slot["rx"], "rz": 0.22, "rot": PI}
+			slot = ROOM_SLOTS[3]
 		obj.wall_mounted = (
 			room_idx == 0 and local_idx < OBJECT_PRESETS.size()
 			and obj.object_kind == MansionLayoutScript.OBJECT_SUIT_RACK

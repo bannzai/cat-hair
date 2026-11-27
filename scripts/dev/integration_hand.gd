@@ -3,6 +3,8 @@ extends RefCounted
 ## メインシーンを動かし、画面中央で狙った毛をつまむ入力で、伸びて抜け・効果音・「+1 本」・残り本数 -1・在庫 +1 になること、
 ## 途中で離すと何も変わらないこと、図鑑の開閉と、何も変わらない場面 (図鑑中・狙いの先に毛が無い) を確かめる。
 
+## 描画する毛の先端の座標
+const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## 手で毛を取る時のルールの計算
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
 ## 目線を床の毛へ向ける手順
@@ -446,7 +448,8 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		main.play_guide.is_pull_progress_visible() and main.play_guide.get_pull_progress_value() == 0.0,
 		"つまんだ瞬間に、照準の下に引いている進み具合のゲージが 0 で出る",
 	)
-	hand.advance_pull(hand.get_pull_duration() * 0.2)
+	hand.advance_pull(HandController.REACH_SECONDS)
+	var hair_tip: Vector3 = hair_field.get_hair_transform(aimed_id) * HairFieldScript.HAIR_TIP
 	var camera: Camera3D = main.player.get_camera()
 	var screen: Rect2 = main.get_viewport().get_visible_rect()
 	for tip_path: String in [
@@ -455,12 +458,13 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 	]:
 		var tip: Node3D = hand.get_hand_view().get_node(tip_path)
 		_check(
-			not camera.is_position_behind(tip.global_position)
+			tip.global_position.distance_to(hair_tip) < 0.015
+			and not camera.is_position_behind(tip.global_position)
 			and camera.unproject_position(tip.global_position).distance_to(screen.get_center())
 			< screen.size.x / 20.0,
 			"毛を挟んだ指先が照準から画面幅の 1/20 以内にある: %s" % tip_path,
 		)
-	hand.advance_pull(hand.get_pull_duration() * 0.31)
+	hand.advance_pull(hand.get_pull_duration() * 0.5 - HandController.REACH_SECONDS)
 	_check(
 		hand.get_pull_progress() >= 0.5 and hand.get_pull_progress() < 1.0
 		and hand.get_hand_view().get_pull_progress() >= 0.5,
