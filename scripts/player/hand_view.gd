@@ -45,6 +45,8 @@ var _closed_turns: Dictionary = {}
 ## 開く時に親指と人差し指を回す軸 (骨の空間。骨の名前から引く)。人差し指は手の +X (先を手の甲の側へ起こす)、
 ## 親指は手の +Y (先を外の -X へ開く)
 var _open_axes: Dictionary = {}
+## 今、親指と人差し指の付け根の骨に掛けている回転 (骨の空間。休みの姿勢からの回転。骨の名前から引く)
+var _current_turns: Dictionary = {}
 
 
 ## 作った時に手を組み立てる (ツリーに入る前から骨と指先を辿れるようにするため、_ready ではなくここで組む)
@@ -66,6 +68,7 @@ func set_pull_progress(progress: float) -> void:
 			Quaternion(_open_axes[bone_name] as Vector3, FINGER_OPEN_RAD * open_amount)
 			* (_closed_turns[bone_name] as Quaternion)
 		)
+		_current_turns[bone_name] = turn
 		var bone: int = _skeleton.find_bone(bone_name)
 		var parent_rest: Basis = _skeleton.get_bone_global_rest(_skeleton.get_bone_parent(bone)).basis
 		var global_rest: Basis = _skeleton.get_bone_global_rest(bone).basis
@@ -79,12 +82,20 @@ func get_pull_progress() -> float:
 	return _pull_progress
 
 
-## 親指 (THUMB_TIP_BONE の先) と人差し指 (INDEX_TIP_BONE の先) の先の位置を、手の局所座標で返す
+## 親指 (THUMB_TIP_BONE の先) と人差し指 (INDEX_TIP_BONE の先) の先の位置を、手の局所座標で返す。
+## 指の付け根の骨に掛けた回転 (_current_turns) で休みの姿勢の先を回して求める (Skeleton3D の姿勢の計算は描画の前に
+## 遅れて行われ、ツリーの外では進まないため、骨の今の姿勢は読まない)
 func get_fingertips() -> Dictionary:
 	return {
-		"index": _skeleton_to_hand * _bone_tip(INDEX_TIP_BONE),
-		"thumb": _skeleton_to_hand * _bone_tip(THUMB_TIP_BONE),
+		"index": _skeleton_to_hand * _turned_tip(INDEX_ROOT_BONE, INDEX_TIP_BONE),
+		"thumb": _skeleton_to_hand * _turned_tip(THUMB_ROOT_BONE, THUMB_TIP_BONE),
 	}
+
+
+## 付け根の骨 root_bone を今の回転で回した時の、先の骨 tip_bone の先の位置 (骨の空間)
+func _turned_tip(root_bone: String, tip_bone: String) -> Vector3:
+	var head: Vector3 = _bone_head(root_bone)
+	return head + (_current_turns[root_bone] as Quaternion) * (_bone_tip(tip_bone) - head)
 
 
 ## 腕のモデルを置き、左腕を隠し、手の向きと大きさを合わせ、閉じた時の指の姿勢を求める (影は落とさない。
@@ -157,19 +168,19 @@ func _solve_pinch() -> Dictionary:
 	}
 
 
-## 骨の付け根の位置 (骨の空間。今の姿勢)
+## 骨の付け根の位置 (骨の空間。休みの姿勢)
 func _bone_head(bone_name: String) -> Vector3:
-	return _skeleton.get_bone_global_pose(_skeleton.find_bone(bone_name)).origin
+	return _skeleton.get_bone_global_rest(_skeleton.find_bone(bone_name)).origin
 
 
-## 骨の先の位置 (骨の空間。今の姿勢)。glTF の骨は先の位置を持たないため、子の骨があればその付け根、
+## 骨の先の位置 (骨の空間。休みの姿勢)。glTF の骨は先の位置を持たないため、子の骨があればその付け根、
 ## 無ければ親から自分への長さだけ骨の +Y へ伸ばした位置とする (Blender の骨は +Y が付け根から先の向き)
 func _bone_tip(bone_name: String) -> Vector3:
 	var bone: int = _skeleton.find_bone(bone_name)
 	var children: PackedInt32Array = _skeleton.get_bone_children(bone)
-	var pose: Transform3D = _skeleton.get_bone_global_pose(bone)
+	var pose: Transform3D = _skeleton.get_bone_global_rest(bone)
 	if not children.is_empty():
-		return _skeleton.get_bone_global_pose(children[0]).origin
+		return _skeleton.get_bone_global_rest(children[0]).origin
 	var length: float = _skeleton.get_bone_rest(bone).origin.length()
 	return pose.origin + pose.basis.y.normalized() * length
 

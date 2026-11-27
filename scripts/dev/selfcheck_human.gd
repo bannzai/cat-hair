@@ -63,10 +63,26 @@ func _check_hand_view_shape_and_pinch() -> void:
 		and is_equal_approx(hand.get_pull_progress(), 0.0),
 		"作った直後の画面の手は、引いていない位置 (REST_POSITION) にある",
 	)
+	var skeleton: Skeleton3D = skeletons[0] as Skeleton3D
 	hand.set_pull_progress(0.0)
 	var open_tips: Dictionary = hand.get_fingertips()
 	var open_distance: float = (open_tips["index"] as Vector3).distance_to(open_tips["thumb"])
+	var open_index_pose: Quaternion = skeleton.get_bone_pose_rotation(
+		skeleton.find_bone("f_index.01.R")
+	)
+	var open_thumb_pose: Quaternion = skeleton.get_bone_pose_rotation(
+		skeleton.find_bone("thumb.01.R")
+	)
 	hand.set_pull_progress(1.0 / 3.0)
+	_check(
+		not skeleton.get_bone_pose_rotation(skeleton.find_bone("f_index.01.R")).is_equal_approx(
+			open_index_pose
+		)
+		and not skeleton.get_bone_pose_rotation(skeleton.find_bone("thumb.01.R")).is_equal_approx(
+			open_thumb_pose
+		),
+		"つまむ時は、モデルの親指と人差し指の付け根の骨の姿勢を回す",
+	)
 	var closed_tips: Dictionary = hand.get_fingertips()
 	var closed_distance: float = (closed_tips["index"] as Vector3).distance_to(closed_tips["thumb"])
 	_check(
