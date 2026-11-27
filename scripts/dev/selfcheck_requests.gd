@@ -455,6 +455,8 @@ func _check_reveal_by_tool_and_robot() -> void:
 	var initial: int = state.automation.get_initial_surface_hairs(spot.surface_id)
 	_set_surface_count(progress.find_surface_hair(spot.surface_id), initial)
 	var half: int = floori(initial * RequestRulesScript.REVEAL_REMAINING_RATIO)
+	progress.money = 1000000
+	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_VACUUM)
 	state.apply_tool_sweep(
 		ToolCatalogScript.TOOL_VACUUM,
 		{spot.surface_id: {SurfaceHairScript.COLOR_WHITE: initial - half}},
@@ -511,13 +513,15 @@ func _check_reach_boundaries() -> void:
 	spot.position = Vector3.ZERO
 	var radius: float = 0.05
 	var edge: float = radius + RequestRulesScript.ITEM_REACH_MARGIN_M
+	# Vector3 は単精度のため、境目ちょうどの値は丸めで外に出ることがある。境目の 1 mm 内と 1 mm 外で確かめる
 	_check(
-		RequestRulesScript.is_in_reach(spot, &"surface_a", Vector3(edge, 0.0, 0.0), radius)
+		RequestRulesScript.is_in_reach(spot, &"surface_a", Vector3(edge - 0.001, 0.0, 0.0), radius)
 		and not RequestRulesScript.is_in_reach(
 			spot, &"surface_a", Vector3(edge + 0.001, 0.0, 0.0), radius
 		)
 		and not RequestRulesScript.is_in_reach(spot, &"surface_b", Vector3.ZERO, radius),
-		"道具の範囲は半径 + %.2f m ちょうどまでで、すぐ外と別の面には当たらない" % RequestRulesScript.ITEM_REACH_MARGIN_M,
+		"道具の範囲は半径 + %.2f m の 1 mm 内まで当たり、1 mm 外と別の面には当たらない"
+		% RequestRulesScript.ITEM_REACH_MARGIN_M,
 	)
 
 
