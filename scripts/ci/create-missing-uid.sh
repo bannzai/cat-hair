@@ -49,8 +49,11 @@ while IFS= read -r uid_path; do
     printf '%s\n' "$existing_uid_texts" | grep -xF -- "$text" > /dev/null || break
   done
   # 書き込みの途中で失敗した時に空や途中までの .uid を残さないよう、隣の一時ファイルに書いてから置き換える
-  # (残った .uid は次の実行で「既にある」として飛ばされるため)
-  printf '%s\n' "$text" > "$uid_path.tmp" && mv -- "$uid_path.tmp" "$uid_path" || { rm -f -- "$uid_path.tmp"; exit 1; }
+  # (残った .uid は次の実行で「既にある」として飛ばされるため)。一時ファイルは mktemp で新しく作り、決まった名前の
+  # 既にあるファイル (別の .uid への symlink 等) に書き込まない。パスは git の相対パスで、- で始まる名前を
+  # mktemp がオプションと読まないよう ./ を前に付ける
+  tmp_path=$(mktemp "./$uid_path.XXXXXX") || exit 1
+  printf '%s\n' "$text" > "$tmp_path" && mv -- "$tmp_path" "$uid_path" || { rm -f -- "$tmp_path"; exit 1; }
   existing_uid_texts=$(printf '%s\n%s\n' "$existing_uid_texts" "$text")
   printf '%s\n' "$uid_path"
 done <<< "$missing_uid_paths"

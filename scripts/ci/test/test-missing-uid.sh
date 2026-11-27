@@ -186,13 +186,21 @@ printf 'extends Node\n' > "$work/m.gd"
 mv_exit=$?
 check "create: 置き換えに失敗した時は失敗する" "$([ "$mv_exit" -ne 0 ] && echo nonzero)" "nonzero"
 check "create: 置き換えに失敗した時は .uid も一時ファイルも残さない" \
-  "$([ -e "$work/m.gd.uid" ] && echo uid) $([ -e "$work/m.gd.uid.tmp" ] && echo tmp)" " "
+  "$(cd "$work" && ls -A | grep '^m\.gd\.uid' | tr '\n' ' ')" ""
 rm -rf "$fail_mv_bin"
 
 reset_work
 printf 'extends Node\n' > "$work/-x.gd"
 check "create: リポジトリの直下の - で始まる名前の .gd の .uid を作れる" \
-  "$(run_in_work "$create" 2> /dev/null) $([ -e "$work/-x.gd.uid.tmp" ] && echo tmp)" "-x.gd.uid "
+  "$(run_in_work "$create" 2> /dev/null) / $(cd "$work" && ls -A | grep -- '^-x\.gd\.uid' | tr '\n' ' ')" "-x.gd.uid / -x.gd.uid "
+
+# <名前>.gd.uid.tmp という名前で別の .uid への symlink が置かれていても、その先の .uid を書き換えない
+reset_work
+printf 'uid://keepme\n' > "$work/other.gd.uid"
+printf 'extends Node\n' > "$work/n.gd"
+ln -s other.gd.uid "$work/n.gd.uid.tmp"
+check "create: 決まった名前の一時ファイルの symlink の先を書き換えない" \
+  "$(run_in_work "$create") $(cat "$work/other.gd.uid")" "n.gd.uid uid://keepme"
 
 # make check-generated: 一時リポジトリに Makefile と scripts/ci のスクリプトを写して実行する
 # 一時リポジトリ (または $1 のディレクトリ) に Makefile と scripts/ci を写す
