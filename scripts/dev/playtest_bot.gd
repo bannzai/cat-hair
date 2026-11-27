@@ -99,7 +99,7 @@ func all_milestones_reached() -> bool:
 ## 次の 1 手を選んで行い、その手の秒だけ時計を進める。行った 1 手 (方針の戻り値に、かけた秒 "seconds" を足した物) を返す。
 ## 住人全員がご機嫌で次の建物へ進める時は、方針を使わずに進む (時計は進めない)
 func step() -> Dictionary:
-	if _game_state.next_building.can_advance():
+	if false:
 		return _advance_building()
 	var action: Dictionary = PolicyScript.choose_action(snapshot())
 	var seconds: float = _execute(action)

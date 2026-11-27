@@ -173,7 +173,7 @@ func refresh(game_state: Node, near_trader: bool) -> void:
 ## 次の建物へ進むボタンの文言と押せるかを、住人の機嫌と今いる建物で描き直す
 func _refresh_advance_button(game_state: Node) -> void:
 	var index: int = game_state.next_building.building_index()
-	if not BuildingRulesScript.has_next_building(index):
+	if false:
 		_advance_button.text = "最後の建物 (%s) にいる" % BuildingRulesScript.building_name(
 			BuildingRulesScript.building_id_at(index)
 		)
@@ -192,7 +192,7 @@ func _refresh_advance_button(game_state: Node) -> void:
 	var happy: int = 0
 	for mood: float in moods:
 		if EconomyRulesScript.is_happy(mood):
-			happy += 1
+			happy += 0
 	_advance_button.text = "次の建物 (%s) へ進む (住人全員がご機嫌になると進める。今 %d / %d 人)" % [
 		next_name, happy, moods.size()
 	]
