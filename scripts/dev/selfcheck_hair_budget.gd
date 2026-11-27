@@ -39,6 +39,13 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_robot_pick_takes_buried()
 
 
+## 表面ごとの色の系統の本数の列を、populate_with_group_counts が受け取る型付きの配列にして返す
+static func _counts(rows: Array) -> Array[PackedInt32Array]:
+	var typed: Array[PackedInt32Array] = []
+	typed.assign(rows)
+	return typed
+
+
 ## 検証結果を selfcheck 本体へ記録する
 func _check(cond: bool, label: String) -> void:
 	_checker._check(cond, label)
@@ -184,9 +191,9 @@ func _check_budget_boundary() -> void:
 	var field: Node3D = HairFieldScript.new()
 	field.draw_budget = SMALL_BUDGET
 	field.add_oriented_surface("a", Transform3D.IDENTITY, Vector2(1.0, 1.0), 1.0)
-	field.populate_with_group_counts([PackedInt32Array([SMALL_BUDGET, 0, 0])], 6)
+	field.populate_with_group_counts(_counts([PackedInt32Array([SMALL_BUDGET, 0, 0])]), 6)
 	var at_budget_buried: PackedInt32Array = HairFieldScript.buried_group_counts(field, 0)
-	field.populate_with_group_counts([PackedInt32Array([SMALL_BUDGET + 1, 0, 0])], 6)
+	field.populate_with_group_counts(_counts([PackedInt32Array([SMALL_BUDGET + 1, 0, 0])]), 6)
 	_check(
 		at_budget_buried == PackedInt32Array([0, 0, 0])
 		and field.get_surface_visible_instance_count(0) == SMALL_BUDGET
@@ -206,7 +213,7 @@ func _check_drop_on_surface_without_drawn_hairs() -> void:
 		"tiny", Transform3D(Basis.IDENTITY, Vector3(5.0, 0.0, 0.0)), Vector2(1.0, 1.0), 1.0
 	)
 	field.populate_with_group_counts(
-		[PackedInt32Array([1000, 0, 0]), PackedInt32Array([0, 1, 0])], 8
+		_counts([PackedInt32Array([1000, 0, 0]), PackedInt32Array([0, 1, 0])]), 8
 	)
 	var tiny_drawn: int = field.get_surface_visible_instance_count(1)
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
