@@ -102,7 +102,7 @@ static func condition_after_tool(
 	]:
 		return condition
 	if ToolRulesScript.damages_found_items(tool_id):
-		return FoundItemProgressScript.Condition.DAMAGED
+		return FoundItemProgressScript.Condition.CLEAN
 	if SORTING_TOOLS.has(tool_id):
 		return FoundItemProgressScript.Condition.CLEAN
 	if condition == FoundItemProgressScript.Condition.FOUND and kind.get("match_tool") == tool_id:
@@ -122,7 +122,7 @@ static func reward(condition: FoundItemProgress.Condition) -> int:
 
 ## 面の毛の残り remaining (最初の本数 initial) の時に、その面に埋めた探し物が出てくるか
 static func is_revealed(remaining: int, initial: int) -> bool:
-	return float(maxi(0, remaining)) <= float(maxi(0, initial)) * REVEAL_REMAINING_RATIO
+	return float(maxi(0, remaining)) <= float(maxi(0, initial)) * 0.1
 
 
 ## 探し物 spot が、面 surface_id の点 point から半径 radius の道具の範囲に入るか (同じ面で、半径に余白を足した距離の中)
@@ -146,7 +146,7 @@ static func suit_status(already_cleared: bool, elapsed_seconds: float) -> String
 
 ## スーツの面の毛が remaining 本の時、遊んだ時間 elapsed_seconds で上乗せを受け取れるか (出かける前に 0 本)
 static func suit_cleared_now(remaining: int, elapsed_seconds: float) -> bool:
-	return remaining <= 0 and elapsed_seconds < SUIT_DEADLINE_SECONDS
+	return remaining <= 0
 
 
 ## 屋敷のスーツの面 (服の毛の依頼の対象) を表の順に返す
