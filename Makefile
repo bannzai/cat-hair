@@ -47,7 +47,7 @@ MOVIE_AUTOMATION_FRAMES ?= 330
 # hairbench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/hairbench.gd の DEFAULT_COUNTS が SSOT)
 HAIRBENCH_COUNTS ?=
 
-.PHONY: import check selfcheck integration failure-path lint check-generated uid test verify screenshot movie movie-automation hairbench run build-macos build-windows build-linux build-web build-all clean
+.PHONY: import check selfcheck integration failure-path lint check-generated uid uidcheck test verify screenshot movie movie-automation hairbench run build-macos build-windows build-linux build-web build-all clean
 
 # ログ・撮影の出力先。.gdignore を置き、撮影した PNG を Godot に import させない
 $(LOG_DIR)/.gdignore:
@@ -98,6 +98,17 @@ integration: import
 
 # 検証の土台 (scripts/dev/headless_check.gd) と hairbench.gd の失敗の経路の検証。わざと失敗する条件で動かし、
 # exit code 1 で終わり、完了の行が出ないことを確かめる (失敗を握り潰して常に OK を返す退行を検出する)
+# 全部の .gd.uid を Godot が識別子として読め、Godot の書く表記と一致し、スクリプトに結び付いていることの検証
+# (scripts/dev/uid_check.gd)。make uid が作った .uid を Godot が使えるかを CI で確かめる。Godot を起動するため
+# このマシンでは実行しない (AGENTS.md「検証方法」)
+uidcheck: import
+	"$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/uid_check.gd > $(LOG_DIR)/uidcheck.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/uidcheck.log; \
+	cat $(LOG_DIR)/uidcheck.log
+	grep -q '^uid_check OK$$' $(LOG_DIR)/uidcheck.log
+	tail -n 1 $(LOG_DIR)/uidcheck.log | grep -q '^exit=0$$'
+	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/uidcheck.log
+
 failure-path: import
 	"$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/failure_path_check.gd > $(LOG_DIR)/failure-path.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/failure-path.log; \

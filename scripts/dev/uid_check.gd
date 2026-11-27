@@ -3,8 +3,7 @@ extends "res://scripts/dev/headless_check.gd"
 ## make uid (Godot を起動せずに作る .uid。scripts/ci/create-missing-uid.sh) の .uid を Godot が使えるかを CI で確かめる。
 ## Godot は Godot が書かない表記の .uid があっても import で書き換えず警告も出さないため、中身の比較では分からない
 ## (確認用の PR https://github.com/bannzai/cat-hair/pull/50 で、uid://zz99 のまま import が通った)。
-## 実行: Godot --headless --path . --script res://scripts/dev/uid_check.gd
-## (先に import する。CI の check-and-export が実行する)
+## 実行: make uidcheck (CI の check-and-export が実行する)。テスト: scripts/ci/test/test-uidcheck.sh
 
 ## 探さないディレクトリ (Godot のキャッシュ)
 const SKIPPED_DIR: String = "res://.godot"

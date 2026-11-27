@@ -31,6 +31,7 @@
 | ロジック検証 (ゲームのルールの計算・プロジェクト設定・メインシーンのロード。一覧は `scripts/dev/selfcheck.gd`) | `make selfcheck` | exit 0 かつ `tmp/selfcheck.log` に `selfcheck OK` が出力され、WARNING / ERROR 行がない |
 | 入力統合テスト (メインシーンを動かし、画面の遷移と入力で変わる振る舞いを確かめる。一覧は `scripts/dev/integration.gd`) | `make integration` | exit 0 かつ `tmp/integration.log` に `integration OK` が出力され、WARNING / ERROR 行がない |
 | 検証の土台の失敗の経路 (わざと失敗する検証を動かし、失敗として終わることを確かめる。`scripts/dev/failure_path_check.gd`) | `make failure-path` | exit 0 (Godot は exit 1 で終わり、`tmp/failure-path.log` に FAIL の行があり、完了の行が無い) |
+| 全部の `.gd.uid` を Godot が識別子として読め、Godot の書く表記と一致し、スクリプトに結び付いていることの検証 (`scripts/dev/uid_check.gd`。CI の check-and-export が `make uid` の `.uid` を足して実行し、壊れた `.uid` で落ちることを `scripts/ci/test/test-uidcheck.sh` で確かめる) | `make uidcheck` | exit 0 かつ `tmp/uidcheck.log` に `uid_check OK` が出力され、WARNING / ERROR 行がない |
 | headless 検証の一括実行 (lint → check → selfcheck → integration → failure-path) | `make test` | exit 0 |
 | 人の操作なしで終わる検査・テスト・ビルドの一括実行 (test → build-all) | `make verify` | exit 0 |
 | スクリーンショット (代表画面。headless の検証では見た目の崩れを検出できない) | `make screenshot` | exit 0 かつ `tmp/screenshot.log` に `screenshot OK` が出力され、WARNING / ERROR 行がなく、`tmp/screenshot-*.png` が生成される |

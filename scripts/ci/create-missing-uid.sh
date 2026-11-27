@@ -9,7 +9,7 @@
 # 乱数の 64 bit の上位 1 bit を落とした値を作り、id_to_text がそれを 34 文字 (a〜y と 0〜8) の基数で上位の桁から
 # 書くのと同じ手順で作る。リポジトリ内の既存の識別子 (uid://...) と重なったら作り直す。
 # 作った .uid を Godot がそのまま使うことは、CI の check-and-export の step
-# 「Check that Godot uses the .uid made by make uid」(scripts/dev/uid_check.gd) が確かめる。
+# 「Check that Godot uses the .uid made by make uid」(make uidcheck) が確かめる。
 #
 # exit code: 0 = 作れた (作るものが無かった時を含む) / 0 以外 = git の失敗か、書き込みに失敗した
 set -u -o pipefail

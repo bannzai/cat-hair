@@ -93,19 +93,13 @@ printf 'extends Node\n' > "$work/scripts/other.gd"
 check "作業ツリーに既にある .uid は作らない (index に無くても書き換えない)" "$(run_in_work "$create")" ""
 check "既にある .uid の中身は変わらない" "$(cat "$work/scripts/other.gd.uid")" "uid://keepme"
 
-(cd "$not_a_repo" && GIT_CONFIG_GLOBAL=/dev/null GIT_CEILING_DIRECTORIES="$(dirname "$not_a_repo")" bash "$list" > /dev/null 2>&1)
-if [ "$?" -ne 0 ]; then
-  echo "PASS: git のリポジトリでない場所では失敗する (該当なしと取り違えない)"
-else
-  echo "FAIL: git のリポジトリでない場所では失敗する (exit 0 で終わった)"
-  failed=1
-fi
-
 # git のリポジトリでない場所 ($not_a_repo) でスクリプトを実行し、exit code だけを出す (標準出力は $not_a_repo/out に残す)
 exit_code_outside_repo() {
   (cd "$not_a_repo" && GIT_CONFIG_GLOBAL=/dev/null GIT_CEILING_DIRECTORIES="$(dirname "$not_a_repo")" "$@" > "$not_a_repo/out" 2> /dev/null)
   echo "$?"
 }
+check "list: git のリポジトリでない場所では失敗する (該当なしと取り違えない)" "$([ "$(exit_code_outside_repo bash "$list")" -ne 0 ] && echo nonzero)" "nonzero"
+
 check "create: git のリポジトリでない場所では失敗する (list の失敗を伝える)" "$([ "$(exit_code_outside_repo bash "$create")" -ne 0 ] && echo nonzero)" "nonzero"
 check "create: git のリポジトリでない場所では何も作ったと出さない" "$(cat "$not_a_repo/out")" ""
 
@@ -125,7 +119,7 @@ repo_git commit -q -m deleted
 rm "$work/deleted.gd"
 check "list: 作業ツリーから消したが index に残る .gd は対象外" "$(run_in_work "$list")" ""
 
-# 乱数を固定する: PATH の先頭に偽の od を置き、$fake_od_values の行を呼ばれるたびに 1 行ずつ出す
+# 乱数を固定する: PATH の先頭に偽の od を置き、$FAKE_OD_VALUES のファイルの行を呼ばれるたびに 1 行ずつ出す
 fake_bin=$(mktemp -d)
 trap 'chmod -R u+w "$work"; rm -rf "$work" "$not_a_repo" "$fake_bin"' EXIT
 cat > "$fake_bin/od" << 'EOF'
@@ -172,11 +166,10 @@ check "create: 書き込めなかった .uid を作ったと出さない" "$crea
 chmod 755 "$work/readonly"
 
 # make check-generated: 一時リポジトリに Makefile と scripts/ci のスクリプトを写して実行する
-repo_root=$(cd "$ci_dir/../.." && pwd)
 # 一時リポジトリ (または $1 のディレクトリ) に Makefile と scripts/ci を写す
 copy_make_files() {
   mkdir -p "$1/scripts/ci"
-  cp "$repo_root/Makefile" "$1/"
+  cp "$ci_dir/../../Makefile" "$1/"
   cp "$ci_dir/list-missing-uid.sh" "$ci_dir/list-uncommitted-generated.sh" "$ci_dir/create-missing-uid.sh" "$1/scripts/ci/"
 }
 # 一時リポジトリで make check-generated を実行し、標準出力と exit code を 1 つの文字列で出す (標準エラーは $work.err)
