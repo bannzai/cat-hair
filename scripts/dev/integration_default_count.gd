@@ -32,6 +32,7 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await checker.process_frame
 	suite._verify_fresh_counts(main, game_state)
 	await suite._verify_hand_pluck(main, game_state)
+	await suite._verify_sofa_resistance(main)
 	await suite._verify_roller_sweep(main, game_state)
 	main.hand.allow_uncaptured_pluck = false
 	main.tools.allow_uncaptured_use = false
@@ -88,6 +89,37 @@ func _verify_hand_pluck(main: Node3D, game_state: Node) -> void:
 			HairFieldScript.count_drawn_hairs(hair_field),
 		],
 	)
+
+
+## 同じ手で床とソファの毛を照準からつまみ、抜けるまでの時間を同じ刻みで比べる。
+func _verify_sofa_resistance(main: Node3D) -> void:
+	var hand: HandController = main.hand
+	var floor_steps: int = 0
+	for kind: StringName in [MansionLayout.SURFACE_FLOOR, MansionLayout.SURFACE_SOFA]:
+		var aimed: int = await HandAim.aim_at_first_room_hair(_checker, main, kind)
+		await _checker.process_frame
+		Input.action_press(HandController.ACTION_PLUCK)
+		await _checker.process_frame
+		var ids: PackedInt32Array = hand.get_pulling_ids()
+		var steps: int = 0
+		var plucked: int = 0
+		# 1/120 秒刻みで 2 秒まで。描画フレームの所要時間に依存せず、実際に 1 本減るまでを測る。
+		while hand.is_pulling() and steps < 240:
+			plucked = hand.advance_pull(1.0 / 120.0)
+			steps += 1
+		Input.action_release(HandController.ACTION_PLUCK)
+		await _checker.process_frame
+		_check(
+			aimed >= 0 and ids == PackedInt32Array([aimed]) and plucked == 1,
+			"%s の照準で選んだ毛が 1 本抜ける" % kind,
+		)
+		if kind == MansionLayout.SURFACE_FLOOR:
+			floor_steps = steps
+		else:
+			_check(
+				floor_steps > 0 and steps > floor_steps,
+				"同じ手でソファの毛を抜き終えるまでが床より長い (床 %d 刻み・ソファ %d 刻み)" % [floor_steps, steps],
+			)
 
 
 ## 粘着ローラーを買って床にかけると、取れた本数だけ残り本数が減るか

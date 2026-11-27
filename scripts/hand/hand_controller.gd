@@ -17,6 +17,9 @@ const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## AudioManager の型解決と実行時取得用スクリプト参照
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
+const HairFieldScript := preload("res://scripts/hair_field.gd")
+## 指先が毛に届くまでの時間。強化した場合も、引く時間の半分以上を伸びる動きに残す
+const REACH_SECONDS: float = 0.07
 ## 画面に映る手のスクリプト
 const HandViewScript := preload("res://scripts/player/hand_view.gd")
 
@@ -31,7 +34,7 @@ const GRAB_RADIUS_M: float = 0.08
 const OCCLUSION_TOLERANCE_M: float = 0.06
 ## 引き終える直前の毛の長さの倍率 (伸びてから抜ける見た目)。以下の見た目の倍率は、CI の撮影で
 ## 目線 0.9m 先の床の毛が伸びて起きたと分かる大きさにした仮の値で、実機の手応えで調整する (issue #5)
-const MAX_STRETCH_RATIO: float = 2.2
+const MAX_STRETCH_RATIO: float = 4.0
 ## 引いている間に毛を太く見せる倍率 (1〜2 ピクセルの細さでも引いている毛が見えるように)
 const PULL_WIDTH_RATIO: float = 3.0
 ## 引き終える時に毛の先が面の法線へ向く割合
@@ -62,7 +65,7 @@ var _game_state: Node = null
 ## 狙いの光線から外す衝突体 (プレイヤー自身)
 var _excluded_rids: Array[RID] = []
 ## 画面に映る手
-var _hand_view: Node3D = null
+var _hand_view: HandViewScript = null
 ## 珍しい毛の抽選に使う乱数
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## 今つまんでいる毛の ID (空ならつまんでいない)
@@ -93,6 +96,8 @@ func setup(
 		_hand_view = HandViewScript.new()
 		_hand_view.name = "HandView"
 		_camera.add_child(_hand_view)
+		var player := excluded_body as FirstPersonPlayer
+		_hand_view.attach_to_shoulder(player.right_shoulder if player != null else camera)
 
 
 ## 毎フレーム、つまむ操作の押下に合わせて引き始め・引き続け・離すを行い、抜けなかった時は理由を知らせる。
@@ -317,14 +322,34 @@ func is_view_blocked(target: Vector3) -> bool:
 ## 引いている毛を伸ばし (面の法線の向きへ起こして長く・太くする)、手の指を閉じる
 func _show_pull(progress: float) -> void:
 	var hair_field: Node3D = _world.get_hair_field()
-	var normal: Vector3 = _world.get_surface_def(_pull_surface_index).basis.y.normalized()
+	var reach_end: float = minf(REACH_SECONDS / _pull_duration, 0.5)
+	var stretch: float = clampf((progress - reach_end) / (1.0 - reach_end), 0.0, 1.0)
+	var positioned: bool = false
 	for hair_id: int in _pulling_ids:
-		hair_field.set_hair_display_transform(
-			hair_id, stretched_hair_transform(hair_field.get_hair_transform(hair_id), normal, progress)
-		)
-	if _hand_view != null:
-		_hand_view.set_pull_progress(progress)
+		if not hair_field.has_hair(hair_id):
+			continue
+		var pose: Transform3D = _pull_pose(hair_field.get_hair_transform(hair_id), stretch)
+		hair_field.set_hair_display_transform(hair_id, pose)
+		if not positioned:
+			_hand_view.pinch_at(pose * HairFieldScript.HAIR_TIP, reach_end, progress)
+			positioned = true
 	pull_progress_changed.emit(progress, true)
+
+
+## 面から手前へ、かつ画面の右上へ引く。真下や正面を見ても先端が根元に重ならない
+func _pull_pose(rest: Transform3D, stretch: float) -> Transform3D:
+	var normal: Vector3 = _world.get_surface_def(_pull_surface_index).basis.y.normalized()
+	var toward_eye: Vector3 = rest.origin.direction_to(_camera.global_position)
+	var lift: Vector3 = (normal + toward_eye + _camera.global_basis.x * 1.4
+		+ _camera.global_basis.y * 0.9).normalized()
+	var pose: Transform3D = stretched_hair_transform(rest, lift, stretch)
+	# 毛のリボンの幅を視線に垂直に起こし、横から見た時の細さで見失わないようにする
+	var across: Vector3 = pose.basis.z.cross(toward_eye).normalized()
+	if across.dot(pose.basis.x) < 0.0:
+		across = -across
+	if not across.is_zero_approx():
+		pose.basis.x = pose.basis.x.slerp(across * pose.basis.x.length(), stretch)
+	return pose
 
 
 ## 配置時の毛の transform を、引いている進み具合 progress に合わせて伸ばした見た目の transform を返す。
@@ -349,19 +374,25 @@ func _finish_pull() -> int:
 	var rare_ids: Array[StringName] = []
 	var new_rare_ids: Array[StringName] = []
 	for hair_id: int in _pulling_ids:
+		if not hair_field.has_hair(hair_id):
+			continue
 		var color_id: StringName = _world.get_hair_color_id(hair_id)
 		var rare_id: StringName = HandRulesScript.roll_rare_hair(color_id, _rng.randf())
 		var result: Dictionary = _game_state.pluck_hair(surface_def.surface_id, color_id, rare_id)
 		if not bool(result["plucked"]):
 			hair_field.set_hair_display_transform(hair_id, hair_field.get_hair_transform(hair_id))
 			continue
+		if plucked == 0:
+			var pose: Transform3D = _pull_pose(hair_field.get_hair_transform(hair_id), 1.0)
+			_hand_view.pinch_at(pose * HairFieldScript.HAIR_TIP, 1.0, 1.0)
+			_hand_view.show_plucked(pose, hair_field.get_hair_color(hair_id))
 		hair_field.remove_hair(hair_id)
 		plucked += 1
 		if rare_id != &"":
 			rare_ids.append(rare_id)
 		if bool(result["new_rare"]):
 			new_rare_ids.append(rare_id)
-	_reset_pull()
+	_reset_pull(plucked > 0)
 	if plucked > 0:
 		var audio_manager: AudioManagerScript = (
 			AudioManagerScript.resolve(get_tree()) as AudioManagerScript
@@ -373,10 +404,10 @@ func _finish_pull() -> int:
 
 
 ## つまんでいる状態を空にし、手を開いた形に戻す
-func _reset_pull() -> void:
+func _reset_pull(showing_plucked: bool = false) -> void:
 	_pulling_ids = PackedInt32Array()
 	_pull_surface_index = -1
 	_pull_elapsed = 0.0
-	if _hand_view != null:
-		_hand_view.set_pull_progress(0.0)
+	if _hand_view != null and not showing_plucked:
+		_hand_view.return_to_side()
 	pull_progress_changed.emit(0.0, false)

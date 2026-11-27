@@ -23,6 +23,8 @@ const DEFAULT_SEED: int = 20261126
 const SURFACE_LIFT_M: float = 0.0012
 ## 1 本の毛の基準長 (m。猫の一般的な抜け毛 4〜5 cm を写実寄りスケールで再現)
 const HAIR_LENGTH_M: float = 0.048
+## 描画する毛の先端。つまんだ指先もこの頂点に合わせる
+const HAIR_TIP: Vector3 = Vector3(0.0042, 0.0018, HAIR_LENGTH_M)
 ## 1 本の毛の根元幅 (m。1280x720 でカメラから約 1 m の距離で 2〜3 px になり視認できる太さ)
 const HAIR_BASE_WIDTH_M: float = 0.0028
 ## 白系統の累積確率境界 (白 34% / 黒 33% / 三毛 33% のほぼ均等 3 分割にする)
@@ -238,7 +240,7 @@ static func build_hair_mesh() -> ArrayMesh:
 	# のあいだで弧の膨らみが減らないよう、長さの 50% で両者の平均よりわずかに外側に置き、根元と先端は前と同じにした
 	var p0: Vector3 = Vector3(0.0, 0.0, 0.0)
 	var p1: Vector3 = Vector3(0.0065, 0.0052, HAIR_LENGTH_M * 0.5)
-	var p2: Vector3 = Vector3(0.0042, 0.0018, HAIR_LENGTH_M)
+	var p2: Vector3 = HAIR_TIP
 
 	# 先細りの幅。中ほどの幅は、3 セグメントの時の 1/3 (0.44)・2/3 (0.30) の幅の平均に近い値にし、
 	# 長さの 50% での太さを前の形と揃えた
@@ -453,9 +455,10 @@ func remove_hair(hair_id: int) -> bool:
 		return false
 	if _id_to_slot[hair_id] < 0:
 		return false
+	var plucked_point: Vector3 = get_hair_transform(hair_id).origin
 	var surface_index: int = _erase_drawn(hair_id)
 	_remaining_count -= 1
-	_draw_buried_hair(surface_index)
+	_draw_buried_hair(surface_index, plucked_point)
 	return true
 
 
@@ -508,7 +511,7 @@ func _next_hair_id() -> int:
 
 ## 表面 surface_index に埋もれた毛があり、描いている本数が draw_cap より少なければ、埋もれた毛から 1 本
 ## (系統は埋もれた毛の本数に比例した抽選) を表面のどこかに描き足す。残り本数は変えない
-func _draw_buried_hair(surface_index: int) -> void:
+func _draw_buried_hair(surface_index: int, plucked_point: Vector3) -> void:
 	var bucket: Dictionary = _buckets[surface_index]
 	var buried: PackedInt32Array = bucket["buried"]
 	if (
@@ -516,14 +519,17 @@ func _draw_buried_hair(surface_index: int) -> void:
 		or (bucket["multimesh"] as MultiMesh).visible_instance_count >= int(bucket["draw_cap"])
 	):
 		return
+	var spec: Dictionary = _surfaces[surface_index]
+	var xform: Transform3D = _random_hair_transform(spec, _hair_aabb, _refill_rng)
+	# 引いた直後の跡に別の根元を出さない。極小の検証用の面でも上限回数で描き足す。
+	for _attempt: int in range(EXCLUSION_RETRY_LIMIT):
+		if xform.origin.distance_squared_to(plucked_point) >= HAIR_LENGTH_M * HAIR_LENGTH_M:
+			break
+		xform = _random_hair_transform(spec, _hair_aabb, _refill_rng)
 	var group: int = pick_buried_group(buried, _refill_rng)
 	buried[group] -= 1
 	bucket["buried"] = buried
-	_place_hair(
-		surface_index,
-		_random_hair_transform(_surfaces[surface_index], _hair_aabb, _refill_rng),
-		pick_hair_color_in_group(_refill_rng, group),
-	)
+	_place_hair(surface_index, xform, pick_hair_color_in_group(_refill_rng, group))
 
 
 ## 表面 surface_index の埋もれた毛から系統 group の毛を最大 count 本消し、消した本数を返す (remove_buried_hairs の本体)

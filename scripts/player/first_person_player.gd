@@ -2,6 +2,9 @@ class_name FirstPersonPlayer
 extends CharacterBody3D
 ## 屋敷の中を歩く一人称プレイヤー。WASD / 矢印キーで移動し、マウスで視点を回す。
 
+const HumanParts := preload("res://scripts/human/human_parts.gd")
+const HandViewScript := preload("res://scripts/player/hand_view.gd")
+
 ## 6m 部屋を約 1.4 秒で横切る一人称の標準歩行速度 (m/s)
 const DEFAULT_MOVE_SPEED: float = 4.2
 ## 画面幅の半分 (640px) のマウス移動で約 90 度回転する標準感度 (rad/px)
@@ -10,8 +13,8 @@ const DEFAULT_MOUSE_SENSITIVITY: float = 0.0025
 const DEFAULT_GRAVITY: float = 18.0
 ## 初期ピッチ角 (rad。約 -10 度下向きで床・カーペット・家具が視界中央に収まる角度)
 const INITIAL_PITCH_RADIANS: float = -0.18
-## 上下視点のクランプ上限 (rad。約 ±77 度で真上・真下の視点反転を防ぐ)
-const MAX_PITCH_RADIANS: float = 1.35
+## 上下視点のクランプ上限 (rad。真下の床まで見渡せ、そこで視点の反転を止める)
+const MAX_PITCH_RADIANS: float = PI * 0.5
 ## 16:9 画面で室内空間を窮屈にせず端の歪みを抑えるカメラ視野角 (度)
 const CAMERA_FOV_DEG: float = 72.0
 ## 壁際で近接クリッピングしにくいカメラ近平面 (m)
@@ -37,6 +40,9 @@ const MIN_MOVE_INPUT_LENGTH_SQ: float = 0.0001
 var controls_enabled: bool = false
 ## テスト等でマウス未捕捉のまま視点イベントを受け取るためのフラグ
 var allow_uncaptured_look: bool = false
+
+## 右の袖の付け根
+var right_shoulder: Node3D
 
 ## 現在のカメラ上下ピッチ角 (ラジアン)
 var _pitch: float = INITIAL_PITCH_RADIANS
@@ -175,12 +181,15 @@ func _ensure_rig() -> void:
 		collider.position = Vector3(0.0, CAPSULE_HEIGHT_M * 0.5, 0.0)
 		add_child(collider)
 
-	_head = get_node_or_null("Head")
+	var body: Node3D = get_node_or_null("Body")
+	if body == null:
+		body = _build_body()
+	_head = body.get_node_or_null("Head")
 	if _head == null:
 		_head = Node3D.new()
 		_head.name = "Head"
 		_head.position = Vector3(0.0, EYE_HEIGHT_M, 0.0)
-		add_child(_head)
+		body.add_child(_head)
 
 	_camera = _head.get_node_or_null("Camera3D")
 	if _camera == null:
@@ -191,3 +200,34 @@ func _ensure_rig() -> void:
 		_camera.far = CAMERA_FAR_M
 		_camera.current = true
 		_head.add_child(_camera)
+
+
+## 足元を原点にして立つ体。頭部の内側には描画する面を置かず、前に出た目の位置から足元を見下ろす
+func _build_body() -> Node3D:
+	var body: Node3D = Node3D.new()
+	body.name = "Body"
+	add_child(body)
+	var shirt := StandardMaterial3D.new()
+	shirt.albedo_color = HandViewScript.SLEEVE_COLOR
+	var pants := StandardMaterial3D.new()
+	pants.albedo_color = Color(0.14, 0.16, 0.2)
+	var skin := StandardMaterial3D.new()
+	skin.albedo_color = HandViewScript.SKIN_COLOR
+	HumanParts.add_sphere(body, "Torso", Vector3(0, 1.14, 0.23), 0.5,
+		Vector3(0.39, 0.62, 0.24), shirt, false)
+	for side: int in [-1, 1]:
+		var prefix: String = "Left" if side == -1 else "Right"
+		HumanParts.add_limb(body, prefix + "Leg", Vector3(side * 0.10, 0.12, 0.24),
+			Vector3(side * 0.10, 0.88, 0.23), 0.072, pants, false)
+		HumanParts.add_sphere(body, prefix + "Shoe", Vector3(side * 0.10, 0.07, 0.18), 0.5,
+			Vector3(0.14, 0.14, 0.26), pants, false)
+	right_shoulder = Node3D.new()
+	right_shoulder.name = "RightShoulder"
+	right_shoulder.position = Vector3(0.19, 1.35, 0.22)
+	body.add_child(right_shoulder)
+	var elbow := Vector3(-0.24, 1.04, 0.21)
+	HumanParts.add_limb(body, "LeftSleeve", Vector3(-0.19, 1.35, 0.22), elbow, 0.053, shirt, false)
+	HumanParts.add_limb(body, "LeftForearm", elbow, Vector3(-0.24, 0.8, 0.15), 0.033, skin, false)
+	HumanParts.add_sphere(body, "LeftHand", Vector3(-0.24, 0.74, 0.14), 0.5,
+		Vector3(0.07, 0.14, 0.06), skin, false)
+	return body

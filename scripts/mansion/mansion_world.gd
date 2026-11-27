@@ -628,22 +628,32 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 			false,
 		)
 	elif obj.object_kind == MansionLayoutScript.OBJECT_SUIT_RACK:
-		_add_static_box(
-			object_root,
-			"Base",
-			Vector3(0.0, 0.03, 0.0),
-			Vector3(object_width, 0.06, object_depth),
-			_material_metal,
-			true,
-		)
-		_add_static_box(
-			object_root,
-			"Pole",
-			Vector3(0.0, object_height * 0.5, 0.0),
-			Vector3(0.06, object_height, 0.06),
-			_material_metal,
-			true,
-		)
+		if obj.wall_mounted:
+			_add_static_box(
+				object_root,
+				"WallHook",
+				Vector3(0.0, object_height * 0.88, -object_width * 0.25),
+				Vector3(0.045, 0.065, object_width * 0.5),
+				_material_metal,
+				false,
+			)
+		else:
+			_add_static_box(
+				object_root,
+				"Base",
+				Vector3(0.0, 0.03, 0.0),
+				Vector3(object_width, 0.06, object_depth),
+				_material_metal,
+				true,
+			)
+			_add_static_box(
+				object_root,
+				"Pole",
+				Vector3(0.0, object_height * 0.5, 0.0),
+				Vector3(0.06, object_height, 0.06),
+				_material_metal,
+				true,
+			)
 		_add_static_box(
 			object_root,
 			"SuitJacket",

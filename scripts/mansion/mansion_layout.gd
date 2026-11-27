@@ -108,6 +108,8 @@ class ObjectDef:
 	var position: Vector3 = Vector3.ZERO
 	## 物の幅・高さ・奥行 (m)
 	var size: Vector3 = Vector3.ZERO
+	## スーツ掛けが、床置きの支柱ではなく壁のフックで上着を支えるか
+	var wall_mounted: bool = false
 	## 物の Y 軸回転角 (ラジアン)
 	var rotation_y: float = 0.0
 

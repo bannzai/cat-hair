@@ -37,6 +37,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._checker = checker
 	suite._check_group_counts_over_budget()
 	suite._check_remove_refills_until_buried_runs_out()
+	suite._check_plucked_spot_stays_clear()
 	suite._check_add_and_remove_buried()
 	suite._check_populate_over_budget_and_unlimited()
 	suite._check_budget_boundary()
@@ -121,6 +122,25 @@ func _check_remove_refills_until_buried_runs_out() -> void:
 		and field.get_surface_visible_instance_count(0) == 0,
 		"1 本ずつ 100 本消すと残り本数は 1 本ずつ減り、描いている本数は埋もれた毛が尽きるまで 10 本のまま、最後は 0 本",
 	)
+	field.free()
+
+
+## 1 本ずつつまんだ直後、描き足す毛の根元が抜いた場所を埋めないか
+func _check_plucked_spot_stays_clear() -> void:
+	var field: Node3D = HairFieldScript.new()
+	field.draw_budget = 1
+	field.add_oriented_surface("seat", Transform3D.IDENTITY, Vector2(0.15, 0.15), 1.0)
+	field.populate(100)
+	var clear: bool = true
+	for _index: int in range(99):
+		var id: int = field.get_hair_id_at_slot(0, 0)
+		var root: Vector3 = field.get_hair_transform(id).origin
+		field.remove_hair(id)
+		var next_id: int = field.get_hair_id_at_slot(0, 0)
+		var next: Vector3 = field.get_hair_transform(next_id).origin
+		if root.distance_to(next) < HairFieldScript.HAIR_LENGTH_M:
+			clear = false
+	_check(clear, "抜いた位置から毛 1 本の長さの範囲には、次の毛の根元を描き足さない")
 	field.free()
 
 

@@ -8,12 +8,20 @@ static func add_limb(
 	parent_node: Node3D, node_name: String, from: Vector3, to: Vector3, radius: float,
 	limb_material: Material, casts_shadow: bool,
 ) -> MeshInstance3D:
-	var span: Vector3 = to - from
 	var mesh: CapsuleMesh = CapsuleMesh.new()
 	mesh.radius = radius
-	# CapsuleMesh の高さは両端の丸みを含む全長で、2 点のそれぞれを丸みの中心にするため半径 2 つ分を足す
-	mesh.height = span.length() + radius * 2.0
 	var instance: MeshInstance3D = _add_mesh(parent_node, node_name, mesh, limb_material, casts_shadow)
+	pose_limb(instance, from, to)
+	return instance
+
+
+## 体を動かした後も、関節どうしを同じ太さの手足で結ぶ
+static func pose_limb(instance: MeshInstance3D, from: Vector3, to: Vector3) -> void:
+	var span: Vector3 = to - from
+	var mesh: CapsuleMesh = instance.mesh as CapsuleMesh
+	var height: float = span.length() + mesh.radius * 2.0
+	if not is_equal_approx(mesh.height, height):
+		mesh.height = height
 	instance.position = (from + to) * 0.5
 	if span.length() > 0.0:
 		# カプセルは局所の Y 軸に沿う。両端が同じ形なので向きの正負は問わず、上向きの側へそろえると
@@ -22,7 +30,6 @@ static func add_limb(
 		if axis.y < 0.0:
 			axis = -axis
 		instance.quaternion = Quaternion(Vector3.UP, axis)
-	return instance
 
 
 ## 中心 center・半径 radius の球を、軸ごとの倍率 sphere_scale で伸ばして parent_node の子に足す (頭・手・関節)
