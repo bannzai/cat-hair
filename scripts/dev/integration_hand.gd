@@ -9,6 +9,14 @@ const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
 const HandAim := preload("res://scripts/dev/hand_aim.gd")
 ## 屋敷レイアウト型スクリプト (表面の種類の定数を使う)
 const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
+## モデル (または自作の形) に置き換えた物の種別から、毛の付く面の種類 (MansionBuilder の物の面の決め方と同じ対応)
+const MODEL_OBJECT_SURFACE_TYPES: Dictionary = {
+	MansionLayoutScript.OBJECT_SOFA: MansionLayoutScript.SURFACE_SOFA,
+	MansionLayoutScript.OBJECT_TABLE: MansionLayoutScript.SURFACE_FURNITURE,
+	MansionLayoutScript.OBJECT_SIDEBOARD: MansionLayoutScript.SURFACE_FURNITURE,
+	MansionLayoutScript.OBJECT_KNIT_CHAIR: MansionLayoutScript.SURFACE_KNIT,
+	MansionLayoutScript.OBJECT_SUIT_RACK: MansionLayoutScript.SURFACE_SUIT,
+}
 ## 音声カタログ (効果音の出来事名)
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## AudioManager の型解決と実行時取得用スクリプト参照
@@ -710,11 +718,12 @@ func _verify_rare_hair_from_pluck(main: Node3D, game_state: Node) -> void:
 ## 4 種類すべての面がそろっていることも求める
 func _verify_pluck_on_model_surfaces(main: Node3D, game_state: Node) -> void:
 	var world: MansionWorld = main.mansion_world
+	# 確かめる面の種類は、毛の面からではなく屋敷に置いた物から決める (モデルに置き換えて面が無くなった時に、
+	# 「置かれていない種類」として飛ばさず落とすため)
 	var present: Dictionary = {}
-	for surface_idx: int in range(world.get_hair_field().get_surface_count()):
-		var surface: MansionLayout.SurfaceDef = world.get_surface_def(surface_idx)
-		if surface != null:
-			present[surface.surface_type] = true
+	for obj: MansionLayout.ObjectDef in main.get_game_state().current_layout.objects:
+		if MODEL_OBJECT_SURFACE_TYPES.has(obj.object_kind):
+			present[MODEL_OBJECT_SURFACE_TYPES[obj.object_kind]] = true
 	var checked: int = 0
 	for surface_type: StringName in [
 		MansionLayoutScript.SURFACE_SOFA,
@@ -744,8 +753,12 @@ func _verify_pluck_on_model_surfaces(main: Node3D, game_state: Node) -> void:
 			and game_state.get_total_remaining_hairs() == before_total - 1,
 			"「%s」の面の毛を手でつまんで引き終えると、狙った 1 本が抜けて残り本数が 1 減る" % surface_type,
 		)
-	# 統合テストの屋敷 (既定の生成の値) には 4 種類の面がそろう。どれかが無くなった時も落ちるよう、4 種類を求める
-	_check(checked == 4, "家具の毛の検証で、ソファ・天面・ニット・スーツの 4 種類の面を確かめた (%d 種類)" % checked)
+	# 統合テストの屋敷 (OS 引数 --room-count=2 --object-count=4) に置かれる物は 4 個で、4 種類すべては並ばない。
+	# 置かれた種類はどれも上で確かめ、置かれる種類が減った時に気づけるよう 2 種類以上を求める
+	_check(
+		checked >= 2,
+		"家具の毛の検証で、屋敷に置いたモデルの物の面を 2 種類以上確かめた (%d 種類)" % checked,
+	)
 
 
 ## 毛のままの在庫のうち、指定した珍しい毛の本数を返す
