@@ -223,8 +223,8 @@ func _check_hair_mesh_shape() -> void:
 	var arrays: Array = mesh.surface_get_arrays(0)
 	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
-	_check(vertices.size() == 7, "毛メッシュの頂点数が 7 (実際: %d)" % vertices.size())
-	_check(indices.size() == 15, "毛メッシュのインデックス数が 15 = 5 三角形 (実際: %d)" % indices.size())
+	_check(vertices.size() == 5, "毛メッシュの頂点数が 5 (実際: %d)" % vertices.size())
+	_check(indices.size() == 9, "毛メッシュのインデックス数が 9 = 3 三角形 (実際: %d)" % indices.size())
 	var max_x: float = 0.0
 	var max_y: float = 0.0
 	var max_z: float = 0.0
@@ -236,11 +236,9 @@ func _check_hair_mesh_shape() -> void:
 		max_x > 0.005 and max_y > 0.003 and max_z > 0.03,
 		"毛メッシュが長さ・曲がり・浮きを持つ (x=%.4f y=%.4f z=%.4f)" % [max_x, max_y, max_z]
 	)
-	# 第 1〜第 3 断面の幅ベクトルが同じ向きを向き、根元でリボンがねじれないこと
-	var mid_width_vec: Vector3 = vertices[3] - vertices[2]
+	# 根元と中ほどの断面の幅ベクトルが同じ向きを向き、根元でリボンがねじれないこと
 	_check(
-		(vertices[1] - vertices[0]).dot(mid_width_vec) > 0.0
-		and mid_width_vec.dot(vertices[5] - vertices[4]) > 0.0,
+		(vertices[1] - vertices[0]).dot(vertices[3] - vertices[2]) > 0.0,
 		"毛メッシュの隣接断面の幅方向が一貫しねじれが無い"
 	)
 	var mesh_aabb: AABB = HairFieldScript.compute_mesh_aabb(mesh)
@@ -302,7 +300,7 @@ func _check_hair_field_populate_and_remove() -> void:
 
 	# 10 本配置 (floor 7 本: ID 0..6, sofa 3 本: ID 7..9)
 	_check(field.populate(10, 12345) == 10 and field.get_remaining_count() == 10, "10 本配置できる")
-	# 配置した毛が Identity ではなく実座標と非透明色を持ち、全 7 頂点が表面高さ以上に収まること
+	# 配置した毛が Identity ではなく実座標と非透明色を持ち、全頂点が表面高さ以上に収まること
 	var hair_vertices: PackedVector3Array = HairFieldScript.build_hair_mesh().surface_get_arrays(0)[
 		Mesh.ARRAY_VERTEX
 	]

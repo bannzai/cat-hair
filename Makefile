@@ -225,12 +225,6 @@ scenebench: import
 	test -f $(LOG_DIR)/scenebench.json
 	ls $(LOG_DIR)/scenebench-*.png
 
-# 一時的な実験 (issue #56)。描画の設定ごとの 1 フレームの時間を計る。決めたら消す
-scene-experiment: import
-	"$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) $(SCRIPT_FLAGS) --script res://scripts/dev/scene_experiment.gd > $(LOG_DIR)/scene-experiment.log 2>&1; \
-	echo "exit=$$?" >> $(LOG_DIR)/scene-experiment.log
-	grep -q '^scene experiment OK$$' $(LOG_DIR)/scene-experiment.log
-
 # エディタなしでゲームを起動する (人が遊んで確かめる)。先にアセットをインポートする (.godot/ が無い初回や素材の
 # 追加後に、エディタを開かずに起動すると素材が読み込めず起動に失敗するため)
 run: import

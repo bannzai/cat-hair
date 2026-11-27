@@ -24,7 +24,7 @@ const RobotRulesScript := preload("res://scripts/automation/robot_rules.gd")
 ## 本数の文字列の解析 (parse_counts と同じ形) を借りる
 const HairbenchScript := preload("res://scripts/dev/hairbench.gd")
 
-## 既定の計測本数 (今の既定 12,000 本と、その 5・10・20 倍)
+## 既定の計測本数 (issue #56 で上げる前の既定 12,000 本と、その 5・10 (今の既定)・20 倍)
 const DEFAULT_COUNTS: Array[int] = [12000, 60000, 120000, 240000]
 ## JSON レポートの既定出力先 (Makefile の scenebench target が参照するパス)
 const DEFAULT_JSON_PATH: String = "tmp/scenebench.json"

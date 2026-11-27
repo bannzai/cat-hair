@@ -684,8 +684,8 @@ func _verify_enter_movement_and_look(main: Node3D) -> void:
 	var hair_label: Label = main.get_node("UILayer/UI/HUD/RemainingHairPanel/RemainingHairLabel")
 	_check(main.get_node("UILayer/UI/HUD").visible, "はじめる押下で HUD が表示される")
 	_check(
-		hair_label.text.contains("12,000"),
-		"残り毛本数の表示に既定値 12,000 が出ている (実際: %s)" % hair_label.text,
+		hair_label.text.contains("120,000"),
+		"残り毛本数の表示に既定値 120,000 が出ている (実際: %s)" % hair_label.text,
 	)
 
 	var player: FirstPersonPlayer = main.get_node("Player")
