@@ -87,6 +87,18 @@ func _check_limb_ends_and_shadow() -> void:
 	)
 	_check(
 		sphere.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		and (
+			HumanParts.add_limb(
+				parent_node, "ShadowLimb", Vector3.ZERO, Vector3.UP, 0.05, part_material, true
+			).cast_shadow
+			== GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		)
+		and (
+			HumanParts.add_box(
+				parent_node, "ShadowBox", Vector3.ZERO, Vector3.ONE, part_material, true
+			).cast_shadow
+			== GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		)
 		and box.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		and zero_limb.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF,
 		"人の体の部品は、影を落とす引数が true の時だけ影を落とす",
@@ -122,6 +134,12 @@ func _check_hand_view_shape_and_pinch() -> void:
 	# selfcheck は _initialize から同期で走り、root がまだツリーに入っていないため、手はツリーに入れずに
 	# 作った時点の部品 (hand_view.gd の _init で組み立てる) と、手の局所座標での位置で確かめる
 	var hand: Node3D = HandViewScript.new()
+	_check(
+		hand.position.is_equal_approx(HandViewScript.REST_POSITION)
+		and is_equal_approx(hand.get_pull_progress(), 0.0)
+		and _pinch_distance(hand) >= PINCH_OPEN_MIN_M,
+		"作った直後の画面の手は、引いていない位置 (REST_POSITION) にあり、親指と人差し指を開いている",
+	)
 	var fingers_ok: bool = true
 	for finger_name: String in HandViewScript.FINGER_NAMES + ["Thumb"]:
 		var finger: Node3D = hand.get_node_or_null(finger_name)
@@ -142,10 +160,12 @@ func _check_hand_view_shape_and_pinch() -> void:
 	_check(shadows_off, "画面の手の部品は、カメラの近くで画面を暗くしないよう影を落とさない")
 	var segments_reach_ends: bool = true
 	for segment: Node in hand.find_children("Segment", "MeshInstance3D", true, false):
-		var segment_end: Node3D = segment.get_parent().get_node("End")
 		if not _limb_ends(segment as MeshInstance3D).any(
 			func(point: Vector3) -> bool:
-				return point.distance_to(segment_end.position) < POSITION_TOLERANCE_M
+				return (
+					point.distance_to((segment.get_parent().get_node("End") as Node3D).position)
+					< POSITION_TOLERANCE_M
+				)
 		):
 			segments_reach_ends = false
 	_check(segments_reach_ends, "画面の手の指の各節のカプセルは、指先の位置を測る End まで伸びている")
