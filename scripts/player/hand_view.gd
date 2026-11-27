@@ -9,7 +9,7 @@ const HumanParts := preload("res://scripts/human/human_parts.gd")
 
 ## 肩につなぐ前の手の初期位置
 const REST_POSITION: Vector3 = Vector3(0.30, -0.55, 0.0)
-## 下ろした手の向きと、つまむ時に指先を左奥に向ける姿勢
+## 下ろした手が体の脇で下を向く角度。
 const REST_ROTATION: Vector3 = Vector3(-1.2, 0.15, 0.0)
 ## 照準を右手で覆わず、毛先の左右に指が見える向き。
 const PINCH_ROTATION: Vector3 = Vector3(-0.40, 1.05, -0.28)

@@ -639,7 +639,7 @@ func _floor_hairs_clear_of_objects(layout: MansionLayout, hair_field: Node3D) ->
 			).origin
 			for obj: MansionLayout.ObjectDef in layout.objects:
 				if (
-					obj.room_id != surface.room_id
+					obj.room_id != surface.room_id or obj.wall_mounted
 					or MansionBuilderScript.object_surface_id(obj.object_id) == surface.surface_id
 				):
 					continue

@@ -4,6 +4,9 @@ extends RefCounted
 
 ## 同じ家具が別の部屋や玄関の二巡目にもある配置で、入口側の机と壁掛けになる一着を確かめる。
 static func run(checker: SceneTree, layout: MansionLayout) -> void:
+	if layout.rooms.size() < 7:
+		checker._check(false, "玄関と同じ配置順を比較できる 7 部屋以上の検証用屋敷がある")
+		return
 	var entrance: MansionLayout.RoomDef = layout.rooms[0]
 	var found_jacket: bool = false
 	for obj: MansionLayout.ObjectDef in layout.objects:
@@ -17,8 +20,14 @@ static func run(checker: SceneTree, layout: MansionLayout) -> void:
 				checker._check(not obj.wall_mounted and is_zero_approx(obj.position.y),
 					"別室と玄関の二着目以降のスーツは床に置く")
 	checker._check(found_jacket, "玄関に壁掛けのスーツがある")
+	# 玄関と、同じ並びの家具を持つ別室で最初の机を比較する。
 	for room_index: int in [0, 6]:
-		var table: MansionLayout.ObjectDef = layout.objects[2 * layout.rooms.size() + room_index]
-		checker._check(table.object_kind == MansionLayout.OBJECT_TABLE and (
-			(table.position.z > layout.rooms[room_index].center.z) == (room_index == 0)),
-			"同じ配置順の机は玄関だけ入口側へ寄せる")
+		var room: MansionLayout.RoomDef = layout.rooms[room_index]
+		var found_table: bool = false
+		for obj: MansionLayout.ObjectDef in layout.objects:
+			if obj.room_id == room.room_id and obj.object_kind == MansionLayout.OBJECT_TABLE:
+				checker._check((obj.position.z > room.center.z) == (room_index == 0),
+					"同じ配置順の机は玄関だけ入口側へ寄せる")
+				found_table = true
+				break
+		checker._check(found_table, "比較する部屋に机がある")

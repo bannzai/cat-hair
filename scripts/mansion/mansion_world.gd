@@ -810,7 +810,7 @@ static func _object_footprints_in_room(
 	var footprints: Array[Dictionary] = []
 	for obj: MansionLayout.ObjectDef in layout.objects:
 		if (
-			obj.room_id != surface.room_id
+			obj.room_id != surface.room_id or obj.wall_mounted
 			or MansionBuilderScript.object_surface_id(obj.object_id) == surface.surface_id
 		):
 			continue
