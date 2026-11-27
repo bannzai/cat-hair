@@ -71,7 +71,7 @@ func remaining_item_count() -> int:
 		return 0
 	var remaining: int = 0
 	for item: FoundItemProgress in progress.found_items:
-		if item != null:
+		if item != null and not item.is_returned:
 			remaining += 1
 	return remaining
 
