@@ -24,8 +24,15 @@ const RobotRulesScript := preload("res://scripts/automation/robot_rules.gd")
 ## 本数の文字列の解析 (parse_counts と同じ形) を借りる
 const HairbenchScript := preload("res://scripts/dev/hairbench.gd")
 
-## 既定の計測本数 (issue #56 で上げる前の既定 12,000 本と、その 5・10 (今の既定)・20 倍)
-const DEFAULT_COUNTS: Array[int] = [12000, 60000, 120000, 240000]
+## issue #56 で既定を上げる前の既定の毛の本数。変更の前後を同じ本数で比べるため、今の既定とは別に残す
+const PREVIOUS_DEFAULT_HAIR_COUNT: int = 12000
+## 既定の計測本数 (上げる前の既定、その 5 倍、今の既定、今の既定の 2 倍)
+const DEFAULT_COUNTS: Array[int] = [
+	PREVIOUS_DEFAULT_HAIR_COUNT,
+	PREVIOUS_DEFAULT_HAIR_COUNT * 5,
+	MansionTuningScript.DEFAULT_HAIR_COUNT,
+	MansionTuningScript.DEFAULT_HAIR_COUNT * 2,
+]
 ## JSON レポートの既定出力先 (Makefile の scenebench target が参照するパス)
 const DEFAULT_JSON_PATH: String = "tmp/scenebench.json"
 ## ベンチマーク専用のセーブパス (遊んでいる人のセーブに左右されない)
@@ -36,10 +43,8 @@ const WARMUP_FRAMES: int = 8
 ## 1 つの場面で計るフレーム数 (ランナーのぶれを中央値で均すため。毛 24 万本で 1 フレーム 0.5 秒前後と見込み、
 ## 4 本数 × 2 場面の合計が job の時間の上限に収まる数)
 const MEASURE_FRAMES: int = 20
-## 掃除ロボットを置く台数 (買える上限)
-const ROBOT_COUNT: int = 4
 ## 掃除ロボットが動いている間の場面で、1 フレームごとに進める時計の秒数 (掃除ロボット 1 台が 1 秒に 1 本取るため、
-## 4 台で 1 フレームあたり 1 本前後を取る速さ)
+## 持てる上限の台数で 1 フレームあたり 1 本前後を取る速さ)
 const AUTOMATION_STEP_SECONDS: float = 0.25
 
 
@@ -148,11 +153,16 @@ func _measure_count(main: Node3D, game_state: Node, count: int) -> Dictionary:
 	if save_status != OK:
 		push_error("scenebench PNG 保存失敗: %s (%s)" % [png_path, error_string(save_status)])
 
-	var room: MansionLayout.RoomDef = game_state.current_layout.rooms[0]
-	game_state.save_data.building_progress.money = RobotRulesScript.ROBOT_PRICE * ROBOT_COUNT
+	# 掃除ロボットは持てる上限まで、最初の部屋に置く
+	game_state.save_data.building_progress.money = (
+		RobotRulesScript.ROBOT_PRICE * RobotRulesScript.MAX_ROBOTS
+	)
 	var robots_ok: bool = true
-	for _robot: int in range(ROBOT_COUNT):
-		robots_ok = robots_ok and game_state.automation.buy_robot(room.room_id)
+	for _robot: int in range(RobotRulesScript.MAX_ROBOTS):
+		robots_ok = (
+			robots_ok
+			and game_state.automation.buy_robot(game_state.current_layout.rooms[0].room_id)
+		)
 	_stand_at_entrance(main, game_state)
 	await physics_frame
 	var robots: Dictionary = await _measure_frames(main, true)
@@ -191,7 +201,6 @@ func _stand_at_entrance(main: Node3D, game_state: Node) -> void:
 ## WARMUP_FRAMES を進めてから MEASURE_FRAMES を計り、指標ごとの要約を返す。
 ## advance_automation が true の時は、毎フレームの前に猫と掃除ロボットの時計を AUTOMATION_STEP_SECONDS 進め、その時間も計る
 func _measure_frames(main: Node3D, advance_automation: bool) -> Dictionary:
-	var automation: RefCounted = main.get_game_state().automation
 	for _i: int in range(WARMUP_FRAMES):
 		await process_frame
 	var viewport_rid: RID = root.get_viewport_rid()
@@ -209,7 +218,7 @@ func _measure_frames(main: Node3D, advance_automation: bool) -> Dictionary:
 		var advance_ms: float = 0.0
 		if advance_automation:
 			var advance_start: int = Time.get_ticks_usec()
-			automation.advance(AUTOMATION_STEP_SECONDS)
+			main.get_game_state().automation.advance(AUTOMATION_STEP_SECONDS)
 			advance_ms = float(Time.get_ticks_usec() - advance_start) / 1000.0
 		var frame_start: int = Time.get_ticks_usec()
 		await process_frame

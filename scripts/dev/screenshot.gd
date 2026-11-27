@@ -46,7 +46,8 @@ const ROBOT_VIEW_DISTANCE_M: float = 1.3
 const CAT_VIEW_DISTANCE_M: float = 1.4
 
 ## fps と 1 フレームの時間の表示を出してから撮るまで待つ実時間 (ms)。fps は 1 秒ごとにしか更新されない
-## (Godot の Performance.TIME_FPS の説明) ため、1 回目の更新と、その後の表示の描き直し (0.25 秒ごと) が済む長さ
+## (Godot の Performance.TIME_FPS の説明) ため、1 回目の更新と、その後の表示の描き直し
+## (PerfOverlay.REFRESH_INTERVAL_SECONDS ごと) が済む長さ
 const PERF_OVERLAY_WAIT_MSEC: int = 1500
 ## 開発者向け調整値データ型スクリプト (見た目の試作の撮影で毛の本数を変える)
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")

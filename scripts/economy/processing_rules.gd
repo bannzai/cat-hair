@@ -19,7 +19,8 @@ const FORMS_IN_ORDER: Array[StringName] = [
 ]
 ## 加工した物 1 個に使う毛の本数。毛玉 20 本、フェルトは毛玉 5 個分、人形はフェルト 4 枚分。
 ## 毛玉は手で数十本取ればできる量にして最初の加工機ですぐ結果が見え、人形は既定の屋敷の 1 部屋の毛
-## (MansionTuning の既定の毛の本数を既定の部屋数で割った本数) を片付けると数体できる大きさにした
+## (既定の毛の本数が 12,000 本だった時の、既定の部屋数で割った本数) を片付けると数体できる大きさにした
+## (既定を 120,000 本に上げた issue #56 では変えず、値の調整 (#13) に任せた)
 const HAIRS_PER_UNIT: Dictionary = {
 	HairStockScript.FORM_RAW: 1,
 	HairStockScript.FORM_BALL: 20,
