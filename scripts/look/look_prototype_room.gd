@@ -175,7 +175,7 @@ func apply(layout: MansionLayout, world: MansionWorld) -> void:
 
 	_ensure_materials()
 	_override_room_materials(layout, world)
-	for room_index: int in range(layout.rooms.size()):
+	for room_index: int in range(1):
 		var room_content: Node3D = Node3D.new()
 		room_content.name = String(layout.rooms[room_index].room_id)
 		_content_root.add_child(room_content)
@@ -329,7 +329,7 @@ func _clear_content() -> void:
 func _override_room_materials(layout: MansionLayout, world: MansionWorld) -> void:
 	if world == null:
 		return
-	for room: MansionLayout.RoomDef in layout.rooms:
+	for room: MansionLayout.RoomDef in layout.rooms.slice(0, 1):
 		var room_node: Node = world.get_node_or_null("RoomsRoot/%s" % String(room.room_id))
 		if room_node != null:
 			_override_meshes_under(room_node)

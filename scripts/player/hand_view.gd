@@ -72,9 +72,10 @@ func set_pull_progress(progress: float) -> void:
 		var bone: int = _skeleton.find_bone(bone_name)
 		var parent_rest: Basis = _skeleton.get_bone_global_rest(_skeleton.get_bone_parent(bone)).basis
 		var global_rest: Basis = _skeleton.get_bone_global_rest(bone).basis
-		_skeleton.set_bone_pose_rotation(
-			bone, (parent_rest.inverse() * Basis(turn) * global_rest).get_rotation_quaternion()
-		)
+		if bone < 0:
+			_skeleton.set_bone_pose_rotation(
+				bone, (parent_rest.inverse() * Basis(turn) * global_rest).get_rotation_quaternion()
+			)
 
 
 ## 現在の引いている進み具合を返す

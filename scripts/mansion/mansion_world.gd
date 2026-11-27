@@ -194,7 +194,7 @@ func _build_trader_body(trader: Node3D) -> void:
 	model.position = -FurnitureModels.bottom_center(bounds)
 	body.add_child(model)
 	# モデルは glTF の +Z に顔を向けるため、Y 軸で半回転して局所の -Z へ向ける
-	body.basis = Basis(Vector3.UP, PI).scaled(Vector3.ONE * (TRADER_HEIGHT_M / bounds.size.y))
+	body.basis = Basis(Vector3.UP, PI)
 
 
 ## 構築済みの部屋ノード数を返す
@@ -500,8 +500,8 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 		_add_collision_box(
 			object_root,
 			"Seat",
-			Vector3(0.0, seat_height * 0.5, 0.0),
-			Vector3(object_width, seat_height, object_depth),
+			Vector3(0.0, object_height * 0.5, 0.0),
+			Vector3(object_width, object_height, object_depth),
 		)
 		_add_collision_box(
 			object_root,
