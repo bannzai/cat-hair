@@ -102,8 +102,10 @@ func _check_apply_to_all_rooms() -> void:
 	var first_room_id: StringName = layout.rooms[0].room_id
 	var floors_ok: bool = true
 	for room: MansionLayout.RoomDef in layout.rooms:
-		var floor_material: Material = _floor_mesh(world, room.room_id).material_override
-		if floor_material != look_room.get_material_for_kind(&"floor"):
+		if (
+			_floor_mesh(world, room.room_id).material_override
+			!= look_room.get_material_for_kind(&"floor")
+		):
 			floors_ok = false
 	_check(
 		look_room.get_target_room_id() == first_room_id and floors_ok,

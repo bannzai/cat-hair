@@ -7,6 +7,8 @@ extends Node3D
 ## 位置・距離・角度は、CI の 1280x720 の撮影で手首から先が画面の右下 1/4 に収まり、引く動きが見て分かる
 ## 大きさにした仮の値 (実機での見え方は「ユーザー作業の一覧」issue #5 の項目で確かめる)。
 
+## モデルの範囲と祖先への変換を測る関数
+const FurnitureModels := preload("res://scripts/mansion/furniture_models.gd")
 ## 腕のモデル (glTF の骨の名前は Rigify の名前。右は末尾が .R)
 const ARMS_SCENE: PackedScene = preload("res://assets/models/first_person_arms.glb")
 ## 手を置く位置 (カメラの局所座標。画面の右下に手首から先が映る位置)
@@ -83,8 +85,9 @@ func get_pull_progress() -> float:
 
 
 ## 親指 (THUMB_TIP_BONE の先) と人差し指 (INDEX_TIP_BONE の先) の先の位置を、手の局所座標で返す。
-## 指の付け根の骨に掛けた回転 (_current_turns) で休みの姿勢の先を回して求める (Skeleton3D の姿勢の計算は描画の前に
-## 遅れて行われ、ツリーの外では進まないため、骨の今の姿勢は読まない)
+## 指の付け根の骨に掛けた回転 (_current_turns) で休みの姿勢の先を回して求める。骨の今の姿勢
+## (get_bone_global_pose) は読まない: ツリーの外で作った手では、set_bone_pose_rotation の後も get_bone_global_pose から
+## 求めた指先の距離が 0.0695 m のまま変わらなかった (実測: PR #69 の CI の run 45949682800 の selfcheck)
 func get_fingertips() -> Dictionary:
 	return {
 		"index": _skeleton_to_hand * _turned_tip(INDEX_ROOT_BONE, INDEX_TIP_BONE),
@@ -122,13 +125,15 @@ func _build() -> void:
 	var z_axis: Vector3 = -forward
 	var hand_frame: Basis = Basis(x_axis, z_axis.cross(x_axis), z_axis)
 	var scale_factor: float = KNUCKLE_SPAN_M / to_index.length()
-	var skeleton_from_model: Transform3D = _transform_to(_skeleton, model)
 	# 骨の空間の点 p は、手の局所で hand_frame^-1 * (p - knuckles) * scale_factor の位置に来るようにする
 	_skeleton_to_hand = Transform3D(
 		hand_frame.inverse().scaled(Vector3.ONE * scale_factor),
 		hand_frame.inverse() * (-knuckles) * scale_factor,
 	)
-	model.transform = _skeleton_to_hand * skeleton_from_model.affine_inverse()
+	model.transform = (
+		_skeleton_to_hand
+		* FurnitureModels.transform_to_ancestor(_skeleton, model).affine_inverse()
+	)
 
 	_closed_turns = _solve_pinch()
 	_open_axes = {
@@ -154,10 +159,13 @@ func _solve_pinch() -> Dictionary:
 		(thumb_reach * thumb_reach - index_reach * index_reach + base_distance * base_distance)
 		/ (2.0 * base_distance)
 	)
-	var radius: float = sqrt(maxf(0.0, thumb_reach * thumb_reach - along * along))
 	var middle: Vector3 = (thumb_tip + index_tip) * 0.5 - thumb_base
 	var toward: Vector3 = (middle - axis * middle.dot(axis)).normalized()
-	var contact: Vector3 = thumb_base + axis * along + toward * radius
+	var contact: Vector3 = (
+		thumb_base
+		+ axis * along
+		+ toward * sqrt(maxf(0.0, thumb_reach * thumb_reach - along * along))
+	)
 	return {
 		THUMB_ROOT_BONE: Quaternion(
 			(thumb_tip - thumb_base).normalized(), (contact - thumb_base).normalized()
@@ -181,15 +189,5 @@ func _bone_tip(bone_name: String) -> Vector3:
 	var pose: Transform3D = _skeleton.get_bone_global_rest(bone)
 	if not children.is_empty():
 		return _skeleton.get_bone_global_rest(children[0]).origin
-	var length: float = _skeleton.get_bone_rest(bone).origin.length()
-	return pose.origin + pose.basis.y.normalized() * length
+	return pose.origin + pose.basis.y.normalized() * _skeleton.get_bone_rest(bone).origin.length()
 
-
-## node の局所座標から祖先 ancestor の局所座標への変換を返す (ツリーの外でも使えるよう親を辿って掛け合わせる)
-static func _transform_to(node: Node3D, ancestor: Node3D) -> Transform3D:
-	var to_ancestor: Transform3D = Transform3D.IDENTITY
-	var current: Node = node
-	while current != ancestor and current is Node3D:
-		to_ancestor = (current as Node3D).transform * to_ancestor
-		current = current.get_parent()
-	return to_ancestor

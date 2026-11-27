@@ -31,9 +31,13 @@ const SUIT_ALBEDO: Texture2D = preload(
 const SUIT_NORMAL: Texture2D = preload(
 	"res://assets/textures/poly_wool_herringbone/poly_wool_herringbone_nor_gl_1k.jpg"
 )
-## 写真の布の素材が 1 回繰り返す長さ (m)。Poly Haven の布の素材の 1 枚は約 1 m 四方の写真のため、1 m で繰り返すと
-## 編み目と毛足が実物の大きさになる
-const PHOTO_FABRIC_REPEAT_M: float = 1.0
+## 写真の布の素材が 1 回繰り返す長さ (m)。素材の写真 1 枚が写す実物の大きさで繰り返すと、編み目と毛足が実物の
+## 大きさになる。大きさは Poly Haven の API (https://api.polyhaven.com/assets?t=textures) の dimensions (mm)。
+## dirty_carpet は 600x600 mm、knitted_fleece は 266x270 mm、poly_wool_herringbone は 270x276 mm
+## (2026-11-27 に取得)
+const CARPET_REPEAT_M: float = 0.6
+const KNIT_REPEAT_M: float = 0.27
+const SUIT_REPEAT_M: float = 0.27
 ## 自動化の構図で掃除ロボットが毛を取った帯の毛を消す高さの上限 (m)。床 (0.01) とカーペット (0.04) の毛だけを消し、
 ## 家具の上の毛を残す高さ
 const ROBOT_CLEAR_MAX_Y_M: float = 0.1
@@ -609,10 +613,14 @@ func _ensure_materials() -> void:
 	# カーペット・ニット・スーツは写真の布の素材 (形は既製のモデルが無いため基本の形)。色の掛け合わせは写真の色を
 	# 部屋の色に寄せる割合で、カーペットは臙脂、ニットはからし色、スーツは紺に寄せる (猫の毛が付くと目立つ色を保つ)
 	_materials[&"carpet"] = _make_photo_material(
-		CARPET_ALBEDO, CARPET_NORMAL, Color(0.95, 0.55, 0.55), 0.98
+		CARPET_ALBEDO, CARPET_NORMAL, Color(0.95, 0.55, 0.55), 0.98, CARPET_REPEAT_M
 	)
-	_materials[&"knit"] = _make_photo_material(KNIT_ALBEDO, KNIT_NORMAL, Color(1.0, 0.78, 0.45), 0.97)
-	_materials[&"suit"] = _make_photo_material(SUIT_ALBEDO, SUIT_NORMAL, Color(0.35, 0.38, 0.5), 0.9)
+	_materials[&"knit"] = _make_photo_material(
+		KNIT_ALBEDO, KNIT_NORMAL, Color(1.0, 0.78, 0.45), 0.97, KNIT_REPEAT_M
+	)
+	_materials[&"suit"] = _make_photo_material(
+		SUIT_ALBEDO, SUIT_NORMAL, Color(0.35, 0.38, 0.5), 0.9, SUIT_REPEAT_M
+	)
 	# カーペットの縁: くすんだ金茶の房。臙脂の本体との明暗差でカーペットの輪郭が見える色
 	_materials[&"carpet_trim"] = _make_textured_material(
 		Color(0.58, 0.46, 0.24), 0.95, fine_noise, fine_noise, 1.5, FABRIC_TEXTURE_REPEAT_M
@@ -720,9 +728,9 @@ static func _make_textured_material(
 
 
 ## 写真の素材 (色 albedo と OpenGL の向きの法線 normal) に色 tint を掛け、粗さ roughness_value の材質を作る。
-## テクスチャはワールド座標の 3 方向から投影し (triplanar)、PHOTO_FABRIC_REPEAT_M ごとに繰り返す
+## テクスチャはワールド座標の 3 方向から投影し (triplanar)、repeat_m (m) ごとに繰り返す
 static func _make_photo_material(
-	albedo: Texture2D, normal: Texture2D, tint: Color, roughness_value: float
+	albedo: Texture2D, normal: Texture2D, tint: Color, roughness_value: float, repeat_m: float
 ) -> StandardMaterial3D:
 	var surface_material: StandardMaterial3D = make_material(tint, roughness_value)
 	surface_material.albedo_texture = albedo
@@ -730,7 +738,7 @@ static func _make_photo_material(
 	surface_material.normal_texture = normal
 	surface_material.uv1_triplanar = true
 	surface_material.uv1_world_triplanar = true
-	surface_material.uv1_scale = Vector3.ONE / PHOTO_FABRIC_REPEAT_M
+	surface_material.uv1_scale = Vector3.ONE / repeat_m
 	surface_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return surface_material
 

@@ -707,7 +707,7 @@ func _verify_rare_hair_from_pluck(main: Node3D, game_state: Node) -> void:
 
 ## 既製のモデルに置き換えた家具 (ソファの座面・机とサイドボードの天面・椅子に掛けたニット) とスーツの前面の毛を、
 ## 画面中央で狙って手でつまみ、引き終えると 1 本抜けるか (モデルや衝突体が毛の面を手前から遮らないこと)。
-## どの屋敷にもある種類だけを必ず確かめ、置かれていない種類は確かめない (物の種類は屋敷の生成の乱数で決まるため)
+## 4 種類すべての面がそろっていることも求める
 func _verify_pluck_on_model_surfaces(main: Node3D, game_state: Node) -> void:
 	var world: MansionWorld = main.mansion_world
 	var present: Dictionary = {}
@@ -744,7 +744,8 @@ func _verify_pluck_on_model_surfaces(main: Node3D, game_state: Node) -> void:
 			and game_state.get_total_remaining_hairs() == before_total - 1,
 			"「%s」の面の毛を手でつまんで引き終えると、狙った 1 本が抜けて残り本数が 1 減る" % surface_type,
 		)
-	_check(checked >= 2, "家具の毛の検証で、2 種類以上の家具の面を確かめた (%d 種類)" % checked)
+	# 統合テストの屋敷 (既定の生成の値) には 4 種類の面がそろう。どれかが無くなった時も落ちるよう、4 種類を求める
+	_check(checked == 4, "家具の毛の検証で、ソファ・天面・ニット・スーツの 4 種類の面を確かめた (%d 種類)" % checked)
 
 
 ## 毛のままの在庫のうち、指定した珍しい毛の本数を返す

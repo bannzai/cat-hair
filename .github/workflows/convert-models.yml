@@ -24,6 +24,7 @@ jobs:
         run: |
           sudo apt-get update
           # apt の Blender は Ubuntu の Python で動き、FBX の読み込みと glTF の書き出しが numpy を要る
+          # (numpy を入れなかった run 45944980744 は「ModuleNotFoundError: No module named 'numpy'」で glb を書き出せなかった)
           sudo apt-get install -y blender python3-numpy p7zip-full unzip
       - name: Download sources
         run: |

@@ -18,6 +18,17 @@ const POSITION_TOLERANCE_M: float = 0.001
 const PINCH_CLOSED_MAX_M: float = 0.015
 ## 開いた親指と人差し指の先の中心どうしの距離の下限 (m)。毛をつまむ前に指の間が開いて見える幅 (約 4 cm)
 const PINCH_OPEN_MIN_M: float = 0.04
+## 自動化で走る掃除ロボットを作るスクリプト
+const AutomationControllerScript := preload("res://scripts/automation/automation_controller.gd")
+## 買取業者のモデル (顔・頭・耳・口・目の材質に写真のテクスチャが残っていないかを確かめる)
+const TRADER_SCENE: PackedScene = preload("res://assets/models/buyer.glb")
+## 写真から作られていた顔・頭・耳・口・目の材質の名前 (scripts/assets/convert_models.py の BUYER_FLAT_COLORS の鍵と同じ
+## 名前を、実装の定数を読まずにここに書く。変換で名前が変わると見つからず落ちる)
+const TRADER_PHOTO_MATERIAL_NAMES: Array[String] = [
+	"headHDmale.000", "ear", "mouth2.000", "eye.000"
+]
+## 隠した骨とみなす縮めの上限。hand_view.gd の HIDDEN_BONE_SCALE (0.0001) より大きく、見える大きさ (1) より十分小さい
+const HIDDEN_SCALE_MAX: float = 0.01
 
 ## 検証結果を記録する selfcheck の SceneTree 参照
 var _checker: SceneTree = null
@@ -29,6 +40,9 @@ static func run_all(checker: SceneTree) -> void:
 	suite._checker = checker
 	suite._check_hand_view_shape_and_pinch()
 	suite._check_trader_body()
+	suite._check_trader_face_is_not_photo()
+	suite._check_furniture_models_fit_box()
+	suite._check_robot_bumper_faces_forward()
 
 
 ## 検証結果を selfcheck 本体へ記録する
@@ -90,6 +104,18 @@ func _check_hand_view_shape_and_pinch() -> void:
 		and (open_tips["thumb"] as Vector3).x < (closed_tips["thumb"] as Vector3).x,
 		"毛をつまむ前は、人差し指の先を手の甲の側 (上) へ起こし、親指の先を外 (-X) へ開く",
 	)
+	var forward_tips: Dictionary = _fingertips_from_bone_poses(hand, skeleton)
+	_check(
+		(forward_tips["index"] as Vector3).distance_to(forward_tips["thumb"]) <= PINCH_CLOSED_MAX_M
+		and (forward_tips["index"] as Vector3).is_equal_approx(closed_tips["index"])
+		and (forward_tips["thumb"] as Vector3).is_equal_approx(closed_tips["thumb"]),
+		"骨に設定した姿勢から順に辿って求めた指先も、閉じた時に触れ、手が返す指先の位置と一致する",
+	)
+	_check(
+		skeleton.get_bone_pose_scale(skeleton.find_bone("upper_arm.L")).x <= HIDDEN_SCALE_MAX
+		and skeleton.get_bone_pose_scale(skeleton.find_bone("upper_arm.R")).x > 0.5,
+		"画面の手は左腕の骨を縮めて隠し、右腕は縮めない",
+	)
 	hand.set_pull_progress(1.0)
 	var pulled_tips: Dictionary = hand.get_fingertips()
 	var pulled_distance: float = (pulled_tips["index"] as Vector3).distance_to(pulled_tips["thumb"])
@@ -103,6 +129,113 @@ func _check_hand_view_shape_and_pinch() -> void:
 		) % [PINCH_OPEN_MIN_M, PINCH_CLOSED_MAX_M, open_distance, closed_distance, pulled_distance],
 	)
 	hand.free()
+
+
+## 骨に設定した姿勢 (get_bone_pose_rotation) から、親の休みの姿勢を辿って親指と人差し指の先を求め、手の局所座標で返す。
+## 手の実装の計算 (get_fingertips) を使わず、骨に実際に入った回転から求める (付け根の骨だけを回し、先の骨は休みの姿勢)
+func _fingertips_from_bone_poses(hand: Node3D, skeleton: Skeleton3D) -> Dictionary:
+	var skeleton_to_hand: Transform3D = (
+		hand.get_node("Arms").transform
+		* FurnitureModels.transform_to_ancestor(skeleton, hand.get_node("Arms"))
+	)
+	var tips: Dictionary = {}
+	for pair: Array in [
+		["index", "f_index.01.R", "f_index.03.R"], ["thumb", "thumb.01.R", "thumb.03.R"]
+	]:
+		var root: int = skeleton.find_bone(pair[1])
+		var root_global: Transform3D = (
+			skeleton.get_bone_global_rest(skeleton.get_bone_parent(root))
+			* Transform3D(
+				Basis(skeleton.get_bone_pose_rotation(root)), skeleton.get_bone_rest(root).origin
+			)
+		)
+		# 付け根の骨の局所での先の骨の先 (休みの姿勢の付け根の骨から見た位置) を、姿勢を入れた付け根の骨で動かす
+		tips[pair[0]] = skeleton_to_hand * (
+			root_global
+			* (
+				skeleton.get_bone_global_rest(root).affine_inverse()
+				* _rest_bone_tip(skeleton, skeleton.find_bone(pair[2]))
+			)
+		)
+	return tips
+
+
+## 骨 bone の先の位置 (骨の空間。休みの姿勢)。子の骨があればその付け根、無ければ骨の +Y へ親からの長さだけ伸ばした位置
+func _rest_bone_tip(skeleton: Skeleton3D, bone: int) -> Vector3:
+	var children: PackedInt32Array = skeleton.get_bone_children(bone)
+	var rest: Transform3D = skeleton.get_bone_global_rest(bone)
+	if children.size() > 0:
+		return skeleton.get_bone_global_rest(children[0]).origin
+	return rest.origin + rest.basis.y.normalized() * skeleton.get_bone_rest(bone).origin.length()
+
+
+## 買取業者のモデルの顔・頭・耳・口・目の材質に、写真のテクスチャが残っていないか (Steam で売る物に実在の人の顔を
+## 出さないため単色に差し替えた。issue #15)
+func _check_trader_face_is_not_photo() -> void:
+	var model: Node3D = TRADER_SCENE.instantiate() as Node3D
+	var found: Dictionary = {}
+	var textured: Array[String] = []
+	for mesh_node: Node in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (mesh_node as MeshInstance3D).mesh
+		for surface: int in range(mesh.get_surface_count()):
+			var material: StandardMaterial3D = mesh.surface_get_material(surface) as StandardMaterial3D
+			if material == null or not TRADER_PHOTO_MATERIAL_NAMES.has(material.resource_name):
+				continue
+			found[material.resource_name] = true
+			if material.albedo_texture != null:
+				textured.append(material.resource_name)
+	_check(
+		found.size() == TRADER_PHOTO_MATERIAL_NAMES.size() and textured.is_empty(),
+		"買取業者の顔・頭・耳・口・目の材質 (%d / %d 個) に写真のテクスチャが無い (残っている: %s)"
+		% [found.size(), TRADER_PHOTO_MATERIAL_NAMES.size(), ", ".join(textured)],
+	)
+	model.free()
+
+
+## 既製のモデルで描く家具を、物の箱に合わせて置いた時、モデルの範囲が箱とそろい (大きさが同じ・底が 0・中心が原点)、
+## モデルの無い種別では作らないか
+func _check_furniture_models_fit_box() -> void:
+	var box: Vector3 = Vector3(1.2, 0.7, 0.5)
+	var fits_ok: bool = true
+	var detail: PackedStringArray = []
+	for kind: StringName in FurnitureModels.SCENES.keys():
+		var fitted: Node3D = FurnitureModels.instantiate_fitted(kind, box)
+		var bounds: AABB = fitted.transform * FurnitureModels.merged_mesh_aabb(fitted)
+		var center: Vector3 = bounds.get_center()
+		if (
+			not bounds.size.is_equal_approx(box)
+			or absf(bounds.position.y) > POSITION_TOLERANCE_M
+			or absf(center.x) > POSITION_TOLERANCE_M
+			or absf(center.z) > POSITION_TOLERANCE_M
+		):
+			fits_ok = false
+			detail.append("%s: %s" % [kind, bounds])
+		fitted.free()
+	_check(
+		FurnitureModels.SCENES.size() == 4 and fits_ok,
+		"家具のモデル 4 種は、物の箱にちょうど収まり、底が床で中心が原点にそろう (ずれ: %s)" % ", ".join(detail),
+	)
+	var empty_node: Node3D = Node3D.new()
+	_check(
+		FurnitureModels.instantiate_fitted(&"carpet", box) == null
+		and FurnitureModels.merged_mesh_aabb(empty_node).size == Vector3.ZERO,
+		"モデルの無い種別 (カーペット) では作らず、メッシュの無いノードの範囲は大きさ 0",
+	)
+	empty_node.free()
+
+
+## 自動化で走る掃除ロボットの前の緩衝材が、走る向き (局所の -Z) の側にあるか
+func _check_robot_bumper_faces_forward() -> void:
+	var controller: Node3D = AutomationControllerScript.new()
+	var robot: Node3D = controller._build_robot(0)
+	var bumper: Node3D = robot.get_node_or_null("Body/Bumper")
+	_check(
+		bumper != null
+		and (FurnitureModels.transform_to_ancestor(bumper, robot).origin.z < 0.0),
+		"自動化で走る掃除ロボットの緩衝材は、走る向き (局所の -Z) の側にある",
+	)
+	robot.free()
+	controller.free()
 
 
 ## 買取業者がモデルで描かれ、足元が床 (立つ位置の原点) にあり、背の高さが 1.6 m で、影を落とすか
@@ -131,6 +264,11 @@ func _check_trader_body() -> void:
 		_check(
 			absf(bounds.get_center().x) < 0.1 and absf(bounds.get_center().z) < 0.1,
 			"買取業者の体の中心は、立つ位置の真上にある",
+		)
+		# モデルは glTF の +Z に顔を向ける。体の +Z が立つ位置の局所の -Z (部屋の中・札と同じ向き) を向いているか
+		_check(
+			(body.basis * Vector3.BACK).z < -0.5,
+			"買取業者のモデルの顔 (glTF の +Z) は、部屋の中 (立つ位置の局所の -Z) を向く",
 		)
 		var shadows_on: bool = true
 		for mesh_node: Node in meshes:

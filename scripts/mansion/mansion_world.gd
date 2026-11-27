@@ -514,6 +514,7 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 			),
 		)
 	elif obj.object_kind == MansionLayoutScript.OBJECT_SUIT_RACK:
+		# 台の奥行は物の奥行の 6 割 (上着の奥行 5.5 割より少し広く、上着が台からはみ出さずに立って見える)
 		_add_static_box(
 			object_root,
 			"Base",
@@ -546,7 +547,10 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 			_material_suit,
 			false,
 		)
-		# 上着を掛けるハンガーの横棒と、上着の左右に垂れる袖。袖は前身頃 (毛の面) の左右の外に置き、前の毛を遮らない
+		# 上着を掛けるハンガーの横棒と、上着の左右に垂れる袖。袖は前身頃 (毛の面) の左右の外に置き、前の毛を遮らない。
+		# 横棒は肩 (高さの 0.88) の少し上の 0.95 に、物の幅の 95% で置き、柱の上端から左右に張り出して見える長さにする。
+		# 袖は上着の高さの 1.1 倍の長さで、中心を上着より高さの 5% 上げる (肩から垂れて上着の裾より少し下まで届く)。
+		# 袖の奥行は上着の奥行の 7 割 (前身頃の面より奥に収め、前から見て前身頃の毛に被らない)
 		var jacket_center: Vector3 = MansionBuilderScript.SUIT_JACKET_CENTER_RATIO * obj.size
 		var jacket_size: Vector3 = MansionBuilderScript.SUIT_JACKET_SIZE_RATIO * obj.size
 		_add_static_box(
