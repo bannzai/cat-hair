@@ -120,14 +120,17 @@ def attach_skin_texture(texture_path: str) -> None:
         material.use_nodes = True
         nodes = material.node_tree.nodes
         bsdf = next((node for node in nodes if node.type == "BSDF_PRINCIPLED"), None)
-        if bsdf is None or bsdf.inputs["Base Color"].is_linked:
+        if bsdf is None:
+            continue
+        # FBX の材質は金属の値を持ち込み、肌が銅のように光った (PR #69 の最初の撮影)。肌は金属でなく、艶の少ない値にする。
+        # 画像がすでにつながっている材質にも掛ける
+        bsdf.inputs["Metallic"].default_value = 0.0
+        bsdf.inputs["Roughness"].default_value = SKIN_ROUGHNESS
+        if bsdf.inputs["Base Color"].is_linked:
             continue
         texture_node = nodes.new("ShaderNodeTexImage")
         texture_node.image = image
         material.node_tree.links.new(texture_node.outputs["Color"], bsdf.inputs["Base Color"])
-        # FBX の材質は金属の値を持ち込み、肌が銅のように光った (PR #69 の最初の撮影)。肌は金属でなく、艶の少ない値にする
-        bsdf.inputs["Metallic"].default_value = 0.0
-        bsdf.inputs["Roughness"].default_value = SKIN_ROUGHNESS
         print("ATTACH", material.name, image.name)
 
 
