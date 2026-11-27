@@ -204,7 +204,9 @@ func _check_trader_body() -> void:
 			and body.get_node("Torso").position.y > body.get_node("LeftLeg").position.y
 			and body.get_node("Torso").position.y > body.get_node("RightLeg").position.y
 			# 頭は半径 0.5 の球を伸ばした部品で、倍率の Y の半分が頭の上端までの高さ
-			and head.position.y + head.scale.y * 0.5 <= MansionWorldScript.TRADER_HEIGHT_M
+			# 頭の上端を背の高さにそろえて置いたため、浮動小数の丸めの分だけ超えるのは許す
+			and head.position.y + head.scale.y * 0.5
+			<= MansionWorldScript.TRADER_HEIGHT_M + POSITION_TOLERANCE_M
 			and body.get_node("Nose").position.z < head.position.z,
 			"買取業者の頭は胴より上で上端が背の高さ以下、胴は左右の脚より上にあり、顔を部屋の中 (-Z) へ向けている",
 		)
