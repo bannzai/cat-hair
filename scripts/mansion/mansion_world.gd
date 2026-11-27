@@ -200,8 +200,12 @@ func _build_trader_body(trader: Node3D) -> void:
 	var eyes: StandardMaterial3D = _make_material(Color(0.05, 0.04, 0.04), 0.4)
 	# 帽子は作業着と同じ系統の、一段暗い色
 	var cap: StandardMaterial3D = _make_material(Color(0.22, 0.18, 0.13), 0.85)
+	# 肩の高さ (m)。背の高さ 1.6 m の大人の肩の見当で、上腕の付け根と、左右の肩を渡す部品で同じ高さにそろえる
+	var shoulder_y: float = 1.3
 	for side: float in [-1.0, 1.0]:
 		var side_name: String = "Left" if side < 0.0 else "Right"
+		# 肘の位置。上腕の終点と前腕の始点を同じ点にして、関節が離れないようにする
+		var elbow: Vector3 = Vector3(0.23 * side, 1.02, 0.01)
 		HumanParts.add_box(
 			body, side_name + "Shoe", Vector3(0.09 * side, 0.035, -0.03), Vector3(0.1, 0.07, 0.25), shoes,
 			true,
@@ -212,12 +216,12 @@ func _build_trader_body(trader: Node3D) -> void:
 		)
 		# 腕は肩から少し外へ開いて下ろし、肘から先をわずかに前へ出す
 		HumanParts.add_limb(
-			body, side_name + "UpperArm", Vector3(0.2 * side, 1.3, 0.0), Vector3(0.23 * side, 1.02, 0.01),
-			0.048, jacket, true,
+			body, side_name + "UpperArm", Vector3(0.2 * side, shoulder_y, 0.0), elbow, 0.048, jacket,
+			true,
 		)
 		HumanParts.add_limb(
-			body, side_name + "Forearm", Vector3(0.23 * side, 1.02, 0.01), Vector3(0.22 * side, 0.78, -0.03),
-			0.042, jacket, true,
+			body, side_name + "Forearm", elbow, Vector3(0.22 * side, 0.78, -0.03), 0.042, jacket,
+			true,
 		)
 		HumanParts.add_sphere(
 			body, side_name + "Hand", Vector3(0.22 * side, 0.72, -0.035), 0.5,
@@ -238,7 +242,8 @@ func _build_trader_body(trader: Node3D) -> void:
 		body, "Torso", Vector3(0.0, 1.1, 0.0), 0.5, Vector3(0.38, 0.52, 0.23), jacket, true
 	)
 	HumanParts.add_limb(
-		body, "Shoulders", Vector3(-0.17, 1.3, 0.0), Vector3(0.17, 1.3, 0.0), 0.062, jacket, true
+		body, "Shoulders", Vector3(-0.17, shoulder_y, 0.0), Vector3(0.17, shoulder_y, 0.0), 0.062,
+		jacket, true,
 	)
 	HumanParts.add_limb(
 		body, "Neck", Vector3(0.0, 1.32, 0.0), Vector3(0.0, 1.41, 0.0), 0.045, skin, true

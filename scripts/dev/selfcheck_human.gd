@@ -38,51 +38,75 @@ func _check(cond: bool, label: String) -> void:
 
 
 ## add_limb のカプセルの両端の丸みの中心が、斜め・真下向きの 2 点に重なり、長さ 0 では回らず、
-## 影を落とすかが引数どおりになるか
+## 球・直方体が渡した中心・大きさで置かれ、マテリアルと影を落とすかが引数どおりになるか
 func _check_limb_ends_and_shadow() -> void:
 	var parent_node: Node3D = Node3D.new()
+	var part_material: StandardMaterial3D = StandardMaterial3D.new()
 	var ends_ok: bool = true
 	for points: Array[Vector3] in [
 		[Vector3(0.1, 0.2, -0.3), Vector3(-0.2, 0.5, 0.4)] as Array[Vector3],
 		[Vector3(0.0, 1.0, 0.0), Vector3(0.0, 0.0, 0.0)] as Array[Vector3],
 		[Vector3(0.3, 0.1, 0.0), Vector3(-0.1, -0.2, -0.5)] as Array[Vector3],
 	]:
-		var limb: MeshInstance3D = HumanParts.add_limb(
-			parent_node, "Limb", points[0], points[1], 0.05, null, true
-		)
-		var ends: Array[Vector3] = _limb_ends(limb)
-		var matches_forward: bool = (
-			ends[0].distance_to(points[0]) < POSITION_TOLERANCE_M
-			and ends[1].distance_to(points[1]) < POSITION_TOLERANCE_M
-		)
-		var matches_backward: bool = (
-			ends[0].distance_to(points[1]) < POSITION_TOLERANCE_M
-			and ends[1].distance_to(points[0]) < POSITION_TOLERANCE_M
-		)
-		if not (matches_forward or matches_backward):
+		if not _limb_ends_match(
+			HumanParts.add_limb(parent_node, "Limb", points[0], points[1], 0.05, null, true),
+			points[0], points[1],
+		):
 			ends_ok = false
 	_check(ends_ok, "add_limb のカプセルの両端の丸みの中心が、斜め・真下向き・下へ斜めの 2 点に重なる")
 	var zero_limb: MeshInstance3D = HumanParts.add_limb(
-		parent_node, "Zero", Vector3(0.1, 0.1, 0.1), Vector3(0.1, 0.1, 0.1), 0.02, null, false
+		parent_node, "Zero", Vector3(0.1, 0.1, 0.1), Vector3(0.1, 0.1, 0.1), 0.02, part_material,
+		false,
 	)
 	_check(
 		zero_limb.quaternion.is_equal_approx(Quaternion.IDENTITY)
 		and zero_limb.position.is_equal_approx(Vector3(0.1, 0.1, 0.1)),
 		"add_limb は長さ 0 の 2 点では回さず、その点に置く",
 	)
-	var shadow_on: MeshInstance3D = HumanParts.add_sphere(
-		parent_node, "On", Vector3.ZERO, 0.1, Vector3.ONE, null, true
+	var sphere: MeshInstance3D = HumanParts.add_sphere(
+		parent_node, "Sphere", Vector3(0.1, 0.2, 0.3), 0.15, Vector3(1.0, 2.0, 1.0), part_material,
+		true,
 	)
-	var shadow_off: MeshInstance3D = HumanParts.add_box(
-		parent_node, "Off", Vector3.ZERO, Vector3.ONE, null, false
+	var box: MeshInstance3D = HumanParts.add_box(
+		parent_node, "Box", Vector3(-0.1, 0.4, 0.2), Vector3(0.3, 0.2, 0.1), part_material, false
 	)
 	_check(
-		shadow_on.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		and shadow_off.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		sphere.position.is_equal_approx(Vector3(0.1, 0.2, 0.3))
+		and is_equal_approx((sphere.mesh as SphereMesh).radius, 0.15)
+		and is_equal_approx((sphere.mesh as SphereMesh).height, 0.3)
+		and sphere.scale.is_equal_approx(Vector3(1.0, 2.0, 1.0))
+		and box.position.is_equal_approx(Vector3(-0.1, 0.4, 0.2))
+		and (box.mesh as BoxMesh).size.is_equal_approx(Vector3(0.3, 0.2, 0.1)),
+		"add_sphere・add_box は、渡した中心・半径・倍率・大きさで部品を置く",
+	)
+	_check(
+		sphere.material_override == part_material
+		and box.material_override == part_material
+		and zero_limb.material_override == part_material,
+		"人の体の部品は、渡したマテリアルで塗る",
+	)
+	_check(
+		sphere.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		and box.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		and zero_limb.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF,
 		"人の体の部品は、影を落とす引数が true の時だけ影を落とす",
 	)
 	parent_node.free()
+
+
+## カプセルの部品 limb の両端の丸みの中心が、2 点 from・to に (どちらの向きでも) 重なるかを返す
+static func _limb_ends_match(limb: MeshInstance3D, from: Vector3, to: Vector3) -> bool:
+	var ends: Array[Vector3] = _limb_ends(limb)
+	return (
+		(
+			ends[0].distance_to(from) < POSITION_TOLERANCE_M
+			and ends[1].distance_to(to) < POSITION_TOLERANCE_M
+		)
+		or (
+			ends[0].distance_to(to) < POSITION_TOLERANCE_M
+			and ends[1].distance_to(from) < POSITION_TOLERANCE_M
+		)
+	)
 
 
 ## カプセルの部品 limb の、両端の丸みの中心の位置 (親の局所座標) を返す
@@ -128,12 +152,20 @@ func _check_hand_view_shape_and_pinch() -> void:
 	hand.set_pull_progress(0.0)
 	var open_distance: float = _pinch_distance(hand)
 	var open_index_tip: Vector3 = _finger_tip(hand, hand.get_node("IndexFinger"))
+	var open_thumb_tip: Vector3 = _finger_tip(hand, hand.get_node("Thumb"))
 	hand.set_pull_progress(1.0 / 3.0)
 	var closed_distance: float = _pinch_distance(hand)
 	_check(
-		open_index_tip.y > _finger_tip(hand, hand.get_node("IndexFinger")).y,
-		"毛をつまむ前は、人差し指の先を手の甲の側 (上) へ起こして開く",
+		open_index_tip.y > _finger_tip(hand, hand.get_node("IndexFinger")).y
+		and open_thumb_tip.x < _finger_tip(hand, hand.get_node("Thumb")).x,
+		"毛をつまむ前は、人差し指の先を手の甲の側 (上) へ起こし、親指の先を外 (-X) へ開く",
 	)
+	var curled_down: bool = true
+	for finger_name: String in HandViewScript.FINGER_NAMES:
+		# 付け根は手の局所の y = 0 に並ぶ
+		if _finger_tip(hand, hand.get_node(finger_name)).y >= 0.0:
+			curled_down = false
+	_check(curled_down, "親指以外の 4 本の指は、先を手のひらの側 (下) へ曲げている (つまんで人差し指を起こしていない時)")
 	hand.set_pull_progress(1.0)
 	var pulled_distance: float = _pinch_distance(hand)
 	_check(
@@ -191,12 +223,17 @@ func _check_trader_body() -> void:
 	var parts_ok: bool = body != null
 	if parts_ok:
 		for part_name: String in [
-			"Head", "Torso", "LeftUpperArm", "RightUpperArm", "LeftForearm", "RightForearm",
-			"LeftHand", "RightHand", "LeftLeg", "RightLeg", "Nose",
+			"Head", "Torso", "Hips", "Shoulders", "Neck", "Nose", "Hair", "Cap", "CapBrim",
+			"LeftUpperArm", "RightUpperArm", "LeftForearm", "RightForearm", "LeftHand", "RightHand",
+			"LeftLeg", "RightLeg", "LeftShoe", "RightShoe", "LeftEye", "RightEye", "LeftEar",
+			"RightEar",
 		]:
 			if not body.get_node_or_null(part_name) is MeshInstance3D:
 				parts_ok = false
-	_check(parts_ok, "買取業者は頭・胴・左右の腕 (上腕・前腕・手) と脚・鼻を持つ")
+	_check(
+		parts_ok,
+		"買取業者は頭・胴・腰・肩・首・顔 (鼻・目・耳)・髪・帽子と、左右の腕 (上腕・前腕・手)・脚・靴を持つ",
+	)
 	if parts_ok:
 		var head: Node3D = body.get_node("Head")
 		_check(
@@ -209,6 +246,11 @@ func _check_trader_body() -> void:
 			<= MansionWorldScript.TRADER_HEIGHT_M + POSITION_TOLERANCE_M
 			and body.get_node("Nose").position.z < head.position.z,
 			"買取業者の頭は胴より上で上端が背の高さ以下、胴は左右の脚より上にあり、顔を部屋の中 (-Z) へ向けている",
+		)
+		var shoe: MeshInstance3D = body.get_node("LeftShoe")
+		_check(
+			absf(shoe.position.y - (shoe.mesh as BoxMesh).size.y * 0.5) < POSITION_TOLERANCE_M,
+			"買取業者の足元 (靴の底) は、立つ位置の原点 (床の高さ) にある",
 		)
 		var sides_ok: bool = true
 		for part_name: String in ["UpperArm", "Forearm", "Hand", "Leg"]:
