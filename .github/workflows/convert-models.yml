@@ -4,7 +4,8 @@ name: Convert models
 # 開発マシンでは 3D のアプリを起動しないため (AGENTS.md「検証方法」)、ランナーの Blender で変換し、artifact から
 # assets/models/ に取り出して commit する。変換の手順を変えた時だけ動けばよいため、スクリプトの変更と手動の起動で動かす
 on:
-  pull_request:
+  push:
+    branches-ignore: [main]
     paths:
       - scripts/assets/convert_models.py
       - .github/workflows/convert-models.yml
