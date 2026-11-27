@@ -45,9 +45,12 @@ while IFS= read -r uid_path; do
   [ -e "$uid_path" ] && continue
   while :; do
     text=$(id_to_text "$(random_id)")
-    printf '%s\n' "$existing_uid_texts" | grep -qxF -- "$text" || break
+    # grep -q を使わない理由は list-missing-uid.sh の同じ形の行のコメント
+    printf '%s\n' "$existing_uid_texts" | grep -xF -- "$text" > /dev/null || break
   done
-  printf '%s\n' "$text" > "$uid_path" || exit 1
+  # 書き込みの途中で失敗した時に空や途中までの .uid を残さないよう、隣の一時ファイルに書いてから置き換える
+  # (残った .uid は次の実行で「既にある」として飛ばされるため)
+  printf '%s\n' "$text" > "$uid_path.tmp" && mv "$uid_path.tmp" "$uid_path" || { rm -f "$uid_path.tmp"; exit 1; }
   existing_uid_texts=$(printf '%s\n%s\n' "$existing_uid_texts" "$text")
   printf '%s\n' "$uid_path"
 done <<< "$missing_uid_paths"

@@ -176,6 +176,19 @@ check "create: .uid を書き込めない時は失敗する" "$([ "$create_exit"
 check "create: 書き込めなかった .uid を作ったと出さない" "$created" ""
 chmod 755 "$work/readonly"
 
+# 一時ファイルへの書き込みの後の置き換え (mv) が失敗した時に、.uid も一時ファイルも残さない
+fail_mv_bin=$(mktemp -d)
+printf '#!/usr/bin/env bash\nexit 1\n' > "$fail_mv_bin/mv"
+chmod +x "$fail_mv_bin/mv"
+reset_work
+printf 'extends Node\n' > "$work/m.gd"
+(cd "$work" && GIT_CONFIG_GLOBAL=/dev/null PATH="$fail_mv_bin:$PATH" bash "$create" > /dev/null 2>&1)
+mv_exit=$?
+check "create: 置き換えに失敗した時は失敗する" "$([ "$mv_exit" -ne 0 ] && echo nonzero)" "nonzero"
+check "create: 置き換えに失敗した時は .uid も一時ファイルも残さない" \
+  "$([ -e "$work/m.gd.uid" ] && echo uid) $([ -e "$work/m.gd.uid.tmp" ] && echo tmp)" " "
+rm -rf "$fail_mv_bin"
+
 # make check-generated: 一時リポジトリに Makefile と scripts/ci のスクリプトを写して実行する
 # 一時リポジトリ (または $1 のディレクトリ) に Makefile と scripts/ci を写す
 copy_make_files() {

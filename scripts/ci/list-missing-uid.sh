@@ -34,7 +34,9 @@ printf '%s\n' "$scripts" | while IFS= read -r script; do
   # 削除したが index に残っている .gd は commit で消えるため対象外
   [ -f "$script" ] || continue
   under_gdignore "$script" && continue
-  if ! printf '%s\n' "$indexed_uids" | grep -qxF -- "$script.uid"; then
+  # grep -q は一致した所で読むのをやめ、pipefail の下では printf の書き込みの失敗が「無い」と取り違えられるため、
+  # 入力を最後まで読む grep の出力を捨てる形で調べる
+  if ! printf '%s\n' "$indexed_uids" | grep -xF -- "$script.uid" > /dev/null; then
     printf '%s\n' "$script.uid"
   fi
 done | LC_ALL=C sort -u
