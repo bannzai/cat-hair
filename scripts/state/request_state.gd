@@ -1,7 +1,6 @@
 extends RefCounted
 ## 住人の依頼 (探し物・黒いスーツの服の毛・逃げた猫) の状態と入口。GameState が 1 つ持ち、保存する値は
-## BuildingProgress (探し物の状態・取り切ったスーツの面・猫を届けたか) に置く。猫を抱えているかは保存せず、
-## 読み込んだ時は隠れている所に戻る。計算は RequestRules が持つ。
+## BuildingProgress に置く。猫を抱えているかは保存せず、読み込んだ時は隠れている所に戻る。計算は RequestRules が持つ。
 
 ## 依頼の計算
 const RequestRulesScript := preload("res://scripts/requests/request_rules.gd")
@@ -150,20 +149,20 @@ func items_on_surfaces(surface_ids: Array) -> Array[StringName]:
 
 ## 取った探し物 found_item_id を、持ち主の部屋 (今いる部屋 room_id) で返し、お礼 (RequestRules.reward) を持ち主の住人の
 ## 次の掃除代に上乗せする (掃除代を払う時に所持金へ入る)。
-## 戻り値はお礼 (円)。取っていない・返した・持ち主の部屋にいない時は何も変えずに 0
+## 戻り値は上乗せしたお礼 (円)。取っていない・返した・持ち主の部屋にいない時は何も変えずに 0
 func return_item(found_item_id: StringName, room_id: StringName) -> int:
 	var item: FoundItemProgress = find_item(found_item_id)
 	var spot: MansionLayout.FoundItemSpotDef = find_spot(found_item_id)
 	if item == null or spot == null or item.is_returned or spot.room_id != room_id:
 		return 0
-	var paid: int = RequestRulesScript.reward(item.condition)
-	if paid <= 0:
+	var reward_amount: int = RequestRulesScript.reward(item.condition)
+	if reward_amount <= 0:
 		return 0
 	item.is_returned = true
-	_add_pending_reward(room_id, paid)
-	_emit({"kind": EVENT_RETURNED, "found_item_id": found_item_id, "reward": paid})
+	_add_pending_reward(room_id, reward_amount)
+	_emit({"kind": EVENT_RETURNED, "found_item_id": found_item_id, "reward": reward_amount})
 	_game_state.state_changed.emit()
-	return paid
+	return reward_amount
 
 
 ## 黒いスーツの服の毛の依頼を表の順に返す。要素は {"surface_id", "room_id", "remaining": 残りの本数,

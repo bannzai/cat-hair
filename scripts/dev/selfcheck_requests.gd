@@ -19,6 +19,10 @@ const BuildingProgressScript := preload("res://scripts/data/building_progress.gd
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 屋敷レイアウト型スクリプト
 const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
+## 猫の通り道の計算 (猫の表)
+const CatRulesScript := preload("res://scripts/automation/cat_rules.gd")
+## 掃除ロボットの決まり (回る面の種類)
+const RobotRulesScript := preload("res://scripts/automation/robot_rules.gd")
 ## 屋敷ビルダー (住人の id)
 const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd")
 ## 面ごとの毛データ型スクリプト
@@ -57,6 +61,10 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_suit_bonus_in_game_state()
 	suite._check_save_round_trip()
 	suite._check_runaway_cat()
+	suite._check_reveal_by_tool_and_robot()
+	suite._check_reach_boundaries()
+	suite._check_runaway_path_on_fixed_layout()
+	suite._check_runaway_timing_and_reset()
 
 
 ## 検証結果を selfcheck 本体へ記録する
@@ -378,12 +386,23 @@ func _check_runaway_cat() -> void:
 		and escaped_events.size() == 1,
 		"遊んだ時間が %.0f 秒になると猫が逃げ、知らせる" % RequestRulesScript.RUNAWAY_START_SECONDS,
 	)
+	# 面の毛の上限で落とせない状態を除くため、全部の面を空にしてから時計を進める
+	for surface: SurfaceHair in state.save_data.building_progress.surface_hairs:
+		_set_surface_count(surface, 0)
 	var changes: Dictionary = state.automation.advance(120.0)
 	var dropped_by_runaway: int = 0
+	var dropped_by_others: int = 0
 	for drop: Dictionary in changes["drops"]:
 		if drop["cat_id"] == cat_id:
 			dropped_by_runaway += int(drop["count"])
-	_check(dropped_by_runaway == 0, "隠れている猫は毛を落とさない (実際: %d 本)" % dropped_by_runaway)
+		else:
+			dropped_by_others += int(drop["count"])
+	var other_cat: StringName = CatRulesScript.CATS[1]["id"]
+	_check(
+		dropped_by_runaway == 0 and dropped_by_others > 0 and not state.requests.is_cat_away(other_cat),
+		"隠れている猫は毛を落とさず、ほかの猫は落とし続ける (実際: 逃げた猫 %d 本・ほかの猫 %d 本)"
+		% [dropped_by_runaway, dropped_by_others],
+	)
 	var resident: StringName = MansionBuilderScript.resident_id_for_room(owner_room.room_id)
 	state.save_data.building_progress.resident_moods[resident] = 0.2
 	var wrong_room: StringName = path[path.size() - 1].room_id
@@ -424,6 +443,153 @@ static func reward_in_next_payment(state: Node) -> int:
 	for room: MansionLayout.RoomDef in state.current_layout.rooms:
 		fees += int(state.get_room_status(room.room_id)["cleaning_fee"])
 	return earned - fees
+
+
+## 手で取る以外の経路 (毛を減らす道具の GameState の入口・掃除ロボット) で面の毛が半分になっても探し物が出てくるか
+func _check_reveal_by_tool_and_robot() -> void:
+	var state: Node = GameStateScript.new()
+	state.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray(["--hair-count=6000"]))
+	var progress: BuildingProgress = state.save_data.building_progress
+	var spot: MansionLayout.FoundItemSpotDef = state.current_layout.found_item_spots[0]
+	var item: FoundItemProgress = state.requests.find_item(spot.found_item_id)
+	var initial: int = state.automation.get_initial_surface_hairs(spot.surface_id)
+	_set_surface_count(progress.find_surface_hair(spot.surface_id), initial)
+	var half: int = floori(initial * RequestRulesScript.REVEAL_REMAINING_RATIO)
+	state.apply_tool_sweep(
+		ToolCatalogScript.TOOL_VACUUM,
+		{spot.surface_id: {SurfaceHairScript.COLOR_WHITE: initial - half}},
+	)
+	_check(
+		item.condition == FOUND,
+		"道具で面の毛を半分にすると探し物が出てくる (実際: 状態 %d・残り %d / %d 本)"
+		% [item.condition, state.get_surface_hair_count(spot.surface_id), initial],
+	)
+	state.free()
+	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+	var robot_state: Node = GameStateScript.new()
+	robot_state.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray(["--hair-count=6000"]))
+	var robot_progress: BuildingProgress = robot_state.save_data.building_progress
+	var floor_spot: MansionLayout.FoundItemSpotDef = null
+	for candidate: MansionLayout.FoundItemSpotDef in robot_state.current_layout.found_item_spots:
+		for surface_def: MansionLayout.SurfaceDef in robot_state.current_layout.surfaces:
+			if (
+				floor_spot == null and surface_def.surface_id == candidate.surface_id
+				and RobotRulesScript.CLEAN_SURFACE_TYPES.has(surface_def.surface_type)
+			):
+				floor_spot = candidate
+	_check(floor_spot != null, "既定の屋敷に、掃除ロボットが回る面 (床・カーペット) に埋めた探し物がある")
+	if floor_spot == null:
+		robot_state.free()
+		SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+		return
+	var robot_item: FoundItemProgress = robot_state.requests.find_item(floor_spot.found_item_id)
+	var robot_initial: int = robot_state.automation.get_initial_surface_hairs(floor_spot.surface_id)
+	# 半分の境目のすぐ上に置き、ロボットが数本取れば境目を越えるようにする
+	_set_surface_count(
+		robot_progress.find_surface_hair(floor_spot.surface_id),
+		floori(robot_initial * RequestRulesScript.REVEAL_REMAINING_RATIO) + 1,
+	)
+	robot_progress.money = 1000000
+	robot_state.automation.buy_robot(floor_spot.room_id)
+	robot_state.automation.advance(600.0)
+	_check(
+		robot_item.condition == FOUND,
+		"掃除ロボットが取った毛で面の毛が半分になると探し物が出てくる (実際: 状態 %d・残り %d / %d 本)"
+		% [
+			robot_item.condition, robot_state.get_surface_hair_count(floor_spot.surface_id),
+			robot_initial,
+		],
+	)
+	robot_state.free()
+	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+
+
+## 道具の範囲の境目: 半径 + 余白ちょうどは当たり、そのすぐ外と別の面は当たらない
+func _check_reach_boundaries() -> void:
+	var spot: MansionLayout.FoundItemSpotDef = MansionLayout.FoundItemSpotDef.new()
+	spot.surface_id = &"surface_a"
+	spot.position = Vector3.ZERO
+	var radius: float = 0.05
+	var edge: float = radius + RequestRulesScript.ITEM_REACH_MARGIN_M
+	_check(
+		RequestRulesScript.is_in_reach(spot, &"surface_a", Vector3(edge, 0.0, 0.0), radius)
+		and not RequestRulesScript.is_in_reach(
+			spot, &"surface_a", Vector3(edge + 0.001, 0.0, 0.0), radius
+		)
+		and not RequestRulesScript.is_in_reach(spot, &"surface_b", Vector3.ZERO, radius),
+		"道具の範囲は半径 + %.2f m ちょうどまでで、すぐ外と別の面には当たらない" % RequestRulesScript.ITEM_REACH_MARGIN_M,
+	)
+
+
+## 間取りを固定した屋敷で、逃げた猫がドアをたどって最も遠い部屋に隠れ、毛の跡が 0.8 m おきに続くか。
+## 間取り: 持ち主の部屋 A (0,0) - ドア - B (1,0) - ドア - C (2,0)。A の南の D (0,1) は隣り合うがドアが無い
+func _check_runaway_path_on_fixed_layout() -> void:
+	var layout: MansionLayout = MansionLayout.new()
+	var specs: Array[Array] = [
+		[&"room_a", 0, 0, false, true], [&"room_b", 1, 0, true, true],
+		[&"room_c", 2, 0, true, false], [&"room_d", 0, 1, false, false],
+	]
+	for spec: Array in specs:
+		var room: MansionLayout.RoomDef = MansionLayout.RoomDef.new()
+		room.room_id = spec[0]
+		room.grid_x = spec[1]
+		room.grid_z = spec[2]
+		room.open_west = spec[3]
+		room.open_east = spec[4]
+		room.center = Vector3(float(spec[1]) * 4.0, 0.0, float(spec[2]) * 4.0)
+		room.size = Vector3(4.0, 3.0, 4.0)
+		layout.rooms.append(room)
+	var path: Array[MansionLayout.RoomDef] = RequestRulesScript.runaway_path(layout)
+	var ids: Array[StringName] = []
+	for room: MansionLayout.RoomDef in path:
+		ids.append(room.room_id)
+	_check(
+		ids == [&"room_a", &"room_b", &"room_c"],
+		"逃げた猫はドアのある部屋だけをたどって最も遠い部屋 C に隠れ、ドアの無い D には入らない (実際: %s)"
+		% str(ids),
+	)
+	var trail: Array[Vector3] = RequestRulesScript.trail_points(layout)
+	var spaced: bool = trail.size() >= 9
+	for index: int in range(1, mini(trail.size(), 5)):
+		var step: float = trail[index].distance_to(trail[index - 1])
+		if not is_equal_approx(step, RequestRulesScript.TRAIL_SPACING_M):
+			spaced = false
+	_check(
+		spaced and trail[0].is_equal_approx(Vector3.ZERO),
+		"毛の跡は持ち主の部屋の中心から %.1f m おきに隣の部屋へ続く (実際: %d か所)"
+		% [RequestRulesScript.TRAIL_SPACING_M, trail.size()],
+	)
+
+
+## 猫が逃げ出す時刻の境目と、知らせが 1 回だけなこと、抱えたまま屋敷を作り直すと隠れている所に戻ること
+func _check_runaway_timing_and_reset() -> void:
+	var state: Node = GameStateScript.new()
+	state.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray(["--hair-count=6000"]))
+	var escaped: Array[int] = [0]
+	state.request_event.connect(
+		func(event: Dictionary) -> void:
+			if event["kind"] == RequestStateScript.EVENT_CAT_ESCAPED:
+				escaped[0] += 1
+	)
+	state.advance_time(RequestRulesScript.RUNAWAY_START_SECONDS - 1.0)
+	_check(
+		escaped[0] == 0 and state.requests.runaway_status() == &"home",
+		"逃げ出す時刻の 1 秒前には猫は逃げていない",
+	)
+	state.advance_time(1.0)
+	state.advance_time(100.0)
+	_check(
+		escaped[0] == 1 and state.requests.runaway_status() == &"escaped",
+		"逃げ出す時刻をまたいだ時だけ 1 回知らせ、その後に時間が進んでも知らせない (実際: %d 回)" % escaped[0],
+	)
+	state.requests.carry_runaway_cat()
+	state.requests.reset()
+	_check(
+		state.requests.runaway_status() == &"escaped",
+		"猫を抱えたまま屋敷を作り直す・読み込むと、猫は隠れている所に戻る",
+	)
+	state.free()
+	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
 
 ## 面 surface の毛を白い毛 count 本だけにする

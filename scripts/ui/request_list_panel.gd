@@ -69,14 +69,15 @@ static func _item_text(
 	spot: MansionLayout.FoundItemSpotDef, item: FoundItemProgress, layout: MansionLayout
 ) -> String:
 	var kind: Dictionary = RequestRulesScript.kind_for_item_id(spot.found_item_id)
-	var tool_def: Dictionary = ToolCatalogScript.find_tool(kind["match_tool"])
 	var state_text: String = "毛の山に埋もれている (面の毛が半分になると出てくる)"
 	if item != null and item.is_returned:
 		state_text = "返した (お礼 %d 円)" % RequestRulesScript.reward(item.condition)
 	elif item != null:
 		match item.condition:
 			FoundItemProgressScript.Condition.FOUND:
-				state_text = "見つけた: %sで丁寧に取る" % tool_def.get("name", "")
+				state_text = "見つけた: %sで丁寧に取る" % (
+					ToolCatalogScript.find_tool(kind["match_tool"]).get("name", "")
+				)
 			FoundItemProgressScript.Condition.CLEAN:
 				state_text = "きれいに取った: 持ち主の部屋で返す (お礼 %d 円)" % (
 					RequestRulesScript.REWARD_CLEAN
@@ -135,12 +136,14 @@ func _add_row(text: String) -> void:
 	var row: Label = Label.new()
 	row.text = text
 	row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# 図鑑の画面の見出しの下の行 (18) と同じ大きさ。10 行が一覧の高さに収まる
 	row.add_theme_font_size_override("font_size", 18)
 	_rows.add_child(row)
 
 
 ## 見出し・行の親・案内・閉じるボタンを組み立てる
 func _build() -> void:
+	# 背景・角丸・余白・見出しの大きさは、図鑑の画面 (HairBookPanel) とそろえる
 	var background: StyleBoxFlat = StyleBoxFlat.new()
 	background.bg_color = Color(0.16, 0.12, 0.09, 0.96)
 	background.set_corner_radius_all(8)
@@ -159,6 +162,7 @@ func _build() -> void:
 
 	_summary_label = Label.new()
 	_summary_label.name = "Summary"
+	# 行 (18) より一段大きくして、残りの数を先に読めるようにする
 	_summary_label.add_theme_font_size_override("font_size", 20)
 	layout.add_child(_summary_label)
 
@@ -170,6 +174,7 @@ func _build() -> void:
 	_rows = VBoxContainer.new()
 	_rows.name = "Rows"
 	_rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# 行どうしは見出しの間 (10) より詰め、一覧として 1 かたまりに見せる
 	_rows.add_theme_constant_override("separation", 6)
 	scroll.add_child(_rows)
 

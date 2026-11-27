@@ -67,6 +67,9 @@ func advance(delta_seconds: float) -> Dictionary:
 			_pick_robot_hairs(
 				robot_index, robot_routes[robot_index], segment_start, changes["picks"]
 			)
+	if not changes["picks"].is_empty():
+		# 掃除ロボットが取った毛でも、埋めた面の毛が半分になれば探し物が出てくる
+		_game_state.requests.after_hairs_removed()
 	if not changes["drops"].is_empty() or not changes["picks"].is_empty():
 		_game_state.state_changed.emit()
 		_game_state.automation_advanced.emit(changes)

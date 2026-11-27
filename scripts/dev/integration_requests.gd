@@ -38,6 +38,7 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await suite._verify_request_list_screen(main, game_state)
 	await suite._verify_find_take_and_return(main, game_state)
 	await suite._verify_rough_tool_damages(main, game_state)
+	await suite._verify_room_tool_damages(main, game_state)
 	await suite._verify_runaway_cat(main, game_state)
 	main.tools.allow_uncaptured_use = false
 	main.tools.select_tool(ToolCatalogScript.TOOL_HAND)
@@ -116,8 +117,17 @@ func _verify_find_take_and_return(main: Node3D, game_state: Node) -> void:
 	await _stand_in_room(main, spot.room_id)
 	main.toggle_requests()
 	var rows: PackedStringArray = main.requests.panel.get_row_texts()
+	await _checker.process_frame
+	var gauge_with_reward: String = main.cleaning_fee_label.text
 	var money_before: int = game_state.get_money()
 	var added: int = SelfcheckRequestsScript.reward_in_next_payment(game_state)
+	await _checker.process_frame
+	_check(
+		gauge_with_reward.ends_with("(次はお礼 +%d 円)" % RequestRulesScript.REWARD_CLEAN)
+		and not main.cleaning_fee_label.text.contains("次はお礼"),
+		"返した後は部屋のゲージの掃除代の横に次のお礼が出て、払った後は消える (実際: %s → %s)"
+		% [gauge_with_reward, main.cleaning_fee_label.text],
+	)
 	_check(
 		item.is_returned and added == RequestRulesScript.REWARD_CLEAN
 		and game_state.get_money() > money_before
@@ -160,6 +170,41 @@ func _verify_rough_tool_damages(main: Node3D, game_state: Node) -> void:
 	)
 
 
+## 部屋ごとにかける道具 (吸引車) を部屋で使うと、その部屋の探し物は埋もれていても傷み、別の部屋の探し物は変わらないか
+func _verify_room_tool_damages(main: Node3D, game_state: Node) -> void:
+	var layout: MansionLayout = game_state.current_layout
+	var target: MansionLayout.FoundItemSpotDef = null
+	var other: MansionLayout.FoundItemSpotDef = null
+	for spot: MansionLayout.FoundItemSpotDef in layout.found_item_spots:
+		var condition: FoundItemProgress.Condition = (
+			game_state.requests.find_item(spot.found_item_id).condition
+		)
+		if condition != FoundItemProgressScript.Condition.HIDDEN:
+			continue
+		if target == null:
+			target = spot
+		elif other == null and spot.room_id != target.room_id:
+			other = spot
+	_check(target != null and other != null, "埋もれた探し物が 2 つの部屋に残っている")
+	if target == null or other == null:
+		return
+	var truck: StringName = ToolCatalogScript.TOOL_SUCTION_TRUCK
+	game_state.save_data.building_progress.money = 1000000
+	game_state.purchase(GameStateScript.PURCHASE_TOOL, truck)
+	await _stand_in_room(main, target.room_id)
+	main.tools.select_tool(truck)
+	await _checker.press_and_release_use()
+	await _checker.process_frame
+	_check(
+		game_state.requests.find_item(target.found_item_id).condition
+		== FoundItemProgressScript.Condition.DAMAGED
+		and game_state.requests.find_item(other.found_item_id).condition
+		== FoundItemProgressScript.Condition.HIDDEN,
+		"吸引車を部屋で使うと、その部屋の埋もれた探し物は傷み、別の部屋の探し物は変わらない",
+	)
+	main.tools.select_tool(ToolCatalogScript.TOOL_HAND)
+
+
 ## 猫が逃げると毛の跡が出て、隠れている所へ歩くと抱え、持ち主の部屋に入ると届けて住人がご機嫌になるか
 func _verify_runaway_cat(main: Node3D, game_state: Node) -> void:
 	var layout: MansionLayout = game_state.current_layout
@@ -188,10 +233,13 @@ func _verify_runaway_cat(main: Node3D, game_state: Node) -> void:
 	main.player.set_spawn(hiding + Vector3(0.5, 0.0, 0.0), 0.0)
 	for _frame: int in range(SETTLE_FRAMES):
 		await _checker.physics_frame
+	await _checker.process_frame
+	var centers: Dictionary = main.automation.cat_centers()
 	_check(
 		game_state.requests.runaway_status() == &"carried" and not cat_node.visible
-		and not main.requests.get_trail_state()["visible"],
-		"隠れている猫に近づくと抱え、猫と毛の跡が消える",
+		and not main.requests.get_trail_state()["visible"]
+		and not centers.has(RequestRulesScript.runaway_cat_id()) and not centers.is_empty(),
+		"隠れている猫に近づくと抱え、猫と毛の跡が消え、抱えた猫はブラシで狙う猫から外れる",
 	)
 	await _stand_in_room(main, owner_room.room_id)
 	_check(

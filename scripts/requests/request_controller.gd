@@ -23,10 +23,12 @@ const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room
 const FONT: Font = preload("res://assets/fonts/NotoSansJP[wght].ttf")
 ## 探し物の箱の大きさ (m)。毛の山の上で一目で分かり、家具の天面からはみ出さない大きさ
 const ITEM_SIZE: Vector3 = Vector3(0.16, 0.08, 0.12)
-## 探し物の名前の札の、物の上の高さ (m)
+## 探し物の名前の札の、物の上の高さ (m)。札が物に重ならず、物と一緒に視界に入る高さ
 const ITEM_LABEL_LIFT_M: float = 0.22
-## 毛の跡の毛の塊の半径と高さ (m)
-const TRAIL_CLUMP_SIZE: Vector3 = Vector3(0.09, 0.02, 0.09)
+## 毛の跡の毛の塊の半径 (m)。立った目線から床の毛と見分けられ、廊下の幅に 1 つ収まる大きさ
+const TRAIL_CLUMP_RADIUS_M: float = 0.09
+## 毛の跡の毛の塊の高さ (m)。床に平たく積もって見える高さ
+const TRAIL_CLUMP_HEIGHT_M: float = 0.02
 ## 毛の跡を床から浮かせる高さ (m)。床の毛と重なってちらつかない高さ
 const TRAIL_LIFT_M: float = 0.012
 ## 毛の跡の毛の色 (逃げる猫の毛の色。白い猫は床で見えるよう少し灰色にする)
@@ -51,6 +53,7 @@ func setup(game_state: Node, ui_root: Control) -> void:
 	panel = RequestListPanel.new()
 	panel.name = "RequestListPanel"
 	panel.visible = false
+	# 1280x720 の画面で、探し物 5 行・スーツ 4 行・猫 1 行が折り返さずに収まる大きさ (CI の撮影で確かめた)
 	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	panel.offset_left = -440.0
 	panel.offset_right = 440.0
@@ -85,10 +88,11 @@ func rebuild() -> void:
 		add_child(item)
 		_item_nodes[spot.found_item_id] = item
 	var clump_mesh: SphereMesh = SphereMesh.new()
-	clump_mesh.radius = TRAIL_CLUMP_SIZE.x
-	clump_mesh.height = TRAIL_CLUMP_SIZE.y
+	clump_mesh.radius = TRAIL_CLUMP_RADIUS_M
+	clump_mesh.height = TRAIL_CLUMP_HEIGHT_M
 	var clump_material: StandardMaterial3D = StandardMaterial3D.new()
 	clump_material.albedo_color = TRAIL_COLOR
+	# 毛の塊は光を返さないので、つやを出さない
 	clump_material.roughness = 1.0
 	clump_mesh.material = clump_material
 	for point: Vector3 in RequestRulesScript.trail_points(layout):
@@ -162,6 +166,7 @@ func _build_item(spot: MansionLayout.FoundItemSpotDef) -> Node3D:
 	box.size = ITEM_SIZE
 	var material: StandardMaterial3D = StandardMaterial3D.new()
 	material.albedo_color = kind["color"]
+	# 機械は金属のつや、衣類は布のつやの無い見た目にして、毛の山の上で種類を見分けられるようにする
 	material.metallic = 0.6 if kind["category"] == RequestRulesScript.CATEGORY_MACHINE else 0.0
 	material.roughness = 0.35 if kind["category"] == RequestRulesScript.CATEGORY_MACHINE else 0.9
 	box.material = material
@@ -174,6 +179,8 @@ func _build_item(spot: MansionLayout.FoundItemSpotDef) -> Node3D:
 	label.name = "NameLabel"
 	label.text = str(kind["name"])
 	label.font = FONT
+	# 文字の大きさ・縁取りは猫の名前の札 (AutomationController) とそろえ、表示の大きさ (pixel_size) は、
+	# 毛に埋もれた小さな物を部屋の入口から見つけられるよう、猫の札 (0.0022) の倍ほどにする
 	label.font_size = 40
 	label.pixel_size = 0.004
 	label.outline_size = 10
