@@ -188,7 +188,16 @@ func _verify_room_tool_damages(main: Node3D, game_state: Node) -> void:
 			target = spot
 		elif other == null and spot.room_id != target.room_id:
 			other = spot
-	_check(target != null and other != null, "まだ取っていない探し物が 2 つの部屋に残っている")
+	var summary: PackedStringArray = PackedStringArray()
+	for spot: MansionLayout.FoundItemSpotDef in layout.found_item_spots:
+		summary.append("%s@%s=%d" % [
+			spot.found_item_id, spot.room_id,
+			game_state.requests.find_item(spot.found_item_id).condition,
+		])
+	_check(
+		target != null and other != null,
+		"まだ取っていない探し物が 2 つの部屋に残っている (実際: %s)" % ", ".join(summary),
+	)
 	if target == null or other == null:
 		return
 	var other_before: FoundItemProgress.Condition = (
