@@ -124,6 +124,11 @@ func _play_frames(bot: RefCounted, options: Dictionary) -> bool:
 	):
 		bot.step()
 		await process_frame
-	print("playtest milestones (seconds): %s" % JSON.stringify(bot.get_milestones()))
+	# 録画に節目が映らなかった時に理由を追えるよう、集計の要点をログに残す
+	var report: Dictionary = bot.report()
+	for key: String in [
+		"milestone_seconds", "purchases", "count_by_action", "removed_by_tool", "empty_results", "final"
+	]:
+		print("playtest %s: %s" % [key, JSON.stringify(report[key])])
 	print("playtest OK")
 	return true

@@ -9,8 +9,9 @@ extends RefCounted
 ## {"money": 所持金, "stock_value": 在庫をすべて売った時の額,
 ##  "owned": {持っている道具の id -> {"level", "consumables"}},
 ##  "hand_levels": {HandRules.UPGRADE_* -> 段}, "robots": 掃除ロボットの台数,
-##  "rooms": [{"room_id", "hair_count": 残り, "cleanliness": きれいさ, "mood": 機嫌, "area_m2": 毛の付く表面の面積}],
-##  "room_tool_surfaces": {部屋ごとにかける道具の id -> 1 部屋あたりのかかる表面の数}, "ready_cat_ids": [ブラシをかけられる猫]}
+##  "rooms": [{"room_id", "hair_count": 残り, "cleanliness": きれいさ, "mood": 機嫌, "area_m2": 毛の付く表面の面積,
+##    "covered": {ROOM_TOOL_IDS の id -> {"hairs": 道具がかかる表面の毛の本数, "surfaces": かかる表面の数}}}],
+##  "ready_cat_ids": [ブラシをかけられる猫]}
 
 ## 手に持って使う道具の定義
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
@@ -69,6 +70,12 @@ const PURCHASE_ROBOT: StringName = &"robot"
 
 ## 速さで割る時の下限 (本 / 秒)。速さが 0 の時に 0 で割らないための値で、手 1 本の速さ (約 0.5 本 / 秒) より十分小さい
 const MIN_RATE: float = 0.001
+## 部屋ごとにかける道具 (アンドロイドを含む)。部屋の様子に、これらがかかる表面の毛の本数を持たせる
+const ROOM_TOOL_IDS: Array[StringName] = [
+	ToolCatalogScript.TOOL_SUCTION_TRUCK,
+	ToolCatalogScript.TOOL_ADHESIVE_SHEET,
+	ToolCatalogScript.TOOL_ANDROID,
+]
 ## 人が持って毛を取る道具の種類 (手のほか。アンドロイドは自分で働くので含めない)
 const MANUAL_TOOL_KINDS: Array[StringName] = [
 	ToolCatalogScript.KIND_SWEEP, ToolCatalogScript.KIND_ROOM, ToolCatalogScript.KIND_SHEET
@@ -237,22 +244,37 @@ static func total_rate(snapshot: Dictionary) -> float:
 	var automatic: float = float(snapshot["robots"]) / RobotRulesScript.PICK_INTERVAL_SECONDS
 	if _owns(snapshot, ToolCatalogScript.TOOL_ANDROID):
 		automatic += (
-			_room_tool_hairs(snapshot, ToolCatalogScript.TOOL_ANDROID, average)
+			_room_tool_hairs(ToolCatalogScript.TOOL_ANDROID, average)
 			/ BigToolSiteScript.ANDROID_INTERVAL_SECONDS
 		)
 	return manual + automatic
 
 
-## 全部屋の平均の部屋 (残りの本数と面積の平均。dirtiest_room の 1 件と同じ形)
+## 全部屋の平均の部屋 (残りの本数・面積・部屋ごとにかける道具のかかる本数と表面の数の平均。
+## dirtiest_room の 1 件と同じ形)
 static func average_room(snapshot: Dictionary) -> Dictionary:
 	var rooms: Array = snapshot["rooms"]
+	var count: float = float(maxi(1, rooms.size()))
 	var hair_count: float = 0.0
 	var area: float = 0.0
+	var covered: Dictionary = {}
 	for room: Dictionary in rooms:
 		hair_count += float(room["hair_count"])
 		area += float(room["area_m2"])
-	var count: float = float(maxi(1, rooms.size()))
-	return {"room_id": &"", "hair_count": hair_count / count, "area_m2": area / count}
+		var room_covered: Dictionary = room.get("covered", {})
+		for tool_id: Variant in room_covered.keys():
+			var entry: Dictionary = covered.get(tool_id, {"hairs": 0.0, "surfaces": 0.0})
+			entry["hairs"] = float(entry["hairs"]) + float(room_covered[tool_id]["hairs"]) / count
+			entry["surfaces"] = (
+				float(entry["surfaces"]) + float(room_covered[tool_id]["surfaces"]) / count
+			)
+			covered[tool_id] = entry
+	return {
+		"room_id": &"",
+		"hair_count": hair_count / count,
+		"area_m2": area / count,
+		"covered": covered,
+	}
 
 
 ## 人が持って毛を取る道具の id の一覧 (手と、持っている毛を取る道具。アンドロイドは自分で働くので除く)
@@ -309,14 +331,16 @@ static func tool_rate(snapshot: Dictionary, tool_id: StringName, room: Dictionar
 		var density: float = float(room["hair_count"]) / maxf(0.01, float(room["area_m2"]))
 		var in_range: float = minf(float(tool_def["max_hairs"]), density * PI * radius * radius)
 		return in_range * taken_ratio / (AIM_SECONDS + SWEEP_USE_SECONDS)
-	return _room_tool_hairs(snapshot, tool_id, room) * taken_ratio / ROOM_TOOL_SECONDS
+	return _room_tool_hairs(tool_id, room) * taken_ratio / ROOM_TOOL_SECONDS
 
 
-## 部屋ごとにかける道具 tool_id が部屋 room に 1 回かかる本数の見積もり (かかる表面の数 × 1 回の上限まで、部屋の残りまで)
-static func _room_tool_hairs(snapshot: Dictionary, tool_id: StringName, room: Dictionary) -> float:
-	var surfaces: float = float((snapshot["room_tool_surfaces"] as Dictionary).get(tool_id, 0.0))
+## 部屋ごとにかける道具 tool_id が部屋 room に 1 回かかる本数の見積もり
+## (道具がかかる表面の毛の本数まで、かかる表面の数 × 1 回の上限まで)
+static func _room_tool_hairs(tool_id: StringName, room: Dictionary) -> float:
+	var covered: Dictionary = (room.get("covered", {}) as Dictionary).get(tool_id, {})
 	return minf(
-		float(ToolCatalogScript.find_tool(tool_id)["max_hairs"]) * surfaces, float(room["hair_count"])
+		float(ToolCatalogScript.find_tool(tool_id)["max_hairs"]) * float(covered.get("surfaces", 0)),
+		float(covered.get("hairs", 0)),
 	)
 
 

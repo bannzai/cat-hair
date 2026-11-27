@@ -35,8 +35,6 @@ const STAND_DISTANCE_M: float = 0.9
 const ROOM_VIEW_RATIO: float = 0.5
 ## 買取業者から離れて立つ距離 (m。main.TRADER_RANGE_M より短い)
 const TRADER_STAND_M: float = 1.2
-## 1 本も取れなかった時の様子を simulate.json に残す回数 (原因を追うのに数回分で足り、JSON を大きくしない)
-const EMPTY_DETAIL_LIMIT: int = 5
 ## 経過を記録する間隔 (ゲーム内の秒)
 const SAMPLE_INTERVAL_SECONDS: float = 60.0
 
@@ -65,8 +63,6 @@ var _count_by_action: Dictionary = {}
 var _removed_by_tool: Dictionary = {}
 ## 「道具の id: 文言」 -> 道具を使って 1 本も取れなかった回数
 var _empty_results: Dictionary = {}
-## 道具を使って 1 本も取れなかった時の、使う前と後の狙った表面の様子 (最初の EMPTY_DETAIL_LIMIT 回)
-var _empty_details: Array[Dictionary] = []
 ## 最後に毛を取った部屋 (別の部屋に移る時に歩く秒を足す)
 var _last_room_id: StringName = &""
 ## 次に経過を記録するゲーム内の秒
@@ -86,11 +82,6 @@ func setup(main: Node3D, seed_value: int) -> void:
 ## 遊んだゲーム内の秒
 func elapsed_seconds() -> float:
 	return _game_state.save_data.building_progress.elapsed_seconds
-
-
-## 節目の名前 -> 着いたゲーム内の秒
-func get_milestones() -> Dictionary:
-	return _milestones
 
 
 ## 住人全員がご機嫌になったか
@@ -122,23 +113,23 @@ func snapshot() -> Dictionary:
 			continue
 		owned[tool.tool_id] = {"level": tool.level, "consumables": tool.consumable_count}
 	var area_by_room: Dictionary = {}
-	var surfaces_by_tool: Dictionary = {}
+	var covered_by_room: Dictionary = {}
 	for surface: MansionLayout.SurfaceDef in layout.surfaces:
 		area_by_room[surface.room_id] = (
 			float(area_by_room.get(surface.room_id, 0.0)) + surface.extents.x * surface.extents.y
 		)
-		for tool_id: StringName in [
-			ToolCatalogScript.TOOL_SUCTION_TRUCK,
-			ToolCatalogScript.TOOL_ADHESIVE_SHEET,
-			ToolCatalogScript.TOOL_ANDROID,
-		]:
-			if ToolRulesScript.covers_surface(tool_id, surface.surface_type):
-				surfaces_by_tool[tool_id] = int(surfaces_by_tool.get(tool_id, 0)) + 1
-	var room_tool_surfaces: Dictionary = {}
-	for tool_id: Variant in surfaces_by_tool.keys():
-		room_tool_surfaces[tool_id] = (
-			float(surfaces_by_tool[tool_id]) / float(maxi(1, layout.rooms.size()))
-		)
+		var covered: Dictionary = covered_by_room.get(surface.room_id, {})
+		for tool_id: StringName in PolicyScript.ROOM_TOOL_IDS:
+			if not ToolRulesScript.covers_surface(tool_id, surface.surface_type):
+				continue
+			var entry: Dictionary = covered.get(tool_id, {"hairs": 0, "surfaces": 0})
+			entry["hairs"] = (
+				int(entry["hairs"])
+				+ progress.find_surface_hair(surface.surface_id).total_count()
+			)
+			entry["surfaces"] = int(entry["surfaces"]) + 1
+			covered[tool_id] = entry
+		covered_by_room[surface.room_id] = covered
 	var rooms: Array[Dictionary] = []
 	for room: MansionLayout.RoomDef in layout.rooms:
 		var status: Dictionary = _game_state.get_room_status(room.room_id)
@@ -148,6 +139,7 @@ func snapshot() -> Dictionary:
 			"cleanliness": float(status["cleanliness"]),
 			"mood": float(status["mood"]),
 			"area_m2": float(area_by_room.get(room.room_id, 0.0)),
+			"covered": covered_by_room.get(room.room_id, {}),
 		})
 	var ready_cat_ids: Array[StringName] = []
 	for route: Dictionary in _game_state.automation.get_cat_routes():
@@ -165,7 +157,6 @@ func snapshot() -> Dictionary:
 		},
 		"robots": _game_state.automation.get_robots().size(),
 		"rooms": rooms,
-		"room_tool_surfaces": room_tool_surfaces,
 		"ready_cat_ids": ready_cat_ids,
 	}
 
@@ -185,7 +176,6 @@ func report() -> Dictionary:
 		"count_by_action": _count_by_action,
 		"removed_by_tool": _removed_by_tool,
 		"empty_results": _empty_results,
-		"empty_details": _empty_details,
 		"final": _sample(),
 	}
 
@@ -248,29 +238,8 @@ func _clean(tool_id: StringName, room_id: StringName) -> float:
 		hand.advance_pull(pull)
 		return seconds + PolicyScript.action_seconds(action, pull)
 	_main.tools.select_tool(tool_id)
-	var before: Dictionary = _target_detail(target)
-	var result: Dictionary = _main.tools.use_selected_tool_at(target)
-	_record_tool_result(result)
-	if int(result.get("removed", 0)) <= 0 and _empty_details.size() < EMPTY_DETAIL_LIMIT:
-		_empty_details.append({"before": before, "after": _target_detail(target), "result": result})
+	_record_tool_result(_main.tools.use_selected_tool_at(target))
 	return seconds + PolicyScript.action_seconds(action, 0.0)
-
-
-## 狙った点 target の表面の様子 (表面の id・種類、描いている本数、保存データの色ごとの本数、根元の毛の色)
-func _target_detail(target: Dictionary) -> Dictionary:
-	var world: MansionWorld = _main.mansion_world
-	var surface: MansionLayout.SurfaceDef = world.get_surface_def(target["surface_index"])
-	var hair_field: Node3D = world.get_hair_field()
-	var hair_id: int = hair_field.get_hair_id_at_slot(target["surface_index"], 0)
-	return {
-		"surface_id": String(surface.surface_id),
-		"surface_type": String(surface.surface_type),
-		"drawn": hair_field.get_surface_remaining_count(target["surface_index"]),
-		"saved_counts": str(
-			_game_state.save_data.building_progress.find_surface_hair(surface.surface_id).hair_counts
-		),
-		"slot0_color": String(world.get_hair_color_id(hair_id)),
-	}
 
 
 ## 道具を使った結果 result (ToolController.use_selected_tool_at の戻り値) を、取った本数と、

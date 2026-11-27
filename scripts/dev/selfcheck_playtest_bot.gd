@@ -42,6 +42,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_brushes_ready_cat()
 	suite._check_robot_raises_rate()
 	suite._check_after_cleaning_tools()
+	suite._check_room_tool_needs_covered_hairs()
 
 
 ## 手しか持たず、お金も在庫も無い屋敷の様子 (部屋 a・b。b の方がきれいさが低い)
@@ -53,12 +54,12 @@ static func _base_snapshot() -> Dictionary:
 		"hand_levels": {HandRulesScript.UPGRADE_DEXTERITY: 0, HandRulesScript.UPGRADE_GRAB_COUNT: 0},
 		"robots": 0,
 		"rooms": [_room(&"a", 0.6), _room(&"b", 0.2)],
-		"room_tool_surfaces": {},
 		"ready_cat_ids": [],
 	}
 
 
-## きれいさ cleanliness の検証の部屋 room_id (毛は ROOM_HAIRS 本、機嫌は屋敷に入った時の値)
+## きれいさ cleanliness の検証の部屋 room_id (毛は ROOM_HAIRS 本、機嫌は屋敷に入った時の値。
+## 部屋ごとにかける道具がかかる表面は無い)
 static func _room(room_id: StringName, cleanliness: float) -> Dictionary:
 	return {
 		"room_id": room_id,
@@ -66,6 +67,7 @@ static func _room(room_id: StringName, cleanliness: float) -> Dictionary:
 		"cleanliness": cleanliness,
 		"mood": MansionBuilderScript.INITIAL_RESIDENT_MOOD,
 		"area_m2": ROOM_AREA_M2,
+		"covered": {},
 	}
 
 
@@ -297,4 +299,30 @@ func _check_after_cleaning_tools() -> void:
 	_checker._check(
 		second.get("item_id") == ToolCatalogScript.TOOL_DUMP_TRUCK,
 		"加工機の次はダンプカーを買う (実際: %s)" % str(second)
+	)
+
+
+## 粘着シートを持っていても、きれいさの低い部屋のシートがかかる表面 (床とカーペット) に毛が無ければ
+## シートを使わず手で取る。かかる表面に毛があればシートを使う (部屋の毛の総数で見積もると、
+## かかる表面に毛の無い部屋でシートを無駄に使い続ける)
+func _check_room_tool_needs_covered_hairs() -> void:
+	var snapshot: Dictionary = _with_tool(_base_snapshot(), ToolCatalogScript.TOOL_ADHESIVE_SHEET)
+	snapshot["rooms"][1]["covered"] = {
+		ToolCatalogScript.TOOL_ADHESIVE_SHEET: {"hairs": 0, "surfaces": 1}
+	}
+	var empty: Dictionary = PolicyScript.choose_action(snapshot)
+	_checker._check(
+		empty.get("kind") == PolicyScript.ACTION_CLEAN
+		and empty.get("tool_id") == ToolCatalogScript.TOOL_HAND,
+		"シートのかかる表面に毛が無い部屋では手で取る (実際: %s)" % str(empty)
+	)
+	snapshot["rooms"][1]["covered"] = {
+		ToolCatalogScript.TOOL_ADHESIVE_SHEET: {"hairs": ROOM_HAIRS, "surfaces": 1}
+	}
+	var covered: Dictionary = PolicyScript.choose_action(snapshot)
+	_checker._check(
+		covered.get("kind") == PolicyScript.ACTION_CLEAN
+		and covered.get("tool_id") == ToolCatalogScript.TOOL_ADHESIVE_SHEET
+		and covered.get("room_id") == &"b",
+		"シートのかかる表面に毛がある部屋 b ではシートを使う (実際: %s)" % str(covered)
 	)
