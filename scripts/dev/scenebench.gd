@@ -145,6 +145,12 @@ func _run() -> void:
 	quit(0)
 
 
+## 屋敷を組み直した後の本数が計測の前提に合うか: 置いた本数 placed が求めた本数 count と同じで、
+## 描いている本数 drawn が上限 budget を超えない時だけ true
+static func is_budget_entry_ok(placed: int, count: int, drawn: int, budget: int) -> bool:
+	return placed == count and drawn <= budget
+
+
 ## 既定の毛の本数・描く本数の上限 budget で屋敷を作り直し、2 つの場面を計って結果の辞書を返す
 func _measure_budget(main: Node3D, game_state: Node, budget: int) -> Dictionary:
 	var count: int = MansionTuningScript.DEFAULT_HAIR_COUNT
@@ -156,9 +162,7 @@ func _measure_budget(main: Node3D, game_state: Node, budget: int) -> Dictionary:
 	var rebuild_ms: float = float(Time.get_ticks_usec() - rebuild_start) / 1000.0
 	var hair_field: Node3D = main.mansion_world.get_hair_field()
 	var placed: int = hair_field.get_remaining_count()
-	var drawn: int = 0
-	for surface_index: int in range(hair_field.get_surface_count()):
-		drawn += hair_field.get_surface_visible_instance_count(surface_index)
+	var drawn: int = HairFieldScript.count_drawn_hairs(hair_field)
 
 	_stand_at_entrance(main, game_state)
 	await physics_frame
@@ -182,7 +186,7 @@ func _measure_budget(main: Node3D, game_state: Node, budget: int) -> Dictionary:
 	await physics_frame
 	var robots_metrics: Dictionary = await _measure_frames(main, true)
 
-	var ok: bool = placed == count and drawn <= budget and save_status == OK and robots_ok
+	var ok: bool = is_budget_entry_ok(placed, count, drawn, budget) and save_status == OK and robots_ok
 	print(
 		(
 			"scenebench budget=%d count=%d placed=%d drawn=%d ok=%s rebuild_ms=%.1f enter_frame_ms=%.1f"

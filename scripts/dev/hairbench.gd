@@ -45,6 +45,12 @@ const MAX_MEAN_LUMINANCE: float = 0.98
 const MIN_LUMINANCE_CONTRAST: float = 0.03
 
 
+## target_count 本を測る時の HairField.draw_budget。FULL_DRAW_MAX_COUNT 以下は 0 (上限なしで全部描く)、
+## 超える本数は屋敷と同じ既定の上限
+static func draw_budget_for(target_count: int) -> int:
+	return 0 if target_count <= FULL_DRAW_MAX_COUNT else HairFieldScript.DEFAULT_DRAW_BUDGET
+
+
 ## 環境変数のカンマ区切り本数文字列を正の整数配列に解析する (空・全無効なら既定値)
 static func parse_counts(raw: String) -> Array[int]:
 	if raw.strip_edges().is_empty():
@@ -227,15 +233,11 @@ func _measure_count(
 	png_prefix: String
 ) -> Dictionary:
 	var field: Node3D = prototype.get_hair_field()
-	field.draw_budget = (
-		0 if target_count <= FULL_DRAW_MAX_COUNT else HairFieldScript.DEFAULT_DRAW_BUDGET
-	)
+	field.draw_budget = draw_budget_for(target_count)
 	var setup_start: int = Time.get_ticks_usec()
 	var placed: int = prototype.populate_hairs(target_count)
 	var setup_ms: float = float(Time.get_ticks_usec() - setup_start) / 1000.0
-	var drawn: int = 0
-	for surface_index: int in range(field.get_surface_count()):
-		drawn += field.get_surface_visible_instance_count(surface_index)
+	var drawn: int = HairFieldScript.count_drawn_hairs(field)
 
 	for _w: int in range(WARMUP_FRAMES_FIRST if is_first else WARMUP_FRAMES_NEXT):
 		await process_frame

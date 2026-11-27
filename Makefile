@@ -250,7 +250,7 @@ playtest: import
 	rm -f $(LOG_DIR)/playtest.avi
 	bash scripts/ci/check-movie-brightness.sh $(LOG_DIR)/playtest.mp4
 
-# 毛の描画の試作ベンチマーク。1,000 / 10,000 / 100,000 / 1,000,000 本の描画可否と 1 フレームの描画時間を
+# 毛の描画の試作ベンチマーク。本数ごと (既定は scripts/dev/hairbench.gd の DEFAULT_COUNTS) の描画可否と 1 フレームの描画時間を
 # tmp/hairbench.json に出力し、本数ごとの画面を tmp/hairbench-<本数>.png に撮る
 hairbench: import
 	rm -f $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json

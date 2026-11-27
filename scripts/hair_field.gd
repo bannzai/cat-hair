@@ -196,6 +196,14 @@ static func remove_buried_hairs(field: Node3D, surface_index: int, group: int, c
 	return field._remove_buried(surface_index, group, count)
 
 
+## field の全部の表面で 1 本ずつ描いている毛の本数の合計 (埋もれた毛を含めない。draw_budget を超えない)
+static func count_drawn_hairs(field: Node3D) -> int:
+	var drawn: int = 0
+	for surface_index: int in range(field.get_surface_count()):
+		drawn += field.get_surface_visible_instance_count(surface_index)
+	return drawn
+
+
 ## field の表面 surface_index の埋もれた毛の HairColorGroup ごとの本数 (3 要素の複製。範囲外・未配置は 0)
 static func buried_group_counts(field: Node3D, surface_index: int) -> PackedInt32Array:
 	return field._buried_counts(surface_index).duplicate()

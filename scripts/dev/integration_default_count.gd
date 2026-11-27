@@ -41,14 +41,6 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await checker.process_frame
 
 
-## 描いている毛の本数の合計
-static func _drawn_count(hair_field: Node3D) -> int:
-	var drawn: int = 0
-	for surface_index: int in range(hair_field.get_surface_count()):
-		drawn += hair_field.get_surface_visible_instance_count(surface_index)
-	return drawn
-
-
 ## 検証結果を integration 本体へ記録する
 func _check(cond: bool, label: String) -> void:
 	_checker._check(cond, label)
@@ -58,7 +50,7 @@ func _check(cond: bool, label: String) -> void:
 ## 期待値は issue #65 の完了条件の本数 (9,999,999 と 9,999,998) を、実装の定数から取らずに書く
 func _verify_fresh_counts(main: Node3D, game_state: Node) -> void:
 	var hair_field: Node3D = main.mansion_world.get_hair_field()
-	var drawn: int = _drawn_count(hair_field)
+	var drawn: int = HairFieldScript.count_drawn_hairs(hair_field)
 	_check(
 		game_state.get_total_remaining_hairs() == 9999999
 		and hair_field.get_remaining_count() == 9999999
@@ -76,7 +68,7 @@ func _verify_hand_pluck(main: Node3D, game_state: Node) -> void:
 	if aimed < 0:
 		_check(false, "既定の本数の屋敷で床の毛を狙える")
 		return
-	var drawn_before: int = _drawn_count(hair_field)
+	var drawn_before: int = HairFieldScript.count_drawn_hairs(hair_field)
 	await _checker.process_frame
 	Input.action_press(HandController.ACTION_PLUCK)
 	await _checker.process_frame
@@ -88,9 +80,13 @@ func _verify_hand_pluck(main: Node3D, game_state: Node) -> void:
 		and game_state.get_total_remaining_hairs() == 9999998
 		and hair_field.get_remaining_count() == 9999998
 		and not hair_field.has_hair(aimed)
-		and _drawn_count(hair_field) == drawn_before,
+		and HairFieldScript.count_drawn_hairs(hair_field) == drawn_before,
 		"既定の本数の屋敷で手で 1 本抜くと残り 9,999,998 本になり、描いている毛は埋もれた毛から描き足されて %d 本のまま (実際: 残り %d 本・描いている %d 本)"
-		% [drawn_before, game_state.get_total_remaining_hairs(), _drawn_count(hair_field)],
+		% [
+			drawn_before,
+			game_state.get_total_remaining_hairs(),
+			HairFieldScript.count_drawn_hairs(hair_field),
+		],
 	)
 
 
@@ -117,7 +113,7 @@ func _verify_roller_sweep(main: Node3D, game_state: Node) -> void:
 	var hair_field: Node3D = main.mansion_world.get_hair_field()
 	var total_before: int = game_state.get_total_remaining_hairs()
 	var field_before: int = hair_field.get_remaining_count()
-	var drawn_before: int = _drawn_count(hair_field)
+	var drawn_before: int = HairFieldScript.count_drawn_hairs(hair_field)
 	var captured: Array[Dictionary] = []
 	var on_used: Callable = func(result: Dictionary) -> void: captured.append(result)
 	main.tools.tool_used.connect(on_used)
@@ -128,7 +124,7 @@ func _verify_roller_sweep(main: Node3D, game_state: Node) -> void:
 		removed > 0
 		and total_before - game_state.get_total_remaining_hairs() == removed
 		and field_before - hair_field.get_remaining_count() == removed
-		and _drawn_count(hair_field) == drawn_before,
+		and HairFieldScript.count_drawn_hairs(hair_field) == drawn_before,
 		"既定の本数の屋敷で粘着ローラーを床にかけると、取れた %d 本だけ残り本数が減り、描いている毛は %d 本のまま (実際: 残り %d → %d 本)"
 		% [removed, drawn_before, total_before, game_state.get_total_remaining_hairs()],
 	)

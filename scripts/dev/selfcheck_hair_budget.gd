@@ -15,6 +15,10 @@ const MansionWorldScript := preload("res://scripts/mansion/mansion_world.gd")
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## selfcheck が使う一時セーブファイルパス (GameState の初期化だけに使い、保存はしない)
 const TEST_SAVE_PATH: String = "user://selfcheck_hair_budget_save_data.json"
+## 毛の描画ベンチマーク (測る本数ごとの描く本数の上限の決め方)
+const HairbenchScript := preload("res://scripts/dev/hairbench.gd")
+## 屋敷の 1 フレームの時間のベンチマーク (組み直した後の本数の前提の判定)
+const ScenebenchScript := preload("res://scripts/dev/scenebench.gd")
 ## 面の毛の色の id (白) を使う
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 ## 検証で使う小さな描く本数の上限 (100 本の面で、描く毛と埋もれた毛の両方を 1 本ずつ追って数えられる本数)
@@ -43,6 +47,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_room_tool_takes_buried(130)
 	suite._check_robot_pick_takes_buried()
 	suite._check_drop_on_fully_drawn_surface()
+	suite._check_bench_budget_rules()
 
 
 ## 表面ごとの色の系統の本数の列を、populate_with_group_counts が受け取る型付きの配列にして返す
@@ -323,9 +328,7 @@ func _check_room_tool_takes_buried(hair_count: int) -> void:
 	state.purchase(GameStateScript.PURCHASE_TOOL, truck)
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = 12
-	var drawn_before: int = 0
-	for surface_index: int in range(hair_field.get_surface_count()):
-		drawn_before += hair_field.get_surface_visible_instance_count(surface_index)
+	var drawn_before: int = HairFieldScript.count_drawn_hairs(hair_field)
 	_check(
 		drawn_before > 0 and drawn_before <= WORLD_BUDGET
 		and hair_field.get_remaining_count() == hair_count,
@@ -378,3 +381,20 @@ func _check_robot_pick_takes_buried() -> void:
 	world.free()
 	state.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+
+
+## hairbench は 1,000,000 本までは全部描き 1,000,001 本からは既定の上限で描くか、scenebench の本数の前提の判定は
+## 置いた本数が合い描いた本数が上限ちょうどまでの時だけ通るか。期待値の 1,000,000 本は issue #6 の要件の最大の本数
+func _check_bench_budget_rules() -> void:
+	_check(
+		HairbenchScript.draw_budget_for(1000000) == 0
+		and HairbenchScript.draw_budget_for(1000001) == HairFieldScript.DEFAULT_DRAW_BUDGET
+		and HairbenchScript.draw_budget_for(10000000) == HairFieldScript.DEFAULT_DRAW_BUDGET,
+		"hairbench は 1,000,000 本まで上限なし (0)、1,000,001 本と 10,000,000 本は既定の上限で描く",
+	)
+	_check(
+		ScenebenchScript.is_budget_entry_ok(100, 100, 50, 50)
+		and not ScenebenchScript.is_budget_entry_ok(100, 100, 51, 50)
+		and not ScenebenchScript.is_budget_entry_ok(99, 100, 50, 50),
+		"scenebench の本数の前提は、描いた本数が上限ちょうどなら通り、上限 + 1 本か置いた本数の不足なら通らない",
+	)
