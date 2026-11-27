@@ -267,7 +267,7 @@ func _check_trader_body() -> void:
 		)
 		# モデルは glTF の +Z に顔を向ける。体の +Z が立つ位置の局所の -Z (部屋の中・札と同じ向き) を向いているか
 		_check(
-			(body.basis * Vector3.BACK).z < -0.5,
+			(body.basis * Vector3.BACK).normalized().z < -0.5,
 			"買取業者のモデルの顔 (glTF の +Z) は、部屋の中 (立つ位置の局所の -Z) を向く",
 		)
 		var shadows_on: bool = true
