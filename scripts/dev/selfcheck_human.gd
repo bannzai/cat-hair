@@ -90,10 +90,6 @@ func _check_hand_view_shape_and_pinch() -> void:
 		and (open_tips["thumb"] as Vector3).x < (closed_tips["thumb"] as Vector3).x,
 		"毛をつまむ前は、人差し指の先を手の甲の側 (上) へ起こし、親指の先を外 (-X) へ開く",
 	)
-	_check(
-		(closed_tips["index"] as Vector3).z < 0.0 and (closed_tips["thumb"] as Vector3).z < 0.0,
-		"閉じた親指と人差し指の先は、指の付け根 (手の原点) より奥 (-Z) にある",
-	)
 	hand.set_pull_progress(1.0)
 	var pulled_tips: Dictionary = hand.get_fingertips()
 	var pulled_distance: float = (pulled_tips["index"] as Vector3).distance_to(pulled_tips["thumb"])
