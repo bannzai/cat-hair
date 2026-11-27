@@ -30,7 +30,13 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_remove_refills_until_buried_runs_out()
 	suite._check_add_and_remove_buried()
 	suite._check_populate_over_budget_and_unlimited()
-	suite._check_room_tool_takes_buried()
+	suite._check_budget_boundary()
+	suite._check_drop_on_surface_without_drawn_hairs()
+	suite._check_remove_buried_out_of_range()
+	# 埋もれた毛が十分にある屋敷と、描いている毛より少ない屋敷 (描き足しで先に尽きやすい) の両方で確かめる
+	suite._check_room_tool_takes_buried(6000)
+	suite._check_room_tool_takes_buried(130)
+	suite._check_robot_pick_takes_buried()
 
 
 ## 検証結果を selfcheck 本体へ記録する
@@ -106,7 +112,6 @@ func _check_add_and_remove_buried() -> void:
 	var white_before: int = (
 		HairFieldScript.count_surface_groups(field, 0)[HairFieldScript.HairColorGroup.WHITE]
 	)
-	var buried_before: int = 100 - SMALL_BUDGET
 	var dropped_id: int = HairFieldScript.add_hair(
 		field, 0, Vector3.ZERO, 0.1, HairFieldScript.HairColorGroup.WHITE, rng
 	)
@@ -116,7 +121,7 @@ func _check_add_and_remove_buried() -> void:
 		and field.get_hair_transform(dropped_id).origin.distance_to(Vector3.ZERO) < 0.2
 		and field.get_remaining_count() == 101
 		and field.get_surface_visible_instance_count(0) == SMALL_BUDGET
-		and buried_after[0] + buried_after[1] + buried_after[2] == buried_before + 1
+		and buried_after[0] + buried_after[1] + buried_after[2] == 100 - SMALL_BUDGET + 1
 		and HairFieldScript.count_surface_groups(field, 0)[HairFieldScript.HairColorGroup.WHITE]
 		== white_before + 1,
 		"描く本数が上限の面に落とした白い毛は落とした所に描き、描いていた 1 本を埋もれた毛へ戻して 10 本のまま、残り 101 本・白が 1 本増える",
@@ -174,39 +179,158 @@ func _check_populate_over_budget_and_unlimited() -> void:
 	field.free()
 
 
-## 吸引車は 1 面で触れる本数が描いている毛より多い時、埋もれた毛からも取り、GameState と HairField の本数が合うか
-func _check_room_tool_takes_buried() -> void:
+## 総本数が上限ちょうどなら全部描き、上限 + 1 本なら上限まで描いて 1 本を埋もれた毛にするか
+func _check_budget_boundary() -> void:
+	var field: Node3D = HairFieldScript.new()
+	field.draw_budget = SMALL_BUDGET
+	field.add_oriented_surface("a", Transform3D.IDENTITY, Vector2(1.0, 1.0), 1.0)
+	field.populate_with_group_counts([PackedInt32Array([SMALL_BUDGET, 0, 0])], 6)
+	var at_budget_buried: PackedInt32Array = HairFieldScript.buried_group_counts(field, 0)
+	field.populate_with_group_counts([PackedInt32Array([SMALL_BUDGET + 1, 0, 0])], 6)
+	_check(
+		at_budget_buried == PackedInt32Array([0, 0, 0])
+		and field.get_surface_visible_instance_count(0) == SMALL_BUDGET
+		and HairFieldScript.buried_group_counts(field, 0) == PackedInt32Array([1, 0, 0])
+		and field.get_remaining_count() == SMALL_BUDGET + 1,
+		"上限ちょうどの本数は全部描き、上限 + 1 本は上限まで描いて白 1 本を埋もれた毛にする",
+	)
+	field.free()
+
+
+## 上限の配分で描く本数が 0 になった面 (埋もれた毛だけがある面) に落とした毛は、戻す毛が無いのでそのまま描くか
+func _check_drop_on_surface_without_drawn_hairs() -> void:
+	var field: Node3D = HairFieldScript.new()
+	field.draw_budget = SMALL_BUDGET
+	field.add_oriented_surface("big", Transform3D.IDENTITY, Vector2(2.0, 2.0), 1.0)
+	field.add_oriented_surface(
+		"tiny", Transform3D(Basis.IDENTITY, Vector3(5.0, 0.0, 0.0)), Vector2(1.0, 1.0), 1.0
+	)
+	field.populate_with_group_counts(
+		[PackedInt32Array([1000, 0, 0]), PackedInt32Array([0, 1, 0])], 8
+	)
+	var tiny_drawn: int = field.get_surface_visible_instance_count(1)
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = 9
+	var dropped_id: int = HairFieldScript.add_hair(
+		field, 1, Vector3(5.0, 0.0, 0.0), 0.1, HairFieldScript.HairColorGroup.WHITE, rng
+	)
+	_check(
+		tiny_drawn == 0
+		and dropped_id >= 0 and field.has_hair(dropped_id)
+		and field.get_surface_visible_instance_count(1) == 1
+		and field.get_surface_remaining_count(1) == 2
+		and HairFieldScript.count_surface_groups(field, 1) == PackedInt32Array([1, 1, 0]),
+		"描く本数が 0 の面 (埋もれた黒 1 本) に落とした白い毛は描き、残り 2 本・白 1・黒 1 (描いていた本数 %d)"
+		% tiny_drawn,
+	)
+	field.free()
+
+
+## 埋もれた毛を取る時、負や範囲外の面・系統からは取らないか
+func _check_remove_buried_out_of_range() -> void:
+	var field: Node3D = _make_field()
+	_check(
+		HairFieldScript.remove_buried_hairs(field, -1, 0, 1) == 0
+		and HairFieldScript.remove_buried_hairs(field, 0, -1, 1) == 0
+		and HairFieldScript.remove_buried_hairs(field, 0, HairFieldScript.HairColorGroup.size(), 1) == 0
+		and HairFieldScript.remove_buried_hairs(field, 2, 0, 1) == 0
+		and HairFieldScript.remove_buried_hairs(field, 0, 0, -5) == 0
+		and field.get_remaining_count() == 100,
+		"負の面・負の系統・範囲外の面と系統・負の本数では埋もれた毛を取らず、残りは 100 本のまま",
+	)
+	field.free()
+
+
+## 描く本数の上限 100 本で hair_count 本の屋敷を組み、GameState と HairField を返す (お金は道具を買える額にする)
+static func _make_budget_world(hair_count: int) -> Array:
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 	var state: Node = GameStateScript.new()
-	state.initialize_from_storage(TEST_SAVE_PATH, PackedStringArray(["--hair-count=6000"]))
-	var progress: BuildingProgress = state.save_data.building_progress
+	state.initialize_from_storage(
+		TEST_SAVE_PATH, PackedStringArray(["--hair-count=%d" % hair_count])
+	)
 	var world: MansionWorld = MansionWorldScript.new()
 	world.hair_draw_budget = 100
-	world.rebuild(state.current_layout, progress)
+	world.rebuild(state.current_layout, state.save_data.building_progress)
+	state.save_data.building_progress.money = 100000
+	return [state, world]
+
+
+## 面ごとの残り本数が HairField と GameState で全部の面で同じか
+static func _surface_counts_match(state: Node, world: MansionWorld) -> bool:
+	var hair_field: Node3D = world.get_hair_field()
+	for surface_index: int in range(hair_field.get_surface_count()):
+		if (
+			hair_field.get_surface_remaining_count(surface_index)
+			!= state.get_surface_hair_count(world.get_surface_def(surface_index).surface_id)
+		):
+			return false
+	return true
+
+
+## 吸引車が埋もれた毛からも取る時、GameState と HairField の本数が面ごとに合うか (hair_count 本の屋敷。130 本では
+## 埋もれた毛が描いている毛より少なく、描いている毛を先に消すと描き足しが計画した埋もれた毛を使い切る)
+func _check_room_tool_takes_buried(hair_count: int) -> void:
+	var made: Array = _make_budget_world(hair_count)
+	var state: Node = made[0]
+	var world: MansionWorld = made[1]
 	var hair_field: Node3D = world.get_hair_field()
 	var truck: StringName = ToolCatalogScript.TOOL_SUCTION_TRUCK
-	progress.money = 100000
 	state.purchase(GameStateScript.PURCHASE_TOOL, truck)
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = 12
-	var room_id: StringName = state.current_layout.rooms[0].room_id
 	var drawn_before: int = 0
 	for surface_index: int in range(hair_field.get_surface_count()):
 		drawn_before += hair_field.get_surface_visible_instance_count(surface_index)
 	_check(
-		drawn_before > 0 and drawn_before <= 100 and hair_field.get_remaining_count() == 6000,
-		"描く本数の上限 100 本で 6,000 本の屋敷を組むと、描くのは 100 本までで残りは 6,000 本 (描いている %d 本)"
-		% drawn_before,
+		drawn_before > 0 and drawn_before <= 100 and hair_field.get_remaining_count() == hair_count,
+		"描く本数の上限 100 本で %d 本の屋敷を組むと、描くのは 100 本までで残りは %d 本 (描いている %d 本)"
+		% [hair_count, hair_count, drawn_before],
 	)
-	var plan: Dictionary = ToolController.plan_room_removal(world, room_id, truck, 1, rng)
+	var plan: Dictionary = ToolController.plan_room_removal(
+		world, state.current_layout.rooms[0].room_id, truck, 1, rng
+	)
 	var removed: int = state.apply_tool_sweep(truck, plan["counts_by_surface"])
 	ToolController.apply_room_removal(world, plan)
 	var visible_taken: int = (plan["removed_ids"] as PackedInt32Array).size()
 	_check(
 		removed > visible_taken and visible_taken > 0
-		and hair_field.get_remaining_count() == state.get_total_remaining_hairs(),
-		"吸引車は描いている毛 (%d 本) より多い %d 本を取り、HairField の残り本数が GameState と同じ (%d / %d 本)"
-		% [visible_taken, removed, hair_field.get_remaining_count(), state.get_total_remaining_hairs()],
+		and hair_field.get_remaining_count() == state.get_total_remaining_hairs()
+		and _surface_counts_match(state, world),
+		"%d 本の屋敷で吸引車は描いている毛 (%d 本) より多い %d 本を取り、HairField の残り本数が面ごとに GameState と同じ (%d / %d 本)"
+		% [
+			hair_count, visible_taken, removed,
+			hair_field.get_remaining_count(), state.get_total_remaining_hairs(),
+		],
+	)
+	world.free()
+	state.free()
+	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+
+
+## 掃除ロボットが描いている同じ色の毛より多く取った時、足りない分を埋もれた毛から取り、色ごとの本数が合うか
+func _check_robot_pick_takes_buried() -> void:
+	var made: Array = _make_budget_world(6000)
+	var state: Node = made[0]
+	var world: MansionWorld = made[1]
+	var hair_field: Node3D = world.get_hair_field()
+	var white: int = HairFieldScript.HairColorGroup.WHITE
+	var groups_before: PackedInt32Array = HairFieldScript.count_surface_groups(hair_field, 0)
+	var drawn_white: int = 0
+	for slot: int in range(hair_field.get_surface_visible_instance_count(0)):
+		if world.get_hair_color_id(hair_field.get_hair_id_at_slot(0, slot)) == &"white":
+			drawn_white += 1
+	var count: int = drawn_white + 3
+	AutomationController.remove_picked_hairs(world, 0, &"white", count, Vector3.ZERO)
+	var groups_after: PackedInt32Array = HairFieldScript.count_surface_groups(hair_field, 0)
+	_check(
+		groups_before[white] > count
+		and groups_after[white] == groups_before[white] - count
+		and groups_after[HairFieldScript.HairColorGroup.BLACK]
+		== groups_before[HairFieldScript.HairColorGroup.BLACK]
+		and hair_field.get_surface_remaining_count(0)
+		== groups_before[0] + groups_before[1] + groups_before[2] - count,
+		"掃除ロボットが描いている白 (%d 本) より 3 本多く取ると、白だけが %d 本減る (白 %d → %d 本)"
+		% [drawn_white, count, groups_before[white], groups_after[white]],
 	)
 	world.free()
 	state.free()

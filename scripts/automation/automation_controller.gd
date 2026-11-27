@@ -208,23 +208,38 @@ func _on_automation_advanced(changes: Dictionary) -> void:
 		var robot_node: Node3D = get_robot_node(int(pick["robot_index"]))
 		if surface_index < 0:
 			continue
-		var left: int = int(pick["count"])
-		for hair_id: int in hair_field.find_hairs_near(
+		remove_picked_hairs(
+			_world,
 			surface_index,
+			pick["color"],
+			int(pick["count"]),
 			robot_node.position if robot_node != null else Vector3.ZERO,
-			INF,
-			hair_field.get_surface_remaining_count(surface_index),
-		):
-			if left <= 0:
-				break
-			if _world.get_hair_color_id(hair_id) == pick["color"]:
-				hair_field.remove_hair(hair_id)
-				left -= 1
-		# 描いている同じ色の毛が足りない分は、埋もれた毛から取る (GameState と同じ本数を減らす)
-		if left > 0:
-			HairFieldScript.remove_buried_hairs(
-				hair_field, surface_index, SurfaceHairScript.STANDARD_COLORS.find(pick["color"]), left
-			)
+		)
+
+
+## world の表面 surface_index から、色 color_id の毛を count 本、near に近い描いている毛から消す (掃除ロボットが取った毛)。
+## 描いている同じ色の毛が足りない分は埋もれた毛から消し、GameState と同じ本数を減らす。
+## 描いている毛を消すと埋もれた毛から描き足すため、埋もれた毛を先に消す
+static func remove_picked_hairs(
+	world: MansionWorld, surface_index: int, color_id: StringName, count: int, near: Vector3
+) -> void:
+	var hair_field: Node3D = world.get_hair_field()
+	var picked_ids: PackedInt32Array = PackedInt32Array()
+	for hair_id: int in hair_field.find_hairs_near(
+		surface_index, near, INF, hair_field.get_surface_remaining_count(surface_index)
+	):
+		if picked_ids.size() >= count:
+			break
+		if world.get_hair_color_id(hair_id) == color_id:
+			picked_ids.append(hair_id)
+	HairFieldScript.remove_buried_hairs(
+		hair_field,
+		surface_index,
+		SurfaceHairScript.STANDARD_COLORS.find(color_id),
+		count - picked_ids.size(),
+	)
+	for hair_id: int in picked_ids:
+		hair_field.remove_hair(hair_id)
 
 
 ## 猫 1 匹の形 (胴・頭・耳・尾・脚と、三毛猫のぶち、頭の上の名札) を作る。足元が原点で、-Z が顔の向き

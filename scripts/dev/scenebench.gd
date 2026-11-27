@@ -27,16 +27,18 @@ const HairbenchScript := preload("res://scripts/dev/hairbench.gd")
 ## 描く本数の上限の既定値 (DEFAULT_DRAW_BUDGET) を借りる
 const HairFieldScript := preload("res://scripts/hair_field.gd")
 
-## issue #56 で既定の毛の本数を上げる前に描いていた本数。変更の前後を同じ描く本数で比べるため残す
-const PREVIOUS_DEFAULT_HAIR_COUNT: int = 12000
-## 既定の計測する描く本数の上限。issue #56 の前に描いていた本数・issue #65 の前に描いていた本数 (既定の上限の半分)・
-## 今の既定の上限に、上限を決める時に比べた既定の上限の 2 倍と、1,000,000 本 (hairbench が全部描けると確かめた本数) を足した
+## issue #56 で既定の毛の本数を上げる前に描いていた本数 (その頃は全部の毛を描いていた)。変更の前後を同じ描く本数で比べるため残す
+const BEFORE_ISSUE_56_DRAWN_COUNT: int = 12000
+## issue #65 で描く本数に上限を置く前に描いていた本数 (その頃の既定の毛の本数 120,000 本を全部描いていた)
+const BEFORE_ISSUE_65_DRAWN_COUNT: int = 120000
+## 既定の計測する描く本数の上限。issue #56・#65 の前に描いていた本数と今の既定の上限に、上限を決める時に比べた
+## 既定の上限の 2 倍と、hairbench が全部描けると確かめた本数を足した
 const DEFAULT_DRAW_BUDGETS: Array[int] = [
-	PREVIOUS_DEFAULT_HAIR_COUNT,
-	HairFieldScript.DEFAULT_DRAW_BUDGET / 2,
+	BEFORE_ISSUE_56_DRAWN_COUNT,
+	BEFORE_ISSUE_65_DRAWN_COUNT,
 	HairFieldScript.DEFAULT_DRAW_BUDGET,
 	HairFieldScript.DEFAULT_DRAW_BUDGET * 2,
-	1000000,
+	HairbenchScript.FULL_DRAW_MAX_COUNT,
 ]
 ## JSON レポートの既定出力先 (Makefile の scenebench target が参照するパス)
 const DEFAULT_JSON_PATH: String = "tmp/scenebench.json"

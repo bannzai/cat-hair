@@ -478,17 +478,19 @@ func _erase_drawn(hair_id: int) -> int:
 func _draw_buried_hair(surface_index: int) -> void:
 	var bucket: Dictionary = _buckets[surface_index]
 	var buried: PackedInt32Array = bucket["buried"]
-	var buried_total: int = _sum(buried)
 	if (
-		buried_total <= 0
+		_sum(buried) <= 0
 		or (bucket["multimesh"] as MultiMesh).visible_instance_count >= int(bucket["draw_cap"])
 	):
 		return
 	var group: int = pick_buried_group(buried, _refill_rng)
 	buried[group] -= 1
 	bucket["buried"] = buried
-	var xform: Transform3D = _random_hair_transform(_surfaces[surface_index], _hair_aabb, _refill_rng)
-	_place_hair(surface_index, xform, pick_hair_color_in_group(_refill_rng, group))
+	_place_hair(
+		surface_index,
+		_random_hair_transform(_surfaces[surface_index], _hair_aabb, _refill_rng),
+		pick_hair_color_in_group(_refill_rng, group),
+	)
 
 
 ## 表面 surface_index の埋もれた毛から系統 group の毛を最大 count 本消し、消した本数を返す (remove_buried_hairs の本体)
@@ -533,13 +535,17 @@ func _add_hair(
 	var bucket: Dictionary = _buckets[surface_index]
 	var buried: PackedInt32Array = bucket["buried"]
 	var multimesh: MultiMesh = bucket["multimesh"]
-	if _sum(buried) > 0 and multimesh.visible_instance_count >= int(bucket["draw_cap"]):
+	# 描いている毛が 1 本も無い面 (上限の配分で描く本数が 0 になった面) は、戻す毛が無いので落とした毛をそのまま描く
+	if (
+		_sum(buried) > 0
+		and multimesh.visible_instance_count > 0
+		and multimesh.visible_instance_count >= int(bucket["draw_cap"])
+	):
 		# 描く本数を上限に保ったまま落とした毛を見せるため、描いている毛を 1 本 (乱数で選ぶ) 埋もれた毛へ戻す
 		var swapped_slot: int = rng.randi_range(0, multimesh.visible_instance_count - 1)
-		var swapped_id: int = (bucket["hair_ids"] as PackedInt32Array)[swapped_slot]
 		buried[classify_hair_color((bucket["colors"] as PackedColorArray)[swapped_slot])] += 1
 		bucket["buried"] = buried
-		_erase_drawn(swapped_id)
+		_erase_drawn((bucket["hair_ids"] as PackedInt32Array)[swapped_slot])
 	var spec: Dictionary = _surfaces[surface_index]
 	var surface_transform: Transform3D = spec["transform"]
 	var rect_min: Vector2 = spec["rect_min"]

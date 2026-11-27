@@ -10,8 +10,6 @@ const HandAim := preload("res://scripts/dev/hand_aim.gd")
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 毛の描画・管理 (描く本数の上限の既定値)
 const HairFieldScript := preload("res://scripts/hair_field.gd")
-## 開発者向け調整値データ型スクリプト (既定の毛の本数)
-const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 ## 道具を床にかける時の、粘着ローラーの半径の中に要る毛の本数 (取れる毛が出るだけの本数)
 const MIN_HAIRS_IN_RANGE: int = 2
 ## 取りこぼしの抽選の乱数のシード (結果を固定する)
@@ -56,7 +54,8 @@ func _check(cond: bool, label: String) -> void:
 	_checker._check(cond, label)
 
 
-## 新しく始めた屋敷の残り本数が 9,999,999 本で、描いている毛は描く本数の上限までか
+## 新しく始めた屋敷の残り本数が 9,999,999 本で、描いている毛は描く本数の上限までか。
+## 期待値は issue #65 の完了条件の本数 (9,999,999 と 9,999,998) を、実装の定数から取らずに書く
 func _verify_fresh_counts(main: Node3D, game_state: Node) -> void:
 	var hair_field: Node3D = main.mansion_world.get_hair_field()
 	var drawn: int = _drawn_count(hair_field)
@@ -104,10 +103,15 @@ func _verify_roller_sweep(main: Node3D, game_state: Node) -> void:
 	main.tool_shop_panel.get_tool_button(roller).pressed.emit()
 	await _checker.process_frame
 	main.close_tool_shop()
-	var key_index: int = ToolCatalogScript.selectable_tool_ids().find(roller)
-	await _checker._press_physical_key(ToolController.SELECT_KEYS[key_index])
-	var radius: float = float(ToolCatalogScript.find_tool(roller)["radius_m"])
-	if await HandAim.aim_at_floor_hairs(_checker, main, radius, MIN_HAIRS_IN_RANGE) < 0:
+	await _checker._press_physical_key(
+		ToolController.SELECT_KEYS[ToolCatalogScript.selectable_tool_ids().find(roller)]
+	)
+	if (
+		await HandAim.aim_at_floor_hairs(
+			_checker, main, float(ToolCatalogScript.find_tool(roller)["radius_m"]), MIN_HAIRS_IN_RANGE
+		)
+		< 0
+	):
 		_check(false, "既定の本数の屋敷で粘着ローラーをかける床の毛を狙える")
 		return
 	var hair_field: Node3D = main.mansion_world.get_hair_field()
