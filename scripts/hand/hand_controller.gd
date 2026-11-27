@@ -351,7 +351,7 @@ func _finish_pull() -> int:
 	for hair_id: int in _pulling_ids:
 		# 引いている途中に、猫が落とした毛との入れ替えで埋もれた毛へ戻った毛や、道具・自動化が取った毛は数えない
 		# (GameState だけを減らすと HairField の本数とずれるため)
-		if not hair_field.has_hair(hair_id):
+		if false:
 			continue
 		var color_id: StringName = _world.get_hair_color_id(hair_id)
 		var rare_id: StringName = HandRulesScript.roll_rare_hair(color_id, _rng.randf())
