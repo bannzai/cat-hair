@@ -122,6 +122,11 @@ failure-path: import
 	tail -n 1 $(LOG_DIR)/failure-path.log | grep -q '^exit=1$$'
 	grep -q 'failure_path_check FAIL' $(LOG_DIR)/failure-path.log
 	! grep -q '^failure_path_check OK$$' $(LOG_DIR)/failure-path.log
+	"$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/bot_play.gd > $(LOG_DIR)/bot-play-failure-path.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/bot-play-failure-path.log; \
+	tail -n 1 $(LOG_DIR)/bot-play-failure-path.log | grep -q '^exit=1$$'
+	grep -q 'bot_play.gd には --simulate か' $(LOG_DIR)/bot-play-failure-path.log
+	! grep -qE '^(simulate|playtest) OK$$' $(LOG_DIR)/bot-play-failure-path.log
 	HAIRBENCH_COUNTS="10" HAIRBENCH_JSON="$(LOG_DIR)/hairbench-fail.json" HAIRBENCH_PNG_PREFIX="hairbench-fail" "$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/hairbench.gd > $(LOG_DIR)/hairbench-failure-path.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/hairbench-failure-path.log; \
 	rm -f $(LOG_DIR)/hairbench-fail.json $(LOG_DIR)/hairbench-fail-*.png; \
@@ -286,7 +291,7 @@ build-all: build-macos build-windows build-linux
 # ディレクトリごとや *.log をまとめては消さない)。ログは target ごとの <target>.log と、ENGINE_LOG の <target>.godot.log
 clean:
 	rm -rf build
-	rm -f $(foreach target,import check selfcheck integration integration-cmdline uidcheck failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-automation simulate playtest hairbench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
+	rm -f $(foreach target,import check selfcheck integration integration-cmdline uidcheck failure-path bot-play-failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-automation simulate playtest hairbench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
 	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4 $(LOG_DIR)/movie-automation.avi $(LOG_DIR)/movie-automation.mp4
 	rm -f $(LOG_DIR)/simulate.json $(LOG_DIR)/playtest.avi $(LOG_DIR)/playtest.mp4
 

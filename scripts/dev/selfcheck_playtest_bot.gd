@@ -26,6 +26,11 @@ const ROOM_HAIRS: int = 3000
 const ROOM_AREA_M2: float = 36.0
 ## 元を取るまでの秒を比べる時に、浮動小数の誤差で同じ値の候補を「もっと短い」と数えない幅 (秒)
 const SCORE_TOLERANCE: float = 0.001
+## お金が足りないことで選び方が変わらないよう持たせる所持金。いちばん高いアンドロイドの値段より十分多い
+const PLENTY_OF_MONEY: int = 1000000
+## 速さの伸びる物を買い続ける検証の回数の上限。道具 12 個 × レベル 5・手の強化 2 × 9 段・掃除ロボット 4 台を
+## 合わせた 82 回より多く、買い終えずに止まった時もループを終える
+const MAX_PURCHASE_ROUNDS: int = 200
 
 ## 検証結果を記録する selfcheck の SceneTree 参照
 var _checker: SceneTree = null
@@ -138,7 +143,7 @@ func _check_waits_when_no_hair() -> void:
 ## お金が足りる時は、貯めて買って元を取るまでの秒がいちばん短い物を買う。最初は安い道具が高い道具より先に来る
 func _check_buys_affordable_best_purchase() -> void:
 	var snapshot: Dictionary = _base_snapshot()
-	snapshot["money"] = 1000000
+	snapshot["money"] = PLENTY_OF_MONEY
 	var best: Dictionary = PolicyScript.best_purchase(snapshot)
 	var base_rate: float = PolicyScript.total_rate(snapshot)
 	var best_is_min: bool = not best.is_empty()
@@ -222,10 +227,12 @@ func _check_bought_tool_beats_hand() -> void:
 
 ## 道具をいくつか持っている時は、いちばん速く取れる道具で毛を取る
 func _check_uses_fastest_owned_tool() -> void:
-	var snapshot: Dictionary = _with_tool(
-		_with_tool(_base_snapshot(), ToolCatalogScript.TOOL_TWEEZERS), ToolCatalogScript.TOOL_VACUUM
+	var action: Dictionary = PolicyScript.choose_action(
+		_with_tool(
+			_with_tool(_base_snapshot(), ToolCatalogScript.TOOL_TWEEZERS),
+			ToolCatalogScript.TOOL_VACUUM
+		)
 	)
-	var action: Dictionary = PolicyScript.choose_action(snapshot)
 	_checker._check(
 		action.get("kind") == PolicyScript.ACTION_CLEAN
 		and action.get("tool_id") == ToolCatalogScript.TOOL_VACUUM,
@@ -281,14 +288,18 @@ func _check_brushes_ready_cat() -> void:
 ## 掃除ロボットを置くと屋敷全体で毛を取る速さが上がり、上限の台数まで置いたら候補から外れる
 func _check_robot_raises_rate() -> void:
 	var snapshot: Dictionary = _base_snapshot()
-	var robot: Dictionary = {
-		"purchase_kind": PolicyScript.PURCHASE_ROBOT,
-		"item_id": &"",
-		"price": RobotRulesScript.ROBOT_PRICE,
-	}
 	_checker._check(
 		(
-			PolicyScript.total_rate(PolicyScript.apply_purchase(snapshot, robot))
+			PolicyScript.total_rate(
+				PolicyScript.apply_purchase(
+					snapshot,
+					{
+						"purchase_kind": PolicyScript.PURCHASE_ROBOT,
+						"item_id": &"",
+						"price": RobotRulesScript.ROBOT_PRICE,
+					}
+				)
+			)
 			> PolicyScript.total_rate(snapshot)
 		),
 		"掃除ロボットを置くと屋敷全体の速さが上がる"
@@ -303,8 +314,8 @@ func _check_robot_raises_rate() -> void:
 ## 速さが伸びる物を買い終えたら、加工機・ダンプカーを 1 つずつ順に買う
 func _check_after_cleaning_tools() -> void:
 	var snapshot: Dictionary = _base_snapshot()
-	snapshot["money"] = 1000000
-	for _round: int in range(200):
+	snapshot["money"] = PLENTY_OF_MONEY
+	for _round: int in range(MAX_PURCHASE_ROUNDS):
 		var purchase: Dictionary = PolicyScript.best_purchase(snapshot)
 		if purchase.is_empty() or float(purchase["gain"]) <= 0.0:
 			break
@@ -435,7 +446,7 @@ func _check_buys_at_exact_price() -> void:
 ## 1 手にかける秒は手の種類で決まる: 手は狙う秒 + 引く秒、手に持つ道具は狙う秒 + かける秒、部屋ごとの道具・買う・
 ## 売る・ブラシ・待つはそれぞれの見積もり (所要時間はこの秒の合計なので、取り違えると所要時間が変わる)
 func _check_action_seconds() -> void:
-	var expected: Array = [
+	for pair: Array in [
 		[{"kind": PolicyScript.ACTION_CLEAN, "tool_id": ToolCatalogScript.TOOL_HAND}, 1.0 + 2.0],
 		[{"kind": PolicyScript.ACTION_CLEAN, "tool_id": ToolCatalogScript.TOOL_TWEEZERS}, 1.0 + 0.5],
 		[{"kind": PolicyScript.ACTION_CLEAN, "tool_id": ToolCatalogScript.TOOL_SUCTION_TRUCK}, 3.0],
@@ -446,8 +457,7 @@ func _check_action_seconds() -> void:
 		[{"kind": PolicyScript.ACTION_SELL}, 20.0],
 		[{"kind": PolicyScript.ACTION_BRUSH}, 4.0],
 		[{"kind": PolicyScript.ACTION_WAIT}, 1.0],
-	]
-	for pair: Array in expected:
+	]:
 		var seconds: float = PolicyScript.action_seconds(pair[0], 2.0)
 		_checker._check(
 			is_equal_approx(seconds, float(pair[1])),

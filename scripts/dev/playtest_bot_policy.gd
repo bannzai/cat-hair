@@ -48,8 +48,8 @@ const TRADER_TRIP_SECONDS: float = 20.0
 const SHOP_SECONDS: float = 3.0
 ## 猫に近づいてブラシをかける秒。動いている猫に照準を合わせる分、道具を床にかけるより長く見積もった
 const BRUSH_SECONDS: float = 4.0
-## することが無い時に待つ秒。時計を進める刻み (playtest_bot.gd の CLOCK_STEP_SECONDS) と同じ 1 秒
-const WAIT_SECONDS: float = 1.0
+## することが無い時に待つ秒。何もしない 1 手も、狙う 1 動作と同じ長さとみなす
+const WAIT_SECONDS: float = AIM_SECONDS
 ## 道具の取れる本数を見積もる表面の種類 (屋敷の毛のほとんどが乗る床)
 const ESTIMATE_SURFACE: StringName = MansionLayoutScript.SURFACE_FLOOR
 
@@ -390,7 +390,8 @@ static func _owns(snapshot: Dictionary, tool_id: StringName) -> bool:
 	return tool_id == ToolCatalogScript.TOOL_HAND or not _owned_entry(snapshot, tool_id).is_empty()
 
 
-## snapshot["owned"] の tool_id の 1 件 (持っていなければ空)
+## snapshot["owned"] の tool_id の 1 件 (持っていなければ空)。呼び出し側は空の時にレベル 1・消耗品 0 を使う:
+## 持っていない道具 (と、owned に入らない手) は、買った直後の最初の段 (レベル 1) で、消耗品を持たない扱い
 static func _owned_entry(snapshot: Dictionary, tool_id: StringName) -> Dictionary:
 	return (snapshot["owned"] as Dictionary).get(tool_id, {})
 

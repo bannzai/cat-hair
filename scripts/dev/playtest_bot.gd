@@ -36,8 +36,8 @@ const STAND_DISTANCE_M: float = 0.9
 const ROOM_VIEW_RATIO: float = 0.5
 ## 買取業者から離れて立つ距離 (m。main.TRADER_RANGE_M より短い)
 const TRADER_STAND_M: float = 1.2
-## 経過を記録する間隔 (ゲーム内の秒)。住人が掃除代を払う間隔 (EconomyRules.PAYMENT_INTERVAL_SECONDS) と同じ 60 秒
-const SAMPLE_INTERVAL_SECONDS: float = 60.0
+## 経過を記録する間隔 (ゲーム内の秒)。住人が掃除代を払うたびの所持金の変わり方が見えるよう、払う間隔にそろえる
+const SAMPLE_INTERVAL_SECONDS: float = EconomyRulesScript.PAYMENT_INTERVAL_SECONDS
 
 ## 節目の名前: 最初の道具を買った
 const MILESTONE_FIRST_TOOL: String = "first_tool"
