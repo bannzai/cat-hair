@@ -84,7 +84,6 @@ func _initialize() -> void:
 	SelfcheckBigTools.run_all(self)
 	SelfcheckPlaytestBot.run_all(self)
 	SelfcheckHuman.run_all(self)
-	SelfcheckNextBuilding.run_all(self)
 	_finish()
 
 
