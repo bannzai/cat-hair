@@ -582,6 +582,9 @@ func _refresh_room_gauge() -> void:
 		int(status["cleaning_fee"]),
 		int(EconomyRulesScript.PAYMENT_INTERVAL_SECONDS),
 	]
+	var reward: int = _game_state.requests.pending_reward(room.room_id)
+	if reward > 0:
+		cleaning_fee_label.text += " (次はお礼 +%d 円)" % reward
 
 
 ## プレイ中で、開発者画面・図鑑・道具を買う画面・掃除ロボットの回る順の画面・住人の依頼の一覧のどれも開いていない時だけ、歩く操作・つまむ操作・道具を使う操作を受け付ける。

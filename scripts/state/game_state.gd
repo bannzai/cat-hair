@@ -471,7 +471,7 @@ func get_room_status(room_id: StringName) -> Dictionary:
 
 
 ## 遊んだ時間を delta_seconds 秒進め、加工機が加工する時期が来た分だけ在庫の毛を加工し、
-## 住人の機嫌を部屋のきれいさへ近づけ、払う時期が来た掃除代を所持金に足す。
+## 住人の機嫌を部屋のきれいさへ近づけ、払う時期が来た掃除代 (住人の依頼のお礼の上乗せを含む) を所持金に足す。
 ## 戻り値はこの呼び出しで入った掃除代 (円)。加工した時と掃除代が入った時だけ通知する
 func advance_time(delta_seconds: float) -> int:
 	if save_data == null or save_data.building_progress == null or current_layout == null:
@@ -493,6 +493,7 @@ func advance_time(delta_seconds: float) -> int:
 	var earned: int = 0
 	for room: MansionLayout.RoomDef in current_layout.rooms:
 		earned += int(get_room_status(room.room_id)["cleaning_fee"]) * payments
+		earned += requests.take_pending_reward(room.room_id)
 	if earned > 0:
 		progress.money += earned
 		state_changed.emit()

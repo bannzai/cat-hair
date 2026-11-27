@@ -23,6 +23,8 @@ const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
 const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd")
 ## 面ごとの毛データ型スクリプト
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
+## お金の計算 (掃除代を払う間隔)
+const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
 ## 状態管理 autoload スクリプト
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## JSON 保存ストレージスクリプト (一時セーブファイルの後片付けに使う)
@@ -235,13 +237,21 @@ func _check_found_item_flow_in_game_state() -> void:
 	)
 	var paid: int = state.requests.return_item(spot.found_item_id, spot.room_id)
 	_check(
-		paid == RequestRulesScript.REWARD_CLEAN and state.get_money() == money_before + paid
+		paid == RequestRulesScript.REWARD_CLEAN and state.get_money() == money_before
+		and state.requests.pending_reward(spot.room_id) == paid
 		and item.is_returned and state.requests.return_item(spot.found_item_id, spot.room_id) == 0
 		and state.requests.remaining_item_count() == state.current_layout.found_item_spots.size() - 1,
-		"きれいな探し物を持ち主の部屋で返すとお礼 %d 円が入り、残りが 1 件減り、2 度は返せない" % paid,
+		"きれいな探し物を持ち主の部屋で返すと、お礼 %d 円が次の掃除代に上乗せされ、残りが 1 件減り、2 度は返せない"
+		% paid,
+	)
+	var added: int = reward_in_next_payment(state)
+	_check(
+		added == paid and state.requests.pending_reward(spot.room_id) == 0,
+		"次の掃除代でお礼 %d 円が所持金に入り、上乗せが消える (実際: %d 円)" % [paid, added],
 	)
 	var second: MansionLayout.FoundItemSpotDef = state.current_layout.found_item_spots[1]
-	state.requests.apply_tool(ToolCatalogScript.TOOL_VACUUM, [second.found_item_id])
+	var second_ids: Array[StringName] = [second.found_item_id]
+	state.requests.apply_tool(ToolCatalogScript.TOOL_VACUUM, second_ids)
 	var damaged_paid: int = state.requests.return_item(second.found_item_id, second.room_id)
 	_check(
 		state.requests.find_item(second.found_item_id).condition == DAMAGED
@@ -264,15 +274,16 @@ func _check_suit_bonus_in_game_state() -> void:
 		return
 	var progress: BuildingProgress = state.save_data.building_progress
 	var suit: SurfaceHair = progress.find_surface_hair(suits[0]["surface_id"])
-	var money_before: int = state.get_money()
+	var suit_room: StringName = suits[0]["room_id"]
 	_set_surface_count(suit, 1)
 	state.requests.after_hairs_removed()
-	_check(state.get_money() == money_before, "スーツに毛が 1 本残っている間は上乗せが無い")
+	_check(state.requests.pending_reward(suit_room) == 0, "スーツに毛が 1 本残っている間は上乗せが無い")
 	progress.elapsed_seconds = RequestRulesScript.SUIT_DEADLINE_SECONDS
 	_set_surface_count(suit, 0)
 	state.requests.after_hairs_removed()
 	_check(
-		state.get_money() == money_before and state.requests.suit_requests()[0]["status"] == &"missed",
+		state.requests.pending_reward(suit_room) == 0
+		and state.requests.suit_requests()[0]["status"] == &"missed",
 		"住人が出かけた後 (%.0f 秒) にスーツの毛を取り切っても上乗せは入らない"
 		% RequestRulesScript.SUIT_DEADLINE_SECONDS,
 	)
@@ -280,11 +291,13 @@ func _check_suit_bonus_in_game_state() -> void:
 	state.requests.after_hairs_removed()
 	state.requests.after_hairs_removed()
 	_check(
-		state.get_money() == money_before + RequestRulesScript.SUIT_BONUS
+		state.requests.pending_reward(suit_room) == RequestRulesScript.SUIT_BONUS
+		and reward_in_next_payment(state) == RequestRulesScript.SUIT_BONUS
 		and progress.cleared_suit_surface_ids.size() == 1
 		and progress.cleared_suit_surface_ids[0] == suits[0]["surface_id"]
 		and state.requests.suit_requests()[0]["status"] == &"done",
-		"出かける前にスーツの毛が 0 本なら +%d 円が 1 回だけ入る" % RequestRulesScript.SUIT_BONUS,
+		"出かける前にスーツの毛が 0 本なら、次の掃除代に +%d 円が 1 回だけ上乗せされる"
+		% RequestRulesScript.SUIT_BONUS,
 	)
 	state.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
@@ -300,31 +313,37 @@ func _check_save_round_trip() -> void:
 	progress.found_items.append(item)
 	progress.cleared_suit_surface_ids.append(&"surface_9")
 	progress.runaway_cat_returned = true
+	progress.pending_rewards[&"resident_room_1"] = 250
 	var data: Dictionary = JSON.parse_string(JSON.stringify(progress.to_dict()))
 	var loaded: BuildingProgress = BuildingProgressScript.from_dict(data)
 	_check(
 		loaded != null and loaded.found_items.size() == 1
 		and loaded.found_items[0].condition == DAMAGED and loaded.found_items[0].is_returned
 		and loaded.cleared_suit_surface_ids.size() == 1
-		and loaded.cleared_suit_surface_ids[0] == &"surface_9" and loaded.runaway_cat_returned,
-		"探し物の状態 (傷んだ・返した)・取り切ったスーツ・猫を届けたかが保存と読み込みで戻る",
+		and loaded.cleared_suit_surface_ids[0] == &"surface_9" and loaded.runaway_cat_returned
+		and int(loaded.pending_rewards.get(&"resident_room_1", 0)) == 250,
+		"探し物の状態 (傷んだ・返した)・取り切ったスーツ・猫を届けたか・次の掃除代の上乗せが保存と読み込みで戻る",
 	)
 	var old_save: Dictionary = data.duplicate(true)
 	old_save.erase("cleared_suit_surface_ids")
 	old_save.erase("runaway_cat_returned")
+	old_save.erase("pending_rewards")
 	var old_loaded: BuildingProgress = BuildingProgressScript.from_dict(old_save)
 	_check(
 		old_loaded != null and old_loaded.cleared_suit_surface_ids.is_empty()
-		and not old_loaded.runaway_cat_returned,
+		and not old_loaded.runaway_cat_returned and old_loaded.pending_rewards.is_empty(),
 		"依頼を足す前の保存データ (キーが無い) は、依頼を始める前の値で読める",
 	)
 	var bad: Dictionary = data.duplicate(true)
 	bad["runaway_cat_returned"] = "yes"
 	var bad_suits: Dictionary = data.duplicate(true)
 	bad_suits["cleared_suit_surface_ids"] = [3]
+	var bad_rewards: Dictionary = data.duplicate(true)
+	bad_rewards["pending_rewards"] = {"resident_room_1": "many"}
 	_check(
 		BuildingProgressScript.from_dict(bad) == null
-		and BuildingProgressScript.from_dict(bad_suits) == null,
+		and BuildingProgressScript.from_dict(bad_suits) == null
+		and BuildingProgressScript.from_dict(bad_rewards) == null,
 		"依頼の進みの型が違う保存データは読まない",
 	)
 
@@ -393,6 +412,18 @@ func _check_runaway_cat() -> void:
 	)
 	state.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+
+
+## 遊んだ時間を次に掃除代を払う時まで進め、入ったお金のうち掃除代 (住人の機嫌で決まる額) を除いた分 (上乗せのお礼) を返す。
+## 掃除代は機嫌を動かした後の値で払うため、進めた後の部屋の状態の掃除代の合計が払った掃除代になる
+static func reward_in_next_payment(state: Node) -> int:
+	var interval: float = EconomyRulesScript.PAYMENT_INTERVAL_SECONDS
+	var elapsed: float = state.save_data.building_progress.elapsed_seconds
+	var earned: int = state.advance_time(interval - fmod(elapsed, interval))
+	var fees: int = 0
+	for room: MansionLayout.RoomDef in state.current_layout.rooms:
+		fees += int(state.get_room_status(room.room_id)["cleaning_fee"])
+	return earned - fees
 
 
 ## 面 surface の毛を白い毛 count 本だけにする

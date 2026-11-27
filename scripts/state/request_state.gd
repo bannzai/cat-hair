@@ -14,9 +14,9 @@ const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd"
 const EVENT_REVEALED: StringName = &"revealed"
 ## 出来事の種類: 道具で探し物を取った ({"kind", "found_item_id", "condition"})
 const EVENT_TAKEN: StringName = &"taken"
-## 出来事の種類: 探し物を返してお礼をもらった ({"kind", "found_item_id", "reward"})
+## 出来事の種類: 探し物を返し、お礼が次の掃除代に上乗せされた ({"kind", "found_item_id", "reward"})
 const EVENT_RETURNED: StringName = &"returned"
-## 出来事の種類: スーツの毛を取り切って上乗せをもらった ({"kind", "surface_id", "reward"})
+## 出来事の種類: スーツの毛を取り切り、次の掃除代に上乗せされた ({"kind", "surface_id", "reward"})
 const EVENT_SUIT_CLEARED: StringName = &"suit_cleared"
 ## 出来事の種類: 猫が逃げた ({"kind", "cat_id"})
 const EVENT_CAT_ESCAPED: StringName = &"cat_escaped"
@@ -101,7 +101,7 @@ func after_hairs_removed() -> void:
 			)
 		):
 			progress.cleared_suit_surface_ids.append(suit.surface_id)
-			progress.money += RequestRulesScript.SUIT_BONUS
+			_add_pending_reward(suit.room_id, RequestRulesScript.SUIT_BONUS)
 			_emit({
 				"kind": EVENT_SUIT_CLEARED,
 				"surface_id": suit.surface_id,
@@ -148,7 +148,8 @@ func items_on_surfaces(surface_ids: Array) -> Array[StringName]:
 	return ids
 
 
-## 取った探し物 found_item_id を、持ち主の部屋 (今いる部屋 room_id) で返し、お礼 (RequestRules.reward) を所持金に足す。
+## 取った探し物 found_item_id を、持ち主の部屋 (今いる部屋 room_id) で返し、お礼 (RequestRules.reward) を持ち主の住人の
+## 次の掃除代に上乗せする (掃除代を払う時に所持金へ入る)。
 ## 戻り値はお礼 (円)。取っていない・返した・持ち主の部屋にいない時は何も変えずに 0
 func return_item(found_item_id: StringName, room_id: StringName) -> int:
 	var item: FoundItemProgress = find_item(found_item_id)
@@ -159,8 +160,9 @@ func return_item(found_item_id: StringName, room_id: StringName) -> int:
 	if paid <= 0:
 		return 0
 	item.is_returned = true
-	_progress().money += paid
+	_add_pending_reward(room_id, paid)
 	_emit({"kind": EVENT_RETURNED, "found_item_id": found_item_id, "reward": paid})
+	_game_state.state_changed.emit()
 	return paid
 
 
@@ -227,6 +229,7 @@ func carry_runaway_cat() -> bool:
 		return false
 	_carrying_cat = true
 	_emit({"kind": EVENT_CAT_CARRIED, "cat_id": RequestRulesScript.runaway_cat_id()})
+	_game_state.state_changed.emit()
 	return true
 
 
@@ -248,7 +251,31 @@ func deliver_runaway_cat(room_id: StringName) -> bool:
 		"cat_id": RequestRulesScript.runaway_cat_id(),
 		"room_id": room_id,
 	})
+	_game_state.state_changed.emit()
 	return true
+
+
+## 部屋 room_id の住人が次の掃除代に上乗せするお礼 (円)
+func pending_reward(room_id: StringName) -> int:
+	var progress: BuildingProgress = _progress()
+	if progress == null:
+		return 0
+	return int(progress.pending_rewards.get(MansionBuilderScript.resident_id_for_room(room_id), 0))
+
+
+## 部屋 room_id の住人が掃除代を払う時に呼ぶ。上乗せするお礼 (円) を返して消す
+func take_pending_reward(room_id: StringName) -> int:
+	var amount: int = pending_reward(room_id)
+	if amount > 0:
+		_progress().pending_rewards.erase(MansionBuilderScript.resident_id_for_room(room_id))
+	return amount
+
+
+## 部屋 room_id の住人の次の掃除代に amount 円を上乗せする
+func _add_pending_reward(room_id: StringName, amount: int) -> void:
+	var resident: StringName = MansionBuilderScript.resident_id_for_room(room_id)
+	var progress: BuildingProgress = _progress()
+	progress.pending_rewards[resident] = int(progress.pending_rewards.get(resident, 0)) + amount
 
 
 ## GameState の保存データの進行 (読み込み前は null)
@@ -257,7 +284,7 @@ func _progress() -> BuildingProgress:
 	return save_data.building_progress if save_data != null else null
 
 
-## 出来事を GameState の request_event で知らせ、状態が変わったことを state_changed で知らせる
+## 出来事を GameState の request_event で知らせる。state_changed は出さない (毛を減らす GameState の入口が 1 回の操作で
+## 1 回だけ知らせる決まりを保つため。依頼の見た目は RequestController が request_event で描き直す)
 func _emit(event: Dictionary) -> void:
 	_game_state.request_event.emit(event)
-	_game_state.state_changed.emit()

@@ -11,6 +11,8 @@ const FoundItemProgressScript := preload("res://scripts/data/found_item_progress
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 状態管理 autoload スクリプト (買う物の種類の定数を使う)
 const GameStateScript := preload("res://scripts/state/game_state.gd")
+## 住人の依頼の検証スイート (次の掃除代で入るお礼の計算)
+const SelfcheckRequestsScript := preload("res://scripts/dev/selfcheck_requests.gd")
 ## 屋敷ビルダー (住人の id)
 const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd")
 ## 検証の間だけ屋敷を組み直す毛の本数。手でつまむ回数を少なくし、探し物の面の毛を短い時間で半分にできる本数
@@ -107,25 +109,25 @@ func _verify_find_take_and_return(main: Node3D, game_state: Node) -> void:
 		"合う道具 (%s) で探し物をかけるときれいに取れ、屋敷から消える"
 		% ToolCatalogScript.find_tool(match_tool)["name"],
 	)
-	var money_before: int = game_state.get_money()
 	await _stand_in_room(main, _other_room_id(game_state, spot.room_id))
-	_check(
-		game_state.get_money() == money_before and not item.is_returned,
-		"持ち主でない部屋に入っても探し物は返さない",
-	)
+	_check(not item.is_returned, "持ち主でない部屋に入っても探し物は返さない")
 	await _stand_in_room(main, spot.room_id)
 	main.toggle_requests()
 	var rows: PackedStringArray = main.requests.panel.get_row_texts()
+	var money_before: int = game_state.get_money()
+	var added: int = SelfcheckRequestsScript.reward_in_next_payment(game_state)
 	_check(
-		item.is_returned
-		and game_state.get_money() == money_before + RequestRulesScript.REWARD_CLEAN
-		and popups.has("%sを返した: お礼 +%d 円" % [kind["name"], RequestRulesScript.REWARD_CLEAN])
+		item.is_returned and added == RequestRulesScript.REWARD_CLEAN
+		and game_state.get_money() > money_before
+		and popups.has(
+			"%sを返した: 次の掃除代にお礼 +%d 円" % [kind["name"], RequestRulesScript.REWARD_CLEAN]
+		)
 		and rows[0].contains("返した")
 		and main.requests.panel.get_summary_text().begins_with(
 			"探し物: 残り %d " % (game_state.current_layout.found_item_spots.size() - 1)
 		),
-		"持ち主の部屋に入ると探し物を返し、お礼 %d 円が入り、一覧の残りが 1 件減る (実際: %d 円・%s)"
-		% [RequestRulesScript.REWARD_CLEAN, game_state.get_money() - money_before, rows[0]],
+		"持ち主の部屋に入ると探し物を返し、次の掃除代でお礼 %d 円が入ってお金が増え、一覧の残りが 1 件減る (実際: %d 円・%s)"
+		% [RequestRulesScript.REWARD_CLEAN, added, rows[0]],
 	)
 	main.toggle_requests()
 	main.requests.notice_posted.disconnect(on_notice)
@@ -145,13 +147,12 @@ func _verify_rough_tool_damages(main: Node3D, game_state: Node) -> void:
 		item.condition == FoundItemProgressScript.Condition.DAMAGED,
 		"掃除機で探し物を吸うと傷む",
 	)
-	var money_before: int = game_state.get_money()
 	await _stand_in_room(main, spot.room_id)
-	var paid: int = game_state.get_money() - money_before
+	var paid: int = SelfcheckRequestsScript.reward_in_next_payment(game_state)
 	_check(
 		item.is_returned and paid == RequestRulesScript.REWARD_DAMAGED
 		and paid < RequestRulesScript.REWARD_CLEAN,
-		"傷めた探し物を返すとお礼は %d 円で、きれいな時 (%d 円) より少ない (実際: %d 円)"
+		"傷めた探し物を返すと次の掃除代のお礼は %d 円で、きれいな時 (%d 円) より少ない (実際: %d 円)"
 		% [RequestRulesScript.REWARD_DAMAGED, RequestRulesScript.REWARD_CLEAN, paid],
 	)
 

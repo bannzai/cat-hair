@@ -205,11 +205,11 @@ static func notice_text(event: Dictionary) -> String:
 			var clean: bool = event["condition"] == FoundItemProgressScript.Condition.CLEAN
 			return "%sを%s取った" % [taken_kind["name"], "きれいに" if clean else "傷めて"]
 		RequestStateScript.EVENT_RETURNED:
-			return "%sを返した: お礼 +%d 円" % [
+			return "%sを返した: 次の掃除代にお礼 +%d 円" % [
 				RequestRulesScript.kind_for_item_id(event["found_item_id"])["name"], int(event["reward"])
 			]
 		RequestStateScript.EVENT_SUIT_CLEARED:
-			return "黒いスーツの毛を取り切った: +%d 円" % int(event["reward"])
+			return "黒いスーツの毛を取り切った: 次の掃除代に +%d 円" % int(event["reward"])
 		RequestStateScript.EVENT_CAT_ESCAPED:
 			return "%sが逃げた: 毛の跡をたどって探す" % _runaway_cat_name()
 		RequestStateScript.EVENT_CAT_CARRIED:

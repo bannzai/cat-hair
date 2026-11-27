@@ -179,7 +179,9 @@ func _build() -> void:
 	for tool_def: Dictionary in ToolCatalogScript.TOOLS:
 		if bool(tool_def["damages_found_items"]):
 			damaging.append(str(tool_def["name"]))
-	hint.text = "%sで取ると傷む。取った探し物は持ち主の部屋に入ると返す" % "・".join(damaging)
+	hint.text = "%sで取ると傷む。取った探し物は持ち主の部屋に入ると返し、お礼は次の掃除代に上乗せされる" % (
+		"・".join(damaging)
+	)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 14)
 	layout.add_child(hint)
