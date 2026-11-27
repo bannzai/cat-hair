@@ -16,6 +16,10 @@ const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
 const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd")
 ## 状態管理 autoload スクリプト (買う物の種類の定数を使う)
 const GameStateScript := preload("res://scripts/state/game_state.gd")
+## 手に持って使う道具のルールの計算 (レベルの上限)
+const ToolRulesScript := preload("res://scripts/tools/tool_rules.gd")
+## 大型の道具 (アンドロイドが働く間隔)
+const BigToolSiteScript := preload("res://scripts/tools/big_tool_site.gd")
 ## 検証の部屋 1 つの毛の本数 (屋敷の既定 12,000 本を 4 部屋に分けた本数)
 const ROOM_HAIRS: int = 3000
 ## 検証の部屋 1 つの毛の付く表面の面積 (m2。既定の 6 m 四方の部屋の床)
@@ -47,6 +51,10 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_brush_needs_brush_and_speed()
 	suite._check_purchase_candidates()
 	suite._check_buys_at_exact_price()
+	suite._check_action_seconds()
+	suite._check_total_rate_parts()
+	suite._check_room_tool_cap()
+	suite._check_candidates_at_max_level()
 
 
 ## 手しか持たず、お金も在庫も無い屋敷の様子 (部屋 a・b。b の方がきれいさが低い)
@@ -80,7 +88,7 @@ static func _with_tool(snapshot: Dictionary, tool_id: StringName) -> Dictionary:
 	var after: Dictionary = snapshot.duplicate(true)
 	after["owned"][tool_id] = {
 		"level": 1,
-		"consumables": int(ToolCatalogScript.find_tool(tool_id)["initial_consumables"]),
+		"consumable_count": int(ToolCatalogScript.find_tool(tool_id)["initial_consumables"]),
 	}
 	return after
 
@@ -154,6 +162,13 @@ func _check_buys_affordable_best_purchase() -> void:
 		int(best.get("price", 0)) < truck_price,
 		"手しか持たない時に最初に選ぶ物 %s は、吸引車 (%d 円) より安い" % [str(best), truck_price]
 	)
+	# 期待値をテスト対象の計算で出し直さずに固定する: 手しか持たない 2 部屋 (毛 3,000 本・36 m2) では、
+	# 範囲が広く 1 回で触れる本数の多いガムテープ (300 円) の伸びが、ピンセット (250 円) と手の強化 (300 円) より大きい
+	_checker._check(
+		best.get("item_id") == ToolCatalogScript.TOOL_PACKING_TAPE
+		and best.get("purchase_kind") == GameStateScript.PURCHASE_TOOL,
+		"手しか持たない時に最初に選ぶ物はガムテープ (実際: %s)" % str(best)
+	)
 	var action: Dictionary = PolicyScript.choose_action(snapshot)
 	_checker._check(
 		action.get("kind") in [PolicyScript.ACTION_BUY, PolicyScript.ACTION_BUY_ROBOT]
@@ -223,7 +238,7 @@ func _check_refills_empty_tool() -> void:
 	var snapshot: Dictionary = _with_tool(
 		_with_tool(_base_snapshot(), ToolCatalogScript.TOOL_TWEEZERS), ToolCatalogScript.TOOL_VACUUM
 	)
-	snapshot["owned"][ToolCatalogScript.TOOL_VACUUM]["consumables"] = 0
+	snapshot["owned"][ToolCatalogScript.TOOL_VACUUM]["consumable_count"] = 0
 	var broke: Dictionary = PolicyScript.choose_action(snapshot)
 	_checker._check(
 		broke.get("kind") == PolicyScript.ACTION_CLEAN
@@ -414,4 +429,105 @@ func _check_buys_at_exact_price() -> void:
 		and action.get("item_id", &"") == best["item_id"],
 		"所持金が値段 %d 円ちょうどなら売らずに %s を買う (実際: %s)"
 		% [int(best["price"]), best["item_id"], str(action)]
+	)
+
+
+## 1 手にかける秒は手の種類で決まる: 手は狙う秒 + 引く秒、手に持つ道具は狙う秒 + かける秒、部屋ごとの道具・買う・
+## 売る・ブラシ・待つはそれぞれの見積もり (所要時間はこの秒の合計なので、取り違えると所要時間が変わる)
+func _check_action_seconds() -> void:
+	var expected: Array = [
+		[{"kind": PolicyScript.ACTION_CLEAN, "tool_id": ToolCatalogScript.TOOL_HAND}, 1.0 + 2.0],
+		[{"kind": PolicyScript.ACTION_CLEAN, "tool_id": ToolCatalogScript.TOOL_TWEEZERS}, 1.0 + 0.5],
+		[{"kind": PolicyScript.ACTION_CLEAN, "tool_id": ToolCatalogScript.TOOL_SUCTION_TRUCK}, 3.0],
+		[{"kind": PolicyScript.ACTION_CLEAN, "tool_id": ToolCatalogScript.TOOL_ADHESIVE_SHEET}, 3.0],
+		[{"kind": PolicyScript.ACTION_BUY}, 3.0],
+		[{"kind": PolicyScript.ACTION_BUY_ROBOT}, 3.0],
+		[{"kind": PolicyScript.ACTION_HAUL}, 3.0],
+		[{"kind": PolicyScript.ACTION_SELL}, 20.0],
+		[{"kind": PolicyScript.ACTION_BRUSH}, 4.0],
+		[{"kind": PolicyScript.ACTION_WAIT}, 1.0],
+	]
+	for pair: Array in expected:
+		var seconds: float = PolicyScript.action_seconds(pair[0], 2.0)
+		_checker._check(
+			is_equal_approx(seconds, float(pair[1])),
+			"1 手 %s の秒は %.1f 秒 (引く秒 2 秒。実際: %.2f 秒)" % [str(pair[0]), float(pair[1]), seconds]
+		)
+
+
+## 屋敷全体の速さは、ブラシを持ち休んでいない猫がいる時だけブラシの速さを数え、アンドロイドを持つと
+## 部屋の平均でかかる本数 ÷ 働く間隔を足す
+func _check_total_rate_parts() -> void:
+	var base: Dictionary = _base_snapshot()
+	var base_rate: float = PolicyScript.total_rate(base)
+	var brush_only: Dictionary = _with_tool(base, ToolCatalogScript.TOOL_BRUSH)
+	var cats_only: Dictionary = base.duplicate(true)
+	cats_only["ready_cat_ids"] = [&"cat_0"]
+	var both: Dictionary = brush_only.duplicate(true)
+	both["ready_cat_ids"] = [&"cat_0"]
+	_checker._check(
+		is_equal_approx(PolicyScript.total_rate(brush_only), base_rate)
+		and is_equal_approx(PolicyScript.total_rate(cats_only), base_rate)
+		and is_equal_approx(PolicyScript.total_rate(both), PolicyScript.brush_rate()),
+		"ブラシだけ・猫だけでは速さが変わらず、両方そろうと手 (%.2f) より速いブラシ (%.2f) の速さになる (実際: %.2f / %.2f / %.2f)"
+		% [
+			base_rate,
+			PolicyScript.brush_rate(),
+			PolicyScript.total_rate(brush_only),
+			PolicyScript.total_rate(cats_only),
+			PolicyScript.total_rate(both),
+		]
+	)
+	var android: Dictionary = _with_tool(base, ToolCatalogScript.TOOL_ANDROID)
+	for room: Dictionary in android["rooms"]:
+		room["covered"] = {ToolCatalogScript.TOOL_ANDROID: {"hairs": 20, "surfaces": 2}}
+	_checker._check(
+		is_equal_approx(
+			PolicyScript.total_rate(android) - base_rate,
+			20.0 / BigToolSiteScript.ANDROID_INTERVAL_SECONDS
+		),
+		"アンドロイドは部屋の平均でかかる 20 本 (上限 30 本 × 2 面より少ない) ÷ %.0f 秒の速さを足す (実際: %.3f)"
+		% [BigToolSiteScript.ANDROID_INTERVAL_SECONDS, PolicyScript.total_rate(android) - base_rate]
+	)
+
+
+## 部屋ごとにかける道具の本数は、かかる表面の毛の本数と「1 回の上限 × かかる表面の数」の小さい方で、
+## かかる表面が無ければ 0
+func _check_room_tool_cap() -> void:
+	var sheet: StringName = ToolCatalogScript.TOOL_ADHESIVE_SHEET
+	var snapshot: Dictionary = _with_tool(_base_snapshot(), sheet)
+	var max_hairs: float = float(ToolCatalogScript.find_tool(sheet)["max_hairs"])
+	var rates: Array[float] = []
+	for covered: Dictionary in [
+		{"hairs": ROOM_HAIRS, "surfaces": 1},
+		{"hairs": 10, "surfaces": 1},
+		{"hairs": ROOM_HAIRS, "surfaces": 0},
+	]:
+		var room: Dictionary = _room(&"c", 0.0)
+		room["covered"] = {sheet: covered}
+		rates.append(PolicyScript.tool_rate(snapshot, sheet, room))
+	var per_hair: float = rates[1] / 10.0
+	_checker._check(
+		is_equal_approx(rates[0], per_hair * max_hairs) and rates[2] == 0.0 and per_hair > 0.0,
+		"粘着シートの本数は毛 3000 本・1 面なら上限 %.0f 本、毛 10 本なら 10 本、0 面なら 0 本 (実際の速さ: %s)"
+		% [max_hairs, str(rates)]
+	)
+
+
+## レベルの上限まで上げた道具と、上限の段まで上げた手の強化は、買う物の候補から外れる
+func _check_candidates_at_max_level() -> void:
+	var snapshot: Dictionary = _with_tool(_base_snapshot(), ToolCatalogScript.TOOL_TWEEZERS)
+	snapshot["owned"][ToolCatalogScript.TOOL_TWEEZERS]["level"] = ToolRulesScript.MAX_TOOL_LEVEL
+	snapshot["hand_levels"][HandRulesScript.UPGRADE_DEXTERITY] = (
+		ToolRulesScript.MAX_HAND_UPGRADE_LEVEL
+	)
+	var items: Array = []
+	for candidate: Dictionary in PolicyScript.purchase_candidates(snapshot):
+		items.append(candidate["item_id"])
+	_checker._check(
+		not items.has(ToolCatalogScript.TOOL_TWEEZERS)
+		and not items.has(HandRulesScript.UPGRADE_DEXTERITY)
+		and items.has(HandRulesScript.UPGRADE_GRAB_COUNT),
+		"レベル上限のピンセットと上限の段の器用さは候補に無く、上限でない一度につまめる本数は残る (実際: %s)"
+		% str(items)
 	)

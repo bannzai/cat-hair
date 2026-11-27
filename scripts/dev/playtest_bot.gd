@@ -112,7 +112,7 @@ func snapshot() -> Dictionary:
 	for tool: OwnedTool in progress.owned_tools:
 		if tool == null or tool.tool_id == RobotRulesScript.ROBOT_TOOL_ID:
 			continue
-		owned[tool.tool_id] = {"level": tool.level, "consumables": tool.consumable_count}
+		owned[tool.tool_id] = {"level": tool.level, "consumable_count": tool.consumable_count}
 	var area_by_room: Dictionary = {}
 	var covered_by_room: Dictionary = {}
 	for surface: MansionLayout.SurfaceDef in layout.surfaces:
@@ -289,6 +289,8 @@ static func _reach_radius(tool_id: StringName) -> float:
 ## (道具の範囲に入る本数が多い所の近似。毛が無ければ表面の 0 番目の毛の点)
 func _densest_point(surface_index: int, radius: float) -> Vector3:
 	var hair_field: Node3D = _main.mansion_world.get_hair_field()
+	# 升目の一辺の下限 1 cm。半径 0 の道具で 0 で割らないための値で、
+	# いちばん小さい手のつまむ範囲 (直径 16 cm) より十分小さい
 	var cell_size: float = maxf(0.01, radius * 2.0)
 	var points_by_cell: Dictionary = {}
 	var best_cell: Vector3i = Vector3i.ZERO

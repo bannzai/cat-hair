@@ -7,7 +7,7 @@ extends RefCounted
 ##
 ## ゲームの様子 (snapshot) の形 (playtest_bot.gd が作る):
 ## {"money": 所持金, "stock_value": 在庫をすべて売った時の額,
-##  "owned": {持っている道具の id -> {"level", "consumables"}},
+##  "owned": {持っている道具の id -> {"level", "consumable_count"}},
 ##  "hand_levels": {HandRules.UPGRADE_* -> 段}, "robots": 掃除ロボットの台数,
 ##  "rooms": [{"room_id", "hair_count": 残り, "cleanliness": きれいさ, "mood": 機嫌, "area_m2": 毛の付く表面の面積,
 ##    "covered": {ROOM_TOOL_IDS の id -> {"hairs": 道具がかかる表面の毛の本数, "surfaces": かかる表面の数}}}],
@@ -112,7 +112,7 @@ static func choose_action(snapshot: Dictionary) -> Dictionary:
 	):
 		return {"kind": ACTION_BRUSH, "cat_id": cats[0]}
 	if not ToolRulesScript.can_use(
-		tool_id, int(_owned_entry(snapshot, tool_id).get("consumables", 0))
+		tool_id, int(_owned_entry(snapshot, tool_id).get("consumable_count", 0))
 	):
 		return {
 			"kind": ACTION_BUY,
@@ -168,13 +168,13 @@ static func best_purchase(snapshot: Dictionary) -> Dictionary:
 		return best
 	for tool_id: StringName in AFTER_CLEANING_TOOL_IDS:
 		if not _owns(snapshot, tool_id):
-			var after: Dictionary = _candidate(
+			var candidate: Dictionary = _candidate(
 				GameStateScript.PURCHASE_TOOL,
 				tool_id,
 				int(ToolCatalogScript.find_tool(tool_id)["price"])
 			)
-			after["gain"] = 0.0
-			return after
+			candidate["gain"] = 0.0
+			return candidate
 	return {}
 
 
@@ -224,7 +224,7 @@ static func apply_purchase(snapshot: Dictionary, candidate: Dictionary) -> Dicti
 		GameStateScript.PURCHASE_TOOL:
 			after["owned"][item_id] = {
 				"level": 1,
-				"consumables": int(ToolCatalogScript.find_tool(item_id)["initial_consumables"]),
+				"consumable_count": int(ToolCatalogScript.find_tool(item_id)["initial_consumables"]),
 			}
 		GameStateScript.PURCHASE_LEVEL_UP:
 			after["owned"][item_id]["level"] = int(after["owned"][item_id]["level"]) + 1
@@ -303,7 +303,7 @@ static func best_cleaning_tool(snapshot: Dictionary, room: Dictionary) -> String
 		if (
 			tool_id != ToolCatalogScript.TOOL_HAND
 			and not ToolRulesScript.can_use(
-				tool_id, int(_owned_entry(snapshot, tool_id).get("consumables", 0))
+				tool_id, int(_owned_entry(snapshot, tool_id).get("consumable_count", 0))
 			)
 			and int(snapshot["money"]) < int(ToolCatalogScript.find_tool(tool_id)["refill_price"])
 		):
@@ -331,8 +331,9 @@ static func tool_rate(snapshot: Dictionary, tool_id: StringName, room: Dictionar
 	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
 	if tool_def.is_empty():
 		return 0.0
-	var level: int = int(_owned_entry(snapshot, tool_id).get("level", 1))
-	var taken_ratio: float = 1.0 - ToolRulesScript.miss_ratio(tool_id, level, ESTIMATE_SURFACE)
+	var taken_ratio: float = 1.0 - ToolRulesScript.miss_ratio(
+		tool_id, int(_owned_entry(snapshot, tool_id).get("level", 1)), ESTIMATE_SURFACE
+	)
 	if tool_def["kind"] == ToolCatalogScript.KIND_SWEEP:
 		var radius: float = float(tool_def["radius_m"])
 		return (
@@ -367,8 +368,9 @@ static func brush_rate() -> float:
 static func action_seconds(action: Dictionary, pull_seconds: float) -> float:
 	match action["kind"]:
 		ACTION_CLEAN:
-			var tool_def: Dictionary = ToolCatalogScript.find_tool(action["tool_id"])
-			match tool_def.get("kind", ToolCatalogScript.KIND_HAND):
+			match ToolCatalogScript.find_tool(action["tool_id"]).get(
+				"kind", ToolCatalogScript.KIND_HAND
+			):
 				ToolCatalogScript.KIND_HAND:
 					return AIM_SECONDS + pull_seconds
 				ToolCatalogScript.KIND_SWEEP:
