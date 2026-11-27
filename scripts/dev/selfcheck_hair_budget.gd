@@ -122,10 +122,10 @@ func _check_remove_refills_until_buried_runs_out() -> void:
 		"1 本ずつ 100 本消すと残り本数は 1 本ずつ減り、描いている本数は埋もれた毛が尽きるまで 10 本のまま、最後は 0 本",
 	)
 	field.free()
+
+
 ## 上限に達した面に猫が落とした毛は落とした所に描き、描いていた別の 1 本を埋もれた毛へ戻すか。毛の無い面には描くか。
 ## 埋もれた毛からは系統ごとに取れるか
-
-## 上限に達した面に猫が落とした毛は埋もれた毛に数え、毛の無い面には描き、埋もれた毛からは系統ごとに取れるか
 func _check_add_and_remove_buried() -> void:
 	var field: Node3D = _make_field()
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()

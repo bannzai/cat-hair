@@ -324,17 +324,22 @@ func _verify_android_releases_pull(main: Node3D) -> void:
 			var hair_id: int = hair_field.get_hair_id_at_slot(surface_index, slot)
 			pulling.append(hair_id)
 	main.hand._pulling_ids = pulling
+	var field_before: int = hair_field.get_remaining_count()
 	var cleaned: Dictionary = main.big_tools.step_android()
 	var kept: int = 0
 	for hair_id: int in pulling:
 		if hair_field.has_hair(hair_id):
 			kept += 1
+	# アンドロイドは描いている毛 (引いている毛) に加えて埋もれた毛からも取るため、引いている毛から消えた本数は
+	# 取った本数以下になる。取った本数そのものは HairField の残りの減りと比べる
 	_check(
 		int(cleaned.get("removed", 0)) > 0
-		and kept == pulling.size() - int(cleaned.get("removed", 0))
+		and kept < pulling.size()
+		and pulling.size() - kept <= int(cleaned.get("removed", 0))
+		and field_before - hair_field.get_remaining_count() == int(cleaned.get("removed", 0))
 		and not main.hand.is_pulling(),
-		"引いている毛の一部 (%d 本) をアンドロイドが取ると、手は引くのをやめ、残りの %d 本は消えずに残る"
-		% [int(cleaned.get("removed", 0)), kept],
+		"引いている毛の一部 (%d 本) をアンドロイドが取ると (取った本数 %d)、手は引くのをやめ、残りの %d 本は消えずに残る"
+		% [pulling.size() - kept, int(cleaned.get("removed", 0)), kept],
 	)
 
 
