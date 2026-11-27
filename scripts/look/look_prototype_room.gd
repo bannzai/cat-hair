@@ -222,6 +222,16 @@ func get_material_for_kind(kind: StringName) -> StandardMaterial3D:
 	return _materials.get(kind, null)
 
 
+## レイアウト layout の部屋のうち、world_position を床の範囲に含む最初の部屋を返す (どの部屋にも無い時と layout が null の時は null)
+static func room_at(layout: MansionLayout, world_position: Vector3) -> MansionLayout.RoomDef:
+	if layout == null:
+		return null
+	for room: MansionLayout.RoomDef in layout.rooms:
+		if is_inside_room(room, world_position):
+			return room
+	return null
+
+
 ## 位置が部屋の床の範囲 (壁の内側。高さは問わない) の中か
 static func is_inside_room(room: MansionLayout.RoomDef, world_position: Vector3) -> bool:
 	return (

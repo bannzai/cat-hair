@@ -20,6 +20,8 @@ const HandAim := preload("res://scripts/dev/hand_aim.gd")
 const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## 手に持って使う道具の定義
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
+## 大型の道具の撮影
+const ScreenshotBigTools := preload("res://scripts/dev/screenshot_big_tools.gd")
 ## 撮影で、見たい所との間に家具を挟まずに立つ所を選ぶ手順
 const ViewPointScript := preload("res://scripts/dev/view_point.gd")
 ## 掃除ロボットの部屋の探し方 (猫がいる部屋を引く)
@@ -243,14 +245,22 @@ func _capture_mansion_scenes(main: Node3D) -> String:
 	main.close_hair_book()
 	if not book_ok:
 		return "図鑑を保存できない"
+	var tool_error: String = await _capture_tool_scenes(main)
+	if not tool_error.is_empty():
+		return tool_error
+	main.open_dev_panel()
+	return "" if await _capture("tmp/screenshot-dev-panel.png") else "開発者向け調整画面を保存できない"
+
+
+## 道具 (手に持つ道具)・猫と掃除ロボット・大型の道具の場面を順に撮る。撮れたら空文字、失敗したら最初の失敗の理由を返す
+func _capture_tool_scenes(main: Node3D) -> String:
 	var tool_error: String = await _capture_tools(main)
 	if not tool_error.is_empty():
 		return tool_error
 	var automation_error: String = await _capture_automation(main)
 	if not automation_error.is_empty():
 		return automation_error
-	main.open_dev_panel()
-	return "" if await _capture("tmp/screenshot-dev-panel.png") else "開発者向け調整画面を保存できない"
+	return await ScreenshotBigTools.capture_all(self, main)
 
 
 ## 床の毛を狙って引いている途中 (伸びた毛と閉じかけた手) と、抜いた直後 (「+1 本」) を撮る。
@@ -277,10 +287,10 @@ func _capture_pluck(main: Node3D) -> String:
 func _capture_tools(main: Node3D) -> String:
 	var game_state: Node = main.get_game_state()
 	var roller: StringName = ToolCatalogScript.TOOL_LINT_ROLLER
-	# 8 つの道具を全部持った時の右下の道具の枠の並びも同じ 1 枚で確かめる。
+	# 手に持つ 8 つの道具を全部持った時の右下の道具の枠の並びも同じ 1 枚で確かめる (大型の道具は後で撮る)。
 	# 所持金は 7 つの道具の値段の合計 (940 円) を足りる額で、HUD に 5 桁の所持金が出る見え方も撮れる額にする
 	game_state.save_data.building_progress.money = 100000
-	for tool_def: Dictionary in ToolCatalogScript.TOOLS:
+	for tool_def: Dictionary in ToolCatalogScript.hand_held_tools():
 		if tool_def["id"] != ToolCatalogScript.TOOL_HAND:
 			game_state.purchase(GameStateScript.PURCHASE_TOOL, tool_def["id"])
 	if game_state.find_owned_tool(roller) == null:

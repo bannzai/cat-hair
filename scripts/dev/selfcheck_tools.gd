@@ -7,6 +7,8 @@ extends RefCounted
 const ToolCatalogScript := preload("res://scripts/tools/tool_catalog.gd")
 ## 手に持って使う道具のルールの計算
 const ToolRulesScript := preload("res://scripts/tools/tool_rules.gd")
+## 加工した物を含む在庫の売値の計算
+const ProcessingRulesScript := preload("res://scripts/economy/processing_rules.gd")
 ## 毛を売る・掃除代・機嫌の計算
 const EconomyRulesScript := preload("res://scripts/economy/economy_rules.gd")
 ## 手で毛を取る時のルールの計算 (珍しい毛・手の強化の id)
@@ -61,15 +63,15 @@ func _check(cond: bool, label: String) -> void:
 	_checker._check(cond, label)
 
 
-## 道具が手を含めて 8 つあり、id が重ならず、消耗品と探し物を傷める道具が想定どおりか
+## 道具が手を含めて 13 (手に持つ 8 つと大型の 5 つ) あり、id が重ならず、消耗品と探し物を傷める道具が想定どおりか
 func _check_tool_catalog() -> void:
 	var ids: Array[StringName] = ToolCatalogScript.all_tool_ids()
 	var unique: Dictionary = {}
 	for tool_id: StringName in ids:
 		unique[tool_id] = true
 	_check(
-		ids.size() == 8 and unique.size() == 8 and ids[0] == ToolCatalogScript.TOOL_HAND,
-		"道具は手を先頭に 8 つで id が重ならない (実際: %s)" % str(ids),
+		ids.size() == 13 and unique.size() == 13 and ids[0] == ToolCatalogScript.TOOL_HAND,
+		"道具は手を先頭に 13 (手に持つ 8 つと大型の 5 つ) で id が重ならない (実際: %s)" % str(ids),
 	)
 	var consumable_tools: Array[StringName] = []
 	var damaging_tools: Array[StringName] = []
@@ -79,8 +81,12 @@ func _check_tool_catalog() -> void:
 		if bool(tool_def["damages_found_items"]):
 			damaging_tools.append(tool_def["id"])
 	_check(
-		consumable_tools == [ToolCatalogScript.TOOL_LINT_ROLLER],
-		"消耗品を使う道具は粘着ローラーだけ (実際: %s)" % str(consumable_tools),
+		consumable_tools == [
+			ToolCatalogScript.TOOL_LINT_ROLLER,
+			ToolCatalogScript.TOOL_VACUUM,
+			ToolCatalogScript.TOOL_ADHESIVE_SHEET,
+		],
+		"消耗品を使う道具は粘着ローラー・掃除機 (パック)・建物を覆う粘着シートだけ (実際: %s)" % str(consumable_tools),
 	)
 	_check(
 		damaging_tools.has(ToolCatalogScript.TOOL_PACKING_TAPE)
@@ -244,19 +250,19 @@ func _check_hair_prices() -> void:
 		"珍しい毛は種類の値段 (金色 300 円・ひげ 100 円) で、表に無い種類は色の値段",
 	)
 	var stocks: Array[HairStock] = [
-		_make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_RAW, 10),
-		_make_stock(SurfaceHairScript.COLOR_CALICO, &"", HairStockScript.FORM_RAW, 3),
-		_make_stock(
+		make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_RAW, 10),
+		make_stock(SurfaceHairScript.COLOR_CALICO, &"", HairStockScript.FORM_RAW, 3),
+		make_stock(
 			SurfaceHairScript.COLOR_BLACK, HandRulesScript.RARE_WHISKER, HairStockScript.FORM_RAW, 1
 		),
-		_make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_FELT, 50),
-		_make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_RAW, -4),
+		make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_FELT, 50),
+		make_stock(SurfaceHairScript.COLOR_WHITE, &"", HairStockScript.FORM_RAW, -4),
 		null,
 	]
 	_check(
-		EconomyRulesScript.raw_stock_value(stocks) == 10 + 6 + 100,
-		"在庫を売った額は毛のままの物だけ (加工品・負の本数・空の行は 0 円) を数える (実際: %d)"
-		% EconomyRulesScript.raw_stock_value(stocks),
+		ProcessingRulesScript.stock_value(stocks) == 10 + 6 + 100 + 50 * 200,
+		"在庫を売った額は毛のままの物と加工品 (白のフェルト 1 枚 200 円) を数え、負の本数・空の行は 0 円 (実際: %d)"
+		% ProcessingRulesScript.stock_value(stocks),
 	)
 
 
@@ -421,7 +427,7 @@ func _check_game_state_tool_sweep_and_sell() -> void:
 	var color_id: StringName = _first_color(surface)
 	var before_color: int = surface.count_for_color(color_id)
 	_check(
-		state.apply_tool_sweep(roller, surface.surface_id, {color_id: 1}) == -1
+		state.apply_tool_sweep(roller, {surface.surface_id: {color_id: 1}}) == -1
 		and surface.count_for_color(color_id) == before_color,
 		"持っていない道具はかけられず、毛が減らない",
 	)
@@ -431,24 +437,24 @@ func _check_game_state_tool_sweep_and_sell() -> void:
 	var notified: Array[int] = [0]
 	state.state_changed.connect(func() -> void: notified[0] += 1)
 	_check(
-		state.apply_tool_sweep(roller, &"no_such_surface", {color_id: 1}) == -1
+		state.apply_tool_sweep(roller, {&"no_such_surface": {color_id: 1}}) == -1
 		and owned.consumable_count == 20 and notified[0] == 0,
 		"無い面にはかけられず、紙も減らず、知らせない",
 	)
 	_check(
-		state.apply_tool_sweep(roller, surface.surface_id, {}) == 0
+		state.apply_tool_sweep(roller, {surface.surface_id: {}}) == 0
 		and owned.consumable_count == 19 and notified[0] == 1,
 		"範囲に毛が無くても粘着ローラーをかけると紙を 1 枚使い、1 回知らせる",
 	)
 	owned.consumable_count = 20
-	var removed: int = state.apply_tool_sweep(roller, surface.surface_id, {color_id: 2})
+	var removed: int = state.apply_tool_sweep(roller, {surface.surface_id: {color_id: 2}})
 	_check(
 		removed == 2 and surface.count_for_color(color_id) == before_color - 2
 		and state.get_raw_hair_stock_count() == 2 and owned.consumable_count == 19
 		and state.get_found_rare_hair_ids().is_empty() and notified[0] == 2,
 		"粘着ローラーで 2 本取ると面が 2 減り、在庫に 2 本入り、紙を 1 枚使い、図鑑は変わらない",
 	)
-	var huge: int = state.apply_tool_sweep(roller, surface.surface_id, {color_id: 1000000})
+	var huge: int = state.apply_tool_sweep(roller, {surface.surface_id: {color_id: 1000000}})
 	_check(
 		huge == before_color - 2 and surface.count_for_color(color_id) == 0,
 		"面に残っている本数より多くは取れない (実際: %d 本)" % huge,
@@ -456,7 +462,7 @@ func _check_game_state_tool_sweep_and_sell() -> void:
 	owned.consumable_count = 0
 	var stock_before: int = state.get_raw_hair_stock_count()
 	_check(
-		state.apply_tool_sweep(roller, surface.surface_id, {color_id: 1}) == -1
+		state.apply_tool_sweep(roller, {surface.surface_id: {color_id: 1}}) == -1
 		and owned.consumable_count == 0 and state.get_raw_hair_stock_count() == stock_before,
 		"紙が 0 枚の粘着ローラーはかけられず、紙・在庫が変わらない",
 	)
@@ -465,22 +471,25 @@ func _check_game_state_tool_sweep_and_sell() -> void:
 		_first_color(state.save_data.building_progress.surface_hairs[1]),
 		HandRulesScript.RARE_GOLDEN,
 	)
-	var felt: HairStock = _make_stock(color_id, &"", HairStockScript.FORM_FELT, 5)
+	var felt: HairStock = make_stock(color_id, &"", HairStockScript.FORM_FELT, 5)
 	state.save_data.building_progress.hair_stocks.append(felt)
-	var expected: int = EconomyRulesScript.raw_stock_value(
+	var expected: int = ProcessingRulesScript.stock_value(
 		state.save_data.building_progress.hair_stocks
 	)
-	var earned: int = state.sell_raw_hairs()
+	var earned: int = state.sell_hair_stocks()
 	_check(
-		earned == expected and earned >= stock_before + 300 and state.get_money() == earned
+		earned == expected
+		and earned >= stock_before + 300 + 5 * ProcessingRulesScript.unit_price(
+			HairStockScript.FORM_FELT, color_id, &""
+		)
+		and state.get_money() == earned
 		and state.get_raw_hair_stock_count() == 0
-		and state.save_data.building_progress.hair_stocks.size() == 1
-		and state.save_data.building_progress.hair_stocks[0] == felt and felt.count == 5,
-		"毛を売ると毛のままの物 (珍しい毛 300 円を含む) だけが無くなって加工品は残り、売値の合計だけお金が増える (%d 円)"
+		and state.save_data.building_progress.hair_stocks.is_empty(),
+		"売ると毛のままの物 (珍しい毛 300 円を含む) と加工品 (フェルト 5 枚) が無くなり、売値の合計だけお金が増える (%d 円)"
 		% earned,
 	)
 	_check(
-		state.sell_raw_hairs() == 0 and state.get_money() == earned,
+		state.sell_hair_stocks() == 0 and state.get_money() == earned,
 		"売る毛が無い時はお金が変わらない",
 	)
 	var tweezers: StringName = ToolCatalogScript.TOOL_TWEEZERS
@@ -488,12 +497,12 @@ func _check_game_state_tool_sweep_and_sell() -> void:
 	var other: SurfaceHair = state.save_data.building_progress.surface_hairs[1]
 	var notified_before_tweezers: int = notified[0]
 	_check(
-		state.apply_tool_sweep(tweezers, other.surface_id, {}) == 0
+		state.apply_tool_sweep(tweezers, {other.surface_id: {}}) == 0
 		and notified[0] == notified_before_tweezers,
 		"消耗品を使わない道具 (ピンセット) で 1 本も取れない時は、何も変わらず知らせない",
 	)
 	_check(
-		state.apply_tool_sweep(tweezers, other.surface_id, {_first_color(other): 1}) == 1
+		state.apply_tool_sweep(tweezers, {other.surface_id: {_first_color(other): 1}}) == 1
 		and notified[0] == notified_before_tweezers + 1,
 		"消耗品を使わない道具でも、毛が取れた時は 1 回知らせる",
 	)
@@ -586,9 +595,10 @@ func _check_game_state_advance_time() -> void:
 	_check(
 		unloaded.advance_time(100.0) == 0
 		and not unloaded.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_TWEEZERS)
-		and unloaded.sell_raw_hairs() == 0
-		and unloaded.apply_tool_sweep(ToolCatalogScript.TOOL_TWEEZERS, &"any", {}) == -1,
-		"保存データを読む前の GameState では時間・買う・売る・道具をかける入口が何も変えない",
+		and unloaded.sell_hair_stocks() == 0
+		and int(unloaded.haul_with_dump_truck()["earned"]) == 0
+		and unloaded.apply_tool_sweep(ToolCatalogScript.TOOL_TWEEZERS, {&"any": {}}) == -1,
+		"保存データを読む前の GameState では時間・買う・売る・運び出す・道具をかける入口が何も変えない",
 	)
 	unloaded.free()
 
@@ -684,7 +694,7 @@ func _check_tool_shop_limits(state: Node, panel: PanelContainer) -> void:
 		and panel.get_tool_button(ToolCatalogScript.TOOL_LINT_ROLLER).disabled,
 		"上限の段の手の強化と上限のレベルの道具は、お金があっても押せず「上限」と出る",
 	)
-	state.sell_raw_hairs()
+	state.sell_hair_stocks()
 	panel.refresh(state, true)
 	_check(
 		panel.get_sell_button().disabled,
@@ -692,8 +702,8 @@ func _check_tool_shop_limits(state: Node, panel: PanelContainer) -> void:
 	)
 
 
-## 在庫 1 件を作る
-func _make_stock(
+## 在庫 1 件を作る (大型の道具の検証 scripts/dev/selfcheck_big_tools.gd も使う)
+static func make_stock(
 	color_id: StringName, rare_id: StringName, form: StringName, count: int
 ) -> HairStock:
 	var stock: HairStock = HairStockScript.new()
