@@ -119,9 +119,9 @@ func _check_room_tool_miss_ratio() -> void:
 	_check(
 		ToolRulesScript.miss_ratio(truck, 2, MansionLayoutScript.SURFACE_FLOOR)
 		< ToolRulesScript.miss_ratio(truck, 1, MansionLayoutScript.SURFACE_FLOOR)
-		and ToolRulesScript.level_up_price(truck, 1) == 15000
+		and ToolRulesScript.level_up_price(truck, 1) == int(ToolCatalogScript.find_tool(truck)["price"])
 		and ToolRulesScript.level_up_price(ToolCatalogScript.TOOL_HAIR_PROCESSOR, 1) == -1,
-		"吸引車もレベルを上げると取りこぼしが減り (1→2 は買う値段と同じ 15000 円)、加工機にはレベルが無い",
+		"吸引車もレベルを上げると取りこぼしが減り (1→2 は買う値段と同じ)、加工機にはレベルが無い",
 	)
 	_check(
 		ToolRulesScript.miss_ratio(truck, 1, MansionLayoutScript.SURFACE_FLOOR)
@@ -779,7 +779,7 @@ func _check_vacuum_pack_in_game_state() -> void:
 	var progress: BuildingProgress = state.save_data.building_progress
 	var vacuum: StringName = ToolCatalogScript.TOOL_VACUUM
 	var exchange: StringName = GameStateScript.PURCHASE_ANDROID_PACK_EXCHANGE
-	progress.money = 2000
+	progress.money = int(ToolCatalogScript.find_tool(vacuum)["price"])
 	state.purchase(GameStateScript.PURCHASE_TOOL, vacuum)
 	var owned: OwnedTool = state.find_owned_tool(vacuum)
 	var surface: SurfaceHair = null
