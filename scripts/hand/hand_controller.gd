@@ -111,7 +111,7 @@ func _process(delta: float) -> void:
 			release_pull()
 			if pressed and pulled_hair_remains:
 				pull_failed.emit(REASON_OUT_OF_REACH)
-			elif not pressed and enabled and captured:
+			elif not pressed and enabled and captured and pulled_hair_remains:
 				pull_failed.emit(REASON_RELEASED)
 	elif pressed and not _was_pressed and _was_captured:
 		if not begin_pull():
