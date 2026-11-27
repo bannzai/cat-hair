@@ -283,10 +283,10 @@ func _record_tool_result(result: Dictionary) -> void:
 		_empty_results[message] = int(_empty_results.get(message, 0)) + 1
 
 
-## 部屋 room_id の表面のうち、道具 tool_id で取れる見込みの本数 (残り × 取りこぼさない割合) がいちばん多い表面の
-## 1 本の根元を狙う点 ({"surface_index", "point"}) にする。取れる見込みのある表面が無ければ空。
-## 道具は表面の種類で取りこぼしの割合が違い (ピンセットはカーペットの毛を取れない等。ToolRules.miss_ratio)、
-## 残りの本数だけで選ぶと取れない表面を狙い続けるため
+## 部屋 room_id の表面のうち、道具 tool_id で取れる見込みの本数 (残り × 取りこぼさない割合) がいちばん多い表面で、
+## 毛がいちばん集まっている所を狙う点 ({"surface_index", "point"}) にする。取れる見込みのある表面が無ければ空。
+## 道具は表面の種類で取りこぼしの割合が違い (ToolRules.miss_ratio)、残りの本数だけで選ぶと取りにくい表面を狙い続ける。
+## また道具は範囲の最後の 1 本を残す (ToolRules.touchable_count) ため、毛のまばらな所を狙うと 1 本も取れない
 func _hair_target(room_id: StringName, tool_id: StringName) -> Dictionary:
 	var world: MansionWorld = _main.mansion_world
 	var hair_field: Node3D = world.get_hair_field()
@@ -305,8 +305,38 @@ func _hair_target(room_id: StringName, tool_id: StringName) -> Dictionary:
 			best_index = surface_index
 	if best_index < 0:
 		return {}
-	var hair_id: int = hair_field.get_hair_id_at_slot(best_index, 0)
-	return {"surface_index": best_index, "point": hair_field.get_hair_transform(hair_id).origin}
+	return {"surface_index": best_index, "point": _densest_point(best_index, _reach_radius(tool_id))}
+
+
+## 道具 tool_id が 1 回で毛に届く半径 (m。手はつまむ半径)
+static func _reach_radius(tool_id: StringName) -> float:
+	if tool_id == ToolCatalogScript.TOOL_HAND:
+		return HandController.GRAB_RADIUS_M
+	return float(ToolCatalogScript.find_tool(tool_id)["radius_m"])
+
+
+## 表面 surface_index の毛を一辺 radius × 2 の升目に分け、いちばん多く入った升目の毛の根元の平均の点を返す
+## (道具の範囲に入る本数が多い所の近似。毛が無ければ表面の 0 番目の毛の点)
+func _densest_point(surface_index: int, radius: float) -> Vector3:
+	var hair_field: Node3D = _main.mansion_world.get_hair_field()
+	var cell_size: float = maxf(0.01, radius * 2.0)
+	var sums: Dictionary = {}
+	var counts: Dictionary = {}
+	var best_cell: Vector3i = Vector3i.ZERO
+	var best_count: int = 0
+	for slot: int in range(hair_field.get_surface_remaining_count(surface_index)):
+		var point: Vector3 = hair_field.get_hair_transform(
+			hair_field.get_hair_id_at_slot(surface_index, slot)
+		).origin
+		var cell: Vector3i = Vector3i((point / cell_size).floor())
+		sums[cell] = (sums.get(cell, Vector3.ZERO) as Vector3) + point
+		counts[cell] = int(counts.get(cell, 0)) + 1
+		if int(counts[cell]) > best_count:
+			best_count = int(counts[cell])
+			best_cell = cell
+	if best_count <= 0:
+		return hair_field.get_hair_transform(hair_field.get_hair_id_at_slot(surface_index, 0)).origin
+	return (sums[best_cell] as Vector3) / float(best_count)
 
 
 ## 掃除ロボットを 1 台買い、きれいさがいちばん低い部屋から全部屋を順に回らせる
