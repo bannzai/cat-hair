@@ -570,6 +570,7 @@ func _check_world_hairs_match_progress() -> void:
 		_floor_hairs_clear_of_objects(layout, hair_field),
 		"床とカーペットの毛が同じ部屋のほかの物の真下に置かれない",
 	)
+	_check_entrance_floor_coverage(layout, hair_field)
 	var first_hair: int = hair_field.get_hair_id_at_slot(0, 0)
 	_check(
 		world.get_hair_color_id(first_hair)
@@ -598,6 +599,34 @@ func _check_world_hairs_match_progress() -> void:
 	world.free()
 
 
+## 部屋全幅で分けた床の 4×4 区画を、実際に描いている根元が覆い、家具への密集が解消されているか
+func _check_entrance_floor_coverage(layout: MansionLayout, field: Node3D) -> void:
+	var room: MansionLayout.RoomDef = layout.rooms[0]
+	var occupied: Dictionary = {}
+	var floor_count: int = 0
+	var object_count: int = 0
+	for index: int in range(layout.surfaces.size()):
+		var surface: MansionLayout.SurfaceDef = layout.surfaces[index]
+		if surface.room_id != room.room_id:
+			continue
+		var count: int = field.get_surface_visible_instance_count(index)
+		if surface.surface_type != MansionLayoutScript.SURFACE_FLOOR:
+			object_count += count
+			continue
+		floor_count += count
+		for slot: int in range(count):
+			var id: int = field.get_hair_id_at_slot(index, slot)
+			var point: Vector3 = field.get_hair_transform(id).origin - room.center
+			var cell: Vector2i = Vector2i(
+				floori((point.x / room.size.x + 0.5) * 4),
+				floori((point.z / room.size.z + 0.5) * 4),
+			)
+			if Rect2i(0, 0, 4, 4).has_point(cell):
+				occupied[cell] = true
+	_check(occupied.size() == 16, "玄関の床の 16 区画すべてに描画される毛がある (%d/16)" % occupied.size())
+	_check(floor_count > object_count, "玄関では家具に集中せず床に半数以上の毛が散っている")
+
+
 ## 床とカーペットの表面の毛の根元が、同じ部屋のほかの物の床の占有範囲の内側に 1 本も無いか
 func _floor_hairs_clear_of_objects(layout: MansionLayout, hair_field: Node3D) -> bool:
 	for surface_idx: int in range(layout.surfaces.size()):
@@ -610,7 +639,7 @@ func _floor_hairs_clear_of_objects(layout: MansionLayout, hair_field: Node3D) ->
 			).origin
 			for obj: MansionLayout.ObjectDef in layout.objects:
 				if (
-					obj.room_id != surface.room_id
+					obj.room_id != surface.room_id or obj.wall_mounted
 					or MansionBuilderScript.object_surface_id(obj.object_id) == surface.surface_id
 				):
 					continue
@@ -637,7 +666,7 @@ func _check_stretched_hair_transform() -> void:
 		and is_equal_approx(at_one.basis.z.length(), HandControllerScript.MAX_STRETCH_RATIO)
 		and is_equal_approx(at_one.basis.x.length(), HandControllerScript.PULL_WIDTH_RATIO)
 		and at_one.basis.z.normalized().dot(Vector3.UP) > 0.9,
-		"引き終える時は根元を保ったまま、長さ 2.2 倍・幅 3 倍で法線 (上) へ起きる",
+		"引き終える時は根元を保ったまま、長く・太くなり法線 (上) へ起きる",
 	)
 	var over: Transform3D = HandControllerScript.stretched_hair_transform(rest, Vector3.UP, 5.0)
 	_check(over.is_equal_approx(at_one), "進み具合が 1 を超えても 1 と同じ見た目")

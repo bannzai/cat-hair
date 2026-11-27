@@ -174,7 +174,7 @@ func _verify_buy_use_and_sell(main: Node3D, game_state: Node) -> void:
 		result["surface_index"],
 		result["point"],
 		float(ToolCatalogScript.find_tool(roller)["radius_m"]),
-		int(ToolCatalogScript.find_tool(roller)["max_hairs"])
+		hair_field.get_surface_visible_instance_count(result["surface_index"]),
 	)
 	_check(
 		near_after.size() >= int(result["missed"]),

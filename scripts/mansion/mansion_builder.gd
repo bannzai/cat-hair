@@ -16,6 +16,8 @@ const FoundItemProgressScript := preload("res://scripts/data/found_item_progress
 
 ## 床の毛分配重み。部屋全面を占める最大面積のため家具・布より大きく設定
 const FLOOR_HAIR_WEIGHT: float = 2.5
+## 玄関の壁にスーツを掛ける床からの持ち上げ量 (m)。肩が立った人の目の高さにくるようにする
+const JACKET_WALL_LIFT_M: float = 0.30
 ## 住人の初期機嫌 (0.0 不機嫌 〜 1.0 ご機嫌の中間値。開始時点で増減の余地を残す)
 const INITIAL_RESIDENT_MOOD: float = 0.5
 ## ソファ表面 (座面) の高さ比率。MansionWorld の座面メッシュ高さ比率の単一情報源
@@ -276,7 +278,15 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		obj.size = Vector3(raw_size.x * fit_scale, raw_size.y, raw_size.z * fit_scale)
 
 		var slot: Dictionary = ROOM_SLOTS[local_idx % ROOM_SLOTS.size()]
-		var rot_y: float = float(slot["rot"])
+		if (room_idx == 0 and local_idx < OBJECT_PRESETS.size()
+			and obj.object_kind == MansionLayoutScript.OBJECT_TABLE):
+			# 壁掛けの前に立てるよう、机は部屋の入口側へ置く。
+			slot = ROOM_SLOTS[3]
+		obj.wall_mounted = (
+			room_idx == 0 and local_idx < OBJECT_PRESETS.size()
+			and obj.object_kind == MansionLayoutScript.OBJECT_SUIT_RACK
+		)
+		var rot_y: float = 0.0 if obj.wall_mounted else float(slot["rot"])
 		var abs_cos: float = absf(cos(rot_y))
 		var abs_sin: float = absf(sin(rot_y))
 		var rotated_size_x: float = abs_cos * obj.size.x + abs_sin * obj.size.z
@@ -296,6 +306,9 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 			MIN_OBJECT_OFFSET_LIMIT_M,
 			room.size.z * 0.5 - maxf(MIN_WALL_MARGIN_M, rotated_size_z * 0.5 + WALL_CLEARANCE_M),
 		)
+		if obj.wall_mounted:
+			# 北の扉の右側で、入口から前身頃が見え、手前に立てる高さに掛ける。
+			offset_z = -limit_z
 		offset_x = clampf(offset_x, -limit_x, limit_x)
 		offset_z = clampf(offset_z, -limit_z, limit_z)
 		if obj.object_kind != MansionLayoutScript.OBJECT_CARPET:
@@ -311,6 +324,8 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 			offset_z = clear_offset.y
 
 		obj.position = Vector3(room.center.x + offset_x, 0.0, room.center.z + offset_z)
+		if obj.wall_mounted:
+			obj.position.y += JACKET_WALL_LIFT_M
 		obj.rotation_y = rot_y
 		layout.objects.append(obj)
 
@@ -329,6 +344,27 @@ static func _build_objects_and_surfaces(layout: MansionLayout, tuning: MansionTu
 		)
 		surface.hair_weight = float(preset["weight"])
 		layout.surfaces.append(surface)
+
+	_spread_entrance_hairs(layout)
+
+
+## 玄関の各面に、布への付きやすさと広さの両方に応じて毛を配る。
+## 初期構築時の重みを素材の係数として一度だけ広さで換算し、玄関全体が受け持つ本数を保つ。
+static func _spread_entrance_hairs(layout: MansionLayout) -> void:
+	var entrance_surfaces: Array[MansionLayout.SurfaceDef] = []
+	var original_weight: float = 0.0
+	var weighted_area: float = 0.0
+	for surface: MansionLayout.SurfaceDef in layout.surfaces:
+		if surface.room_id == layout.rooms[0].room_id:
+			entrance_surfaces.append(surface)
+			original_weight += surface.hair_weight
+			var density: float = surface.hair_weight
+			if surface.surface_type == MansionLayoutScript.SURFACE_FLOOR:
+				density = 1.0
+			surface.hair_weight = surface.extents.x * surface.extents.y * density
+			weighted_area += surface.hair_weight
+	for surface: MansionLayout.SurfaceDef in entrance_surfaces:
+		surface.hair_weight *= original_weight / weighted_area
 
 
 ## 衝突あり家具がいずれかの開口ドア正面通路と重なっているか判定する

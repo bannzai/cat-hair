@@ -247,13 +247,30 @@ func _capture_guide_toggle(main: Node3D) -> String:
 	return ""
 
 
+## 歩行中の目線と真下まで見た時の体の写り方を撮る
+func _capture_player_views(main: Node3D) -> bool:
+	Input.action_press("move_forward")
+	await physics_frame
+	await physics_frame
+	var walking_ok: bool = await _capture("tmp/screenshot-walking.png")
+	Input.action_release("move_forward")
+	set_pitch(main.player, -FirstPersonPlayer.MAX_PITCH_RADIANS)
+	var down_ok: bool = await _capture("tmp/screenshot-looking-down.png")
+	set_pitch(main.player, FirstPersonPlayer.INITIAL_PITCH_RADIANS)
+	return walking_ok and down_ok
+
+
 ## 屋敷に入った一人称プレイ画面 (部屋・家具・布・毛・画面の手・照準・残り本数と在庫・遊び始めの操作の案内の HUD)、
 ## 操作の案内の開閉、毛を引く場面、図鑑、開発者向け調整画面を順に撮る。撮れたら空文字、失敗したら理由を返す
 func _capture_mansion_scenes(main: Node3D) -> String:
 	main.enter_mansion()
 	if not await _capture("tmp/screenshot-mansion.png"):
 		return "屋敷の画面を保存できない"
-	var capture_error: String = await _capture_perf_overlay(main)
+	var capture_error: String = ""
+	if not await _capture_player_views(main):
+		capture_error = "歩行中または真下を見た画面を保存できない"
+	if capture_error.is_empty():
+		capture_error = await _capture_perf_overlay(main)
 	if capture_error.is_empty():
 		capture_error = await _capture_guide_toggle(main)
 	if capture_error.is_empty():
