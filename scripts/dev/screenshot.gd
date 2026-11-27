@@ -193,8 +193,7 @@ func _verify_windowed_mouse_capture(main: Node3D) -> bool:
 	Input.parse_input_event(click_event)
 	await process_frame
 
-	if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
-		push_error("windowed mouse check FAIL: 左クリックで MOUSE_MODE_CAPTURED にならない")
+	if not await _verify_captured_and_capture_hint(main):
 		return false
 
 	var yaw_before: float = player.rotation.y
@@ -231,15 +230,43 @@ func _verify_windowed_mouse_capture(main: Node3D) -> bool:
 	return true
 
 
-## 屋敷に入った一人称プレイ画面 (部屋・家具・布・毛・画面の手・照準・残り本数と在庫の HUD)、毛を引く場面、
-## 図鑑、開発者向け調整画面を順に撮る。撮れたら空文字、失敗したら理由を返す
+## 左クリックでマウスが取られたことを確かめ、取られている間の左下のマウスを放すキーの案内を撮る
+## (PlayGuideHud が毎フレームマウスの状態に合わせるため、メインシーンの処理を止めずに撮る)。どれもできたら true
+func _verify_captured_and_capture_hint(main: Node3D) -> bool:
+	if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
+		push_error("windowed mouse check FAIL: 左クリックで MOUSE_MODE_CAPTURED にならない")
+		return false
+	if not await _capture("tmp/screenshot-mouse-captured.png"):
+		return false
+	if main.play_guide.get_mouse_hint_text() != PlayGuideHud.mouse_hint_text(true):
+		push_error("windowed mouse check FAIL: マウスを取られている間に Esc で放す案内が出ない")
+		return false
+	return true
+
+
+## 操作の案内の一覧を H キーと同じ切り替えで閉じた画面と、もう一度開いた (後から見直す) 画面を撮る。
+## 撮れたら空文字、失敗したら理由を返す
+func _capture_guide_toggle(main: Node3D) -> String:
+	main.play_guide.toggle_controls_guide()
+	if not await _capture("tmp/screenshot-guide-closed.png"):
+		return "操作の案内を閉じた画面を保存できない"
+	main.play_guide.toggle_controls_guide()
+	if not await _capture("tmp/screenshot-guide-reopened.png"):
+		return "操作の案内を開き直した画面を保存できない"
+	return ""
+
+
+## 屋敷に入った一人称プレイ画面 (部屋・家具・布・毛・画面の手・照準・残り本数と在庫・遊び始めの操作の案内の HUD)、
+## 操作の案内の開閉、毛を引く場面、図鑑、開発者向け調整画面を順に撮る。撮れたら空文字、失敗したら理由を返す
 func _capture_mansion_scenes(main: Node3D) -> String:
 	main.enter_mansion()
 	if not await _capture("tmp/screenshot-mansion.png"):
 		return "屋敷の画面を保存できない"
-	var pluck_error: String = await _capture_pluck(main)
-	if not pluck_error.is_empty():
-		return pluck_error
+	var hand_error: String = await _capture_guide_toggle(main)
+	if hand_error.is_empty():
+		hand_error = await _capture_pluck(main)
+	if not hand_error.is_empty():
+		return hand_error
 	main.open_hair_book()
 	var book_ok: bool = await _capture("tmp/screenshot-hair-book.png")
 	main.close_hair_book()
@@ -279,7 +306,11 @@ func _capture_pluck(main: Node3D) -> String:
 		return "引き終えても毛が抜けない"
 	if not await _capture_frozen(main, "tmp/screenshot-plucked.png"):
 		return "抜いた直後を保存できない"
-	return ""
+	# 途中で離して抜けなかった時の理由の表示 (照準の下)。押す入力の代わりに、離した時と同じ知らせを出す
+	hand.pull_failed.emit(HandController.REASON_RELEASED)
+	var failed_ok: bool = await _capture_frozen(main, "tmp/screenshot-pluck-failed.png")
+	main.tool_message_label.text = ""
+	return "" if failed_ok else "抜けなかった理由の表示を保存できない"
 
 
 ## 粘着ローラーを床の毛にかけた直後 (跡の円盤・取りこぼした毛・取りこぼしの割合・道具の並び・部屋のゲージ) と、

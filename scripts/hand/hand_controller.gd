@@ -6,6 +6,10 @@ extends Node
 
 ## 毛を抜いた時 (count = 一度に抜けた本数、rare_ids = 混じっていた珍しい毛、new_rare_ids = 図鑑に新しく載った毛)
 signal hairs_plucked(count: int, rare_ids: Array[StringName], new_rare_ids: Array[StringName])
+## 引いている進み具合が変わった時 (progress = 0〜1、pulling = 毛をつまんでいるか。離した・抜けた時は false)
+signal pull_progress_changed(progress: float, pulling: bool)
+## つまむ操作で毛を抜けなかった時 (reason = REASON_*)。画面に理由を出すために使う
+signal pull_failed(reason: StringName)
 
 ## 手で毛を取る時のルールの計算
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
@@ -32,6 +36,17 @@ const MAX_STRETCH_RATIO: float = 2.2
 const PULL_WIDTH_RATIO: float = 3.0
 ## 引き終える時に毛の先が面の法線へ向く割合
 const LIFT_TOWARD_NORMAL_RATIO: float = 0.85
+## 抜けなかった理由を見分ける時に、狙いの光線の先で何かに当たるかを調べる長さ (m)。
+## 最大 4x4 部屋の屋敷 (64m 四方・対角約 90m) の端まで届く長さ
+const AIM_PROBE_M: float = 100.0
+## 抜けなかった理由: 押したまま引いている途中で離した
+const REASON_RELEASED: StringName = &"released"
+## 抜けなかった理由: 狙った所の近くに毛が無い (毛の付く表面が無い所を狙った時も含む)
+const REASON_NO_HAIR: StringName = &"no_hair"
+## 抜けなかった理由: 狙った所が手の届く距離より遠い (引いている途中で離れすぎた時も含む)
+const REASON_OUT_OF_REACH: StringName = &"out_of_reach"
+## 抜けなかった理由: 狙った毛の手前に壁・家具がある
+const REASON_BLOCKED: StringName = &"blocked"
 
 ## 入力を受け付けるか (プレイ中で、開発者画面・図鑑が開いていない時だけ main が true にする)
 var enabled: bool = false
@@ -80,21 +95,70 @@ func setup(
 		_camera.add_child(_hand_view)
 
 
-## 毎フレーム、つまむ操作の押下に合わせて引き始め・引き続け・離すを行う
+## 毎フレーム、つまむ操作の押下に合わせて引き始め・引き続け・離すを行い、抜けなかった時は理由を知らせる。
+## 操作を止めた (画面を開いた) 時とマウスの捕捉が外れた時に離すのは、遊ぶ人が離したのではないので理由を知らせない
 func _process(delta: float) -> void:
 	var captured: bool = (
 		Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED or allow_uncaptured_pluck
 	)
-	var pressed: bool = enabled and captured and Input.is_action_pressed(ACTION_PLUCK)
+	var held: bool = Input.is_action_pressed(ACTION_PLUCK)
+	var pressed: bool = enabled and captured and held
 	if is_pulling():
 		if pressed and is_pull_in_reach():
 			advance_pull(delta)
 		else:
 			release_pull()
+			if pressed:
+				pull_failed.emit(REASON_OUT_OF_REACH)
+			elif enabled and captured:
+				pull_failed.emit(REASON_RELEASED)
 	elif pressed and not _was_pressed and _was_captured:
-		begin_pull()
+		if not begin_pull():
+			pull_failed.emit(pull_failure_reason())
 	_was_pressed = pressed
 	_was_captured = captured
+
+
+## 画面中央の狙いで毛をつまめない理由 (REASON_*) を返す。手の届く距離に毛の表面があれば、手前に物があるか
+## (REASON_BLOCKED)、近くに毛が無いか (REASON_NO_HAIR)。無ければ、光線の先の毛の表面か壁・家具が手の届く
+## 距離より遠くにあるか (REASON_OUT_OF_REACH)、何にも当たらないか届く所の壁・家具に当たるか (REASON_NO_HAIR)
+func pull_failure_reason() -> StringName:
+	if _camera == null or _world == null or _world.get_hair_field() == null:
+		return REASON_NO_HAIR
+	var from: Vector3 = _camera.global_position
+	var direction: Vector3 = -_camera.global_basis.z
+	var hair_field: Node3D = _world.get_hair_field()
+	var near: Dictionary = hair_field.intersect_surfaces(from, direction, REACH_M)
+	if not near.is_empty():
+		return REASON_BLOCKED if is_view_blocked(near["point"]) else REASON_NO_HAIR
+	var far: Dictionary = hair_field.intersect_surfaces(from, direction, AIM_PROBE_M)
+	if not far.is_empty():
+		return REASON_OUT_OF_REACH
+	var space: PhysicsDirectSpaceState3D = _camera.get_world_3d().direct_space_state
+	if space == null:
+		return REASON_NO_HAIR
+	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
+		from, from + direction.normalized() * AIM_PROBE_M
+	)
+	query.exclude = _excluded_rids
+	var hit: Dictionary = space.intersect_ray(query)
+	if not hit.is_empty() and from.distance_to(hit["position"]) > REACH_M:
+		return REASON_OUT_OF_REACH
+	return REASON_NO_HAIR
+
+
+## 抜けなかった理由 (REASON_*) を画面に出す文言を返す (知らない理由は空文字)
+static func failure_message(reason: StringName) -> String:
+	match reason:
+		REASON_RELEASED:
+			return "途中で離したので毛が戻った (抜けるまで押したままにする)"
+		REASON_NO_HAIR:
+			return "狙った所に毛が無い (照準の + を手の届く毛に重ねる)"
+		REASON_OUT_OF_REACH:
+			return "毛まで手が届かない (%.1f m 以内の毛を狙う。足元を見下ろす)" % REACH_M
+		REASON_BLOCKED:
+			return "手前に物があって、毛に手が届かない"
+	return ""
 
 
 ## 画面中央の狙いの先にある毛をつまんで引き始める。つまめたら true
@@ -246,6 +310,7 @@ func _show_pull(progress: float) -> void:
 		)
 	if _hand_view != null:
 		_hand_view.set_pull_progress(progress)
+	pull_progress_changed.emit(progress, true)
 
 
 ## 配置時の毛の transform を、引いている進み具合 progress に合わせて伸ばした見た目の transform を返す。
@@ -300,3 +365,4 @@ func _reset_pull() -> void:
 	_pull_elapsed = 0.0
 	if _hand_view != null:
 		_hand_view.set_pull_progress(0.0)
+	pull_progress_changed.emit(0.0, false)

@@ -33,13 +33,18 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	main.hand.allow_uncaptured_pluck = true
 	await checker.process_frame
 	suite._verify_crosshair_centered(main)
+	await suite._verify_play_guide(main)
 	await suite._verify_hair_book_blocks_and_shows(main, game_state)
 	await suite._verify_aim_at_nothing(main, game_state)
+	await suite._verify_short_press_twice(main, game_state)
+	await suite._verify_bare_floor_reason(main, game_state)
+	await suite._verify_out_of_reach_reason(main, game_state)
 	await suite._verify_release_midway_and_pluck(main, game_state)
 	await suite._verify_upgrades_change_pull(main, game_state)
 	await suite._verify_hold_plucks_and_capture_gate(main, game_state)
 	await suite._verify_occluded_aim(main, game_state)
 	await suite._verify_rare_hair_from_pluck(main, game_state)
+	await suite._verify_hand_upgrade_twice(main, game_state)
 	main.hand.allow_uncaptured_pluck = false
 	Input.action_release(HandController.ACTION_PLUCK)
 	await checker.process_frame
@@ -124,6 +129,173 @@ func _verify_aim_at_nothing(main: Node3D, game_state: Node) -> void:
 		and game_state.get_raw_hair_stock_count() == before_stock,
 		"天井を狙ってつまむ入力をしても毛をつままず、残り本数と在庫が変わらない",
 	)
+	_check(
+		main.tool_message_label.text == HandController.failure_message(HandController.REASON_NO_HAIR),
+		"天井を狙ってつまむ入力をすると、照準の下に「狙った所に毛が無い」理由が出る",
+	)
+
+
+## 6 番の発言の読み (a): 毛を狙って短く押して離すのを 2 回続けると、2 回とも毛が戻り、2 回とも理由が出るか
+func _verify_short_press_twice(main: Node3D, game_state: Node) -> void:
+	var hand: HandController = main.hand
+	var aimed_id: int = await HandAim.aim_at_floor_hair(_checker, main)
+	if aimed_id < 0:
+		_check(false, "短く押す検証で床の毛を狙える")
+		return
+	var before_total: int = game_state.get_total_remaining_hairs()
+	var released_message: String = HandController.failure_message(HandController.REASON_RELEASED)
+	for attempt: int in [1, 2]:
+		main.tool_message_label.text = ""
+		# 2 フレームは、HandController の _process が押した 1 フレーム (引き始め) と離した 1 フレームを見る最短の長さ
+		await _hold_pluck(2)
+		_check(
+			not hand.is_pulling()
+			and main.mansion_world.get_hair_field().has_hair(aimed_id)
+			and game_state.get_total_remaining_hairs() == before_total
+			and main.tool_message_label.text == released_message,
+			"毛を狙って短く押して離す %d 回目も、毛が戻って残り本数が変わらず、照準の下に「途中で離した」理由が出る"
+			% attempt,
+		)
+
+
+## 6 番の発言の読み (b): 毛の付く床を狙っていても、狙った所の 0.08 m 以内に毛が無い時は、つまめずに理由が出るか
+func _verify_bare_floor_reason(main: Node3D, game_state: Node) -> void:
+	var hand: HandController = main.hand
+	if not await _aim_at_bare_floor(main):
+		_check(false, "床の毛の表面のうち、狙った所の近くに毛が無い所を狙える")
+		return
+	var before_total: int = game_state.get_total_remaining_hairs()
+	main.tool_message_label.text = ""
+	await _hold_pluck(3)
+	_check(
+		not hand.is_pulling()
+		and game_state.get_total_remaining_hairs() == before_total
+		and main.tool_message_label.text
+		== HandController.failure_message(HandController.REASON_NO_HAIR),
+		"毛の付く床の、近くに毛が無い所を狙ってつまむと、毛をつまめず照準の下に「狙った所に毛が無い」理由が出る",
+	)
+
+
+## 届かない所: 床の毛から手の届く距離より遠く離れて、その毛を狙ってつまむと、理由が出るか。
+## 遊び始めの立ち位置と目線 (屋敷の出入り口) でつまむと何が出るかも確かめ、理由をログに残す
+func _verify_out_of_reach_reason(main: Node3D, game_state: Node) -> void:
+	var hand: HandController = main.hand
+	var player: FirstPersonPlayer = main.player
+	var aimed_id: int = await HandAim.aim_at_floor_hair(_checker, main)
+	if aimed_id < 0:
+		_check(false, "届かない所の検証で床の毛を狙える")
+		return
+	var root: Vector3 = main.mansion_world.get_hair_field().get_hair_transform(aimed_id).origin
+	await _move_to_root_distance(player, root, HandController.REACH_M * 2.0)
+	await _checker.physics_frame
+	var before_total: int = game_state.get_total_remaining_hairs()
+	main.tool_message_label.text = ""
+	await _hold_pluck(3)
+	_check(
+		not hand.is_pulling()
+		and game_state.get_total_remaining_hairs() == before_total
+		and main.tool_message_label.text
+		== HandController.failure_message(HandController.REASON_OUT_OF_REACH),
+		"床の毛から 5.2 m 離れてその毛を狙ってつまむと、毛をつまめず照準の下に「毛まで手が届かない」理由が出る",
+	)
+
+	var layout: MansionLayout = game_state.current_layout
+	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
+	await _checker.physics_frame
+	await _checker.physics_frame
+	main.tool_message_label.text = ""
+	await _hold_pluck(3)
+	print(
+		"integration: 遊び始めの立ち位置と目線でつまむと: pulling=%s reason=%s message=%s"
+		% [hand.is_pulling(), hand.pull_failure_reason(), main.tool_message_label.text]
+	)
+	_check(
+		hand.is_pulling() or not main.tool_message_label.text.is_empty(),
+		"遊び始めの立ち位置と目線でつまむと、毛をつまむか、抜けなかった理由が照準の下に出る (何も起きないままにならない)",
+	)
+	Input.action_release(HandController.ACTION_PLUCK)
+	await _checker.process_frame
+
+
+## 6 番の発言の別の読み: 道具を買う画面の「手の強化」のボタンを続けて 2 回押すと、2 回とも段が上がるか
+func _verify_hand_upgrade_twice(main: Node3D, game_state: Node) -> void:
+	var dexterity: StringName = HandRulesScript.UPGRADE_DEXTERITY
+	var level_before: int = game_state.get_hand_upgrade_level(dexterity)
+	game_state.save_data.building_progress.money = 100000
+	main.toggle_tool_shop()
+	await _checker.process_frame
+	var button: Button = main.tool_shop_panel.get_hand_upgrade_button(dexterity)
+	for press: int in [1, 2]:
+		var enabled_before: bool = button != null and not button.disabled
+		if button != null:
+			button.pressed.emit()
+		await _checker.process_frame
+		_check(
+			enabled_before and game_state.get_hand_upgrade_level(dexterity) == level_before + press,
+			"道具を買う画面の「手の強化」(器用さ) のボタンが押せる状態で、%d 回目に押すと段が %d に上がる"
+			% [press, level_before + press],
+		)
+	main.toggle_tool_shop()
+	await _checker.process_frame
+	game_state.set_hand_upgrade_level(dexterity, level_before)
+	game_state.save_data.building_progress.money = 0
+
+
+## 遊び始めに操作の一覧が出ていて、H キーで閉じる・開く。画面を開いている間は隠れて H が効かず、
+## マウスを放す案内がマウスの状態に合った文言で出ているか
+func _verify_play_guide(main: Node3D) -> void:
+	var guide: PlayGuideHud = main.play_guide
+	var text: String = guide.get_controls_guide_text()
+	var listed: bool = true
+	for needle: String in ["歩く", "視点", "押したまま", "持ち替える", "T: 道具を買う", "R: 掃除ロボット", "Esc: マウスを放す"]:
+		listed = listed and text.contains(needle)
+	_check(
+		guide.is_controls_guide_visible() and listed,
+		"屋敷に入った時に操作の一覧が出ていて、歩く・視点・押したまま抜く・持ち替え・道具を買う・掃除ロボット・マウスを放すが書いてある",
+	)
+	await _checker._press_physical_key(MainScript.TOGGLE_GUIDE_KEY)
+	_check(not guide.is_controls_guide_visible(), "H キーで操作の一覧が閉じる")
+	await _checker._press_physical_key(MainScript.TOGGLE_GUIDE_KEY)
+	_check(guide.is_controls_guide_visible(), "H キーをもう一度押すと操作の一覧が開く (後から見直せる)")
+	main.toggle_tool_shop()
+	await _checker.process_frame
+	_check(not guide.is_controls_guide_visible(), "道具を買う画面を開いている間は操作の一覧が隠れる")
+	await _checker._press_physical_key(MainScript.TOGGLE_GUIDE_KEY)
+	main.toggle_tool_shop()
+	await _checker.process_frame
+	_check(
+		guide.is_controls_guide_visible(),
+		"道具を買う画面を開いている間の H キーは効かず、画面を閉じると操作の一覧がまた出る",
+	)
+	_check(
+		guide.get_mouse_hint_text() == PlayGuideHud.mouse_hint_text(false)
+		and PlayGuideHud.mouse_hint_text(true).contains("Esc: マウスを放す"),
+		"マウスを取っていない時はマウスを取る案内が出ていて、取っている時の案内には Esc で放すことが書いてある",
+	)
+
+
+## 狙いを床の毛に向けた後、その周りの床を順に狙い、狙った所の GRAB_RADIUS_M 以内に毛が無い所で止める。止めたら true
+func _aim_at_bare_floor(main: Node3D) -> bool:
+	if await HandAim.aim_at_floor_hair(_checker, main) < 0:
+		return false
+	var hand: HandController = main.hand
+	var hair_field: Node3D = main.mansion_world.get_hair_field()
+	var base: Dictionary = hand.aim_target()
+	var surface_index: int = int(base["surface_index"])
+	var center: Vector3 = base["point"]
+	for ring: int in range(1, 8):
+		for step: int in range(8):
+			var angle: float = TAU * float(step) / 8.0
+			main.player.look_at_point(center + Vector3(cos(angle), 0.0, sin(angle)) * 0.12 * ring)
+			await _checker.physics_frame
+			var target: Dictionary = hand.aim_target()
+			if target.is_empty() or int(target["surface_index"]) != surface_index:
+				continue
+			if hair_field.find_hairs_near(
+				surface_index, target["point"], HandController.GRAB_RADIUS_M, 1
+			).is_empty():
+				return true
+	return false
 
 
 ## 狙った毛をつまむ入力で引き始め、途中で離すと元に戻り、引き終えると 1 本抜けて本数・在庫・効果音・表示が変わるか
@@ -162,11 +334,20 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		),
 		"強化していない手で床の毛を引き抜く時間が 0.45 秒",
 	)
+	_check(
+		main.play_guide.is_pull_progress_visible() and main.play_guide.get_pull_progress_value() == 0.0,
+		"つまんだ瞬間に、照準の下に引いている進み具合のゲージが 0 で出る",
+	)
 	hand.advance_pull(hand.get_pull_duration() * 0.5)
 	_check(
 		hand.get_pull_progress() >= 0.5 and hand.get_pull_progress() < 1.0
 		and hand.get_hand_view().get_pull_progress() >= 0.5,
 		"引いている途中は進み具合が 0.5 以上 1 未満で、画面の手も同じだけ引いている",
+	)
+	_check(
+		main.play_guide.is_pull_progress_visible()
+		and is_equal_approx(main.play_guide.get_pull_progress_value(), hand.get_pull_progress()),
+		"引いている途中は、照準の下のゲージが手の進み具合と同じ値を出す",
 	)
 	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
@@ -177,6 +358,12 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		and game_state.get_total_remaining_hairs() == before_total
 		and game_state.get_raw_hair_stock_count() == before_stock,
 		"途中で離すと毛は抜けずに残り、手が開き、残り本数と在庫が変わらない",
+	)
+	_check(
+		not main.play_guide.is_pull_progress_visible()
+		and main.tool_message_label.text
+		== HandController.failure_message(HandController.REASON_RELEASED),
+		"途中で離すと、進み具合のゲージが消え、照準の下に「途中で離したので毛が戻った」理由が出る",
 	)
 
 	# 押したまま、毛の根元までの距離が REACH_M より遠く REACH_M + GRAB_RADIUS_M 以内の所へ下がっても引き続け、
@@ -204,6 +391,11 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		and hair_field.has_hair(reach_ids[0])
 		and game_state.get_total_remaining_hairs() == before_total,
 		"毛の根元まで 2.68m より遠くへ下がると、毛は抜けずに引くのをやめ、残り本数も変わらない",
+	)
+	_check(
+		main.tool_message_label.text
+		== HandController.failure_message(HandController.REASON_OUT_OF_REACH),
+		"押したまま離れすぎて引くのをやめた時は、照準の下に「毛まで手が届かない」理由が出る",
 	)
 	Input.action_release(HandController.ACTION_PLUCK)
 	if await HandAim.aim_at_floor_hair(_checker, main) != aimed_id:
@@ -243,6 +435,10 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		"抜くと効果音 pluck_hair が鳴る",
 	)
 	_check(main.get_pluck_popup_text().begins_with("+1 本"), "抜くと画面中央に「+1 本」が出る")
+	_check(
+		not main.play_guide.is_pull_progress_visible() and main.tool_message_label.text.is_empty(),
+		"抜くと進み具合のゲージが消え、照準の下に抜けなかった理由が残っていない",
+	)
 	_check(
 		main.remaining_hair_label.text.contains(MainScript.format_hair_count(before_total - 1))
 		and main.stock_label.text.contains(MainScript.format_hair_count(before_stock + 1)),
@@ -304,16 +500,7 @@ func _verify_hold_plucks_and_capture_gate(main: Node3D, game_state: Node) -> voi
 		_check(false, "押し続ける検証で床の毛を狙える")
 		return
 	var before_total: int = game_state.get_total_remaining_hairs()
-	# 実時間で 0.45 秒待つとフレーム数の上限 (Makefile の SCRIPT_FRAME_LIMIT) を使うため、時間の進みを 20 倍にする
-	Engine.time_scale = 20.0
-	await _press_pluck()
-	var held_frames: int = 0
-	while hand.is_pulling() and held_frames < 600:
-		await _checker.process_frame
-		held_frames += 1
-	for _step: int in range(5):
-		await _checker.process_frame
-	Engine.time_scale = 1.0
+	await _hold_until_plucked(hand)
 	_check(
 		game_state.get_total_remaining_hairs() == before_total - 1 and not hand.is_pulling(),
 		"押し続けると引く時間の後に 1 本抜け、押したままでは次の毛を引き始めない",
@@ -321,10 +508,22 @@ func _verify_hold_plucks_and_capture_gate(main: Node3D, game_state: Node) -> voi
 	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
 
+	# 同じ起動の中で、離して狙い直し、もう一度押し続けると 2 本目も抜ける (1 本目の後に止まらない)
+	if await HandAim.aim_at_floor_hair(_checker, main) < 0:
+		_check(false, "1 本抜いた後に、次の床の毛を狙い直せる")
+		return
+	await _hold_until_plucked(hand)
+	_check(
+		game_state.get_total_remaining_hairs() == before_total - 2 and not hand.is_pulling(),
+		"1 本抜いた後に離して狙い直し、もう一度押し続けると 2 本目も抜ける",
+	)
+	Input.action_release(HandController.ACTION_PLUCK)
+	await _checker.process_frame
+
 	hand.allow_uncaptured_pluck = false
 	await _press_pluck()
 	_check(
-		not hand.is_pulling() and game_state.get_total_remaining_hairs() == before_total - 1,
+		not hand.is_pulling() and game_state.get_total_remaining_hairs() == before_total - 2,
 		"マウスを捕捉していない時はつまむ入力で毛をつままない",
 	)
 	Input.action_release(HandController.ACTION_PLUCK)
@@ -356,6 +555,10 @@ func _verify_occluded_aim(main: Node3D, game_state: Node) -> void:
 		hand.aim_target().is_empty() and not hand.is_pulling()
 		and game_state.get_total_remaining_hairs() == before_total,
 		"毛の面より手前に衝突体があると、狙いが空になりつまむ入力で何も変わらない",
+	)
+	_check(
+		main.tool_message_label.text == HandController.failure_message(HandController.REASON_BLOCKED),
+		"毛の面より手前に衝突体がある時につまむ入力をすると、照準の下に「手前に物があって」理由が出る",
 	)
 	Input.action_release(HandController.ACTION_PLUCK)
 	blocker.queue_free()
@@ -430,6 +633,20 @@ func _press_pluck() -> void:
 	await _checker.process_frame
 	Input.action_press(HandController.ACTION_PLUCK)
 	await _checker.process_frame
+
+
+## つまむ入力を押し、引く時間を直接進めずに、抜けるまで (上限 600 フレーム) 押し続ける (離さずに返る)。
+## 実時間で 0.45 秒待つとフレーム数の上限 (Makefile の SCRIPT_FRAME_LIMIT) を使うため、時間の進みを 20 倍にする
+func _hold_until_plucked(hand: HandController) -> void:
+	Engine.time_scale = 20.0
+	await _press_pluck()
+	var held_frames: int = 0
+	while hand.is_pulling() and held_frames < 600:
+		await _checker.process_frame
+		held_frames += 1
+	for _step: int in range(5):
+		await _checker.process_frame
+	Engine.time_scale = 1.0
 
 
 ## つまむ入力を指定フレーム数だけ押し続けてから離す
