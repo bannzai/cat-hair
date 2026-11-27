@@ -89,10 +89,11 @@ jobs:
           path: tmp/generated/
           if-no-files-found: error
           retention-days: 7
-      # make uid (Godot を起動せずに作る .uid。AGENTS.md「検証方法」) の .uid を Godot がそのまま使うかを確かめる。
-      # Godot が受け入れなければ import で .uid を作り直すため、中身が変わって失敗する。
+      # make uid (Godot を起動せずに作る .uid。AGENTS.md「検証方法」) の .uid を Godot が読めて、スクリプトに
+      # 結び付けるかを確かめる。.gd を 1 つ足して make uid で .uid を作り、import の後に scripts/dev/uid_check.gd が
+      # 全部の .gd.uid を検証する。中身が import の前後で変わらないことも見る。
       # 上の未 commit の検査が足した .gd を拾わないよう、その後に置く
-      - name: Check that Godot keeps the .uid made by make uid
+      - name: Check that Godot uses the .uid made by make uid
         run: |
           printf 'extends Node\n' > scripts/dev/ci_uid_probe.gd
           make uid
@@ -100,6 +101,12 @@ jobs:
           make import GODOT="${{ steps.godot.outputs.godot }}" LOG_DIR=tmp/uid-probe
           echo "make uid: $made / import の後: $(cat scripts/dev/ci_uid_probe.gd.uid)"
           test "$(cat scripts/dev/ci_uid_probe.gd.uid)" = "$made"
+          status=0
+          "${{ steps.godot.outputs.godot }}" --headless --path . --quit-after 600 --script res://scripts/dev/uid_check.gd > tmp/uid-probe/uid_check.log 2>&1 || status=$?
+          cat tmp/uid-probe/uid_check.log
+          test "$status" -eq 0
+          grep -q '^uid_check OK$' tmp/uid-probe/uid_check.log
+          ! grep -E '^(SCRIPT |SHADER )?(ERROR|WARNING):' tmp/uid-probe/uid_check.log
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
