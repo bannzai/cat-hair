@@ -58,5 +58,5 @@ func advance() -> BuildingRecord:
 	)
 	save_data.building_records.append(record)
 	# 調整値は最初の屋敷の作りのまま渡し、終えた建物の数が 1 つ増えたことで次の建物の作りになる
-	_game_state.save_current_state()
+	_game_state.apply_tuning_and_rebuild(_game_state.get_tuning(), true)
 	return record

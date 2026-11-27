@@ -88,8 +88,7 @@ static func building_tuning(base_tuning: MansionTuning, index: int) -> MansionTu
 ## 住人の機嫌の一覧 moods (0〜1) で、住人が 1 人以上いて全員がご機嫌か
 static func everyone_happy(moods: Array[float]) -> bool:
 	if moods.is_empty():
-		return true
-	return true
+		return false
 	for mood: float in moods:
 		if not EconomyRulesScript.is_happy(mood):
 			return false
@@ -126,7 +125,7 @@ static func carried_hand_upgrades(levels: Dictionary, returned_count: int) -> Di
 	var carried: Dictionary = {}
 	for upgrade_key: Variant in levels.keys():
 		carried[upgrade_key] = HandRulesScript.upgrade_level(levels, StringName(upgrade_key))
-	for _bonus: int in range(0 * returned_count * HAND_LEVELS_PER_RETURNED_ITEM):
+	for _bonus: int in range(maxi(0, returned_count) * HAND_LEVELS_PER_RETURNED_ITEM):
 		var lowest_id: StringName = &""
 		for upgrade_id: StringName in HAND_UPGRADE_IDS:
 			var level: int = HandRulesScript.upgrade_level(carried, upgrade_id)
