@@ -176,38 +176,35 @@ static func count_surface_groups(field: Node3D, surface_index: int) -> PackedInt
 	return counts
 
 
-## 1 本の猫の毛のメッシュ (3 セグメント・7 頂点・5 三角形の細い曲がった先細り形状) を作る
+## 1 本の猫の毛のメッシュ (2 セグメント・5 頂点・3 三角形の細い曲がった先細り形状) を作る。
+## 3 セグメント・5 三角形だった形から真ん中の点を抜き、毛 1 本の三角形を 4 割減らした
+## (issue #56 の CI の計測で、毛 24 万本の部屋に入った直後の 1 フレームが 411 ms から 353 ms に減った)
 static func build_hair_mesh() -> ArrayMesh:
-	# 根元 (p0) から先端 (p3) へ横最大 8 mm・高さ最大 5.6 mm の緩やかな弧を描く制御点
-	# (直線ではなく曲がった抜け毛として 1 本ずつ視認でき、先端は床近くへ戻る形状)
+	# 根元 (p0) から先端 (p2) へ弧を描く制御点 (直線ではなく曲がった抜け毛として 1 本ずつ視認でき、先端は床近くへ
+	# 戻る形状)。中ほどの p1 は、3 セグメントの時の 2 つの中間点 (長さの 35%・70% で横 4.5/8.0 mm・高さ 4.2/5.6 mm)
+	# のあいだで弧の膨らみが減らないよう、長さの 50% で両者の平均よりわずかに外側に置き、根元と先端は前と同じにした
 	var p0: Vector3 = Vector3(0.0, 0.0, 0.0)
-	var p1: Vector3 = Vector3(0.0045, 0.0042, HAIR_LENGTH_M * 0.35)
-	var p2: Vector3 = Vector3(0.0080, 0.0056, HAIR_LENGTH_M * 0.70)
-	var p3: Vector3 = Vector3(0.0042, 0.0018, HAIR_LENGTH_M)
+	var p1: Vector3 = Vector3(0.0065, 0.0052, HAIR_LENGTH_M * 0.5)
+	var p2: Vector3 = Vector3(0.0042, 0.0018, HAIR_LENGTH_M)
 
-	# 根元半幅 0.50 → 1/3 で 0.44 → 2/3 で 0.30 → 先端 0.0 の段階的テーパーで先細りにする
+	# 先細りの幅。中ほどの幅は、3 セグメントの時の 1/3 (0.44)・2/3 (0.30) の幅の平均に近い値にし、
+	# 長さの 50% での太さを前の形と揃えた
 	var w0: float = HAIR_BASE_WIDTH_M * 0.5
-	var w1: float = HAIR_BASE_WIDTH_M * 0.44
-	var w2: float = HAIR_BASE_WIDTH_M * 0.30
+	var w1: float = HAIR_BASE_WIDTH_M * 0.38
 
 	var right0: Vector3 = (p1 - p0).cross(Vector3.UP).normalized()
 	var right1: Vector3 = (p2 - p0).cross(Vector3.UP).normalized()
-	var right2: Vector3 = (p3 - p1).cross(Vector3.UP).normalized()
 
 	var vertices: PackedVector3Array = PackedVector3Array([
 		p0 - right0 * w0,
 		p0 + right0 * w0,
 		p1 - right1 * w1,
 		p1 + right1 * w1,
-		p2 - right2 * w2,
-		p2 + right2 * w2,
-		p3,
+		p2,
 	])
 
 	var normal_up: Vector3 = Vector3(0.0, 1.0, 0.0)
 	var normals: PackedVector3Array = PackedVector3Array([
-		normal_up,
-		normal_up,
 		normal_up,
 		normal_up,
 		normal_up,
@@ -219,8 +216,6 @@ static func build_hair_mesh() -> ArrayMesh:
 		0, 1, 2,
 		1, 3, 2,
 		2, 3, 4,
-		3, 5, 4,
-		4, 5, 6,
 	])
 
 	var arrays: Array = []

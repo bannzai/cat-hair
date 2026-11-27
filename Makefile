@@ -53,8 +53,10 @@ PLAYTEST_FRAMES ?= 900
 PLAYTEST_STEPS_PER_FRAME ?= 6
 # hairbench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/hairbench.gd の DEFAULT_COUNTS が SSOT)
 HAIRBENCH_COUNTS ?=
+# scenebench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/scenebench.gd の DEFAULT_COUNTS が SSOT)
+SCENEBENCH_COUNTS ?=
 
-.PHONY: import check selfcheck integration failure-path lint check-generated uid uidcheck test verify screenshot movie movie-automation simulate playtest hairbench run build-macos build-windows build-linux build-web build-all clean
+.PHONY: import check selfcheck integration failure-path lint check-generated uid uidcheck test verify screenshot movie movie-automation simulate playtest hairbench scenebench run build-macos build-windows build-linux build-web build-all clean
 
 # ログ・撮影の出力先。.gdignore を置き、撮影した PNG を Godot に import させない
 $(LOG_DIR)/.gdignore:
@@ -258,6 +260,19 @@ hairbench: import
 	test -f $(LOG_DIR)/hairbench.json
 	ls $(LOG_DIR)/hairbench-*.png
 
+# 屋敷の 1 フレームの時間のベンチマーク。メインシーンで毛の本数を変えながら、部屋に入った直後と掃除ロボットが
+# 動いている間の 1 フレームの時間・処理の時間・描画の CPU / GPU の時間・描いた三角形の数を tmp/scenebench.json に出し、
+# 本数ごとの画面を tmp/scenebench-<本数>.png に撮る (本数の既定は scripts/dev/scenebench.gd の DEFAULT_COUNTS)
+scenebench: import
+	rm -f $(LOG_DIR)/scenebench-*.png $(LOG_DIR)/scenebench.json
+	SCENEBENCH_COUNTS="$(SCENEBENCH_COUNTS)" "$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) $(SCRIPT_FLAGS) --script res://scripts/dev/scenebench.gd > $(LOG_DIR)/scenebench.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/scenebench.log; \
+	grep -q '^scenebench OK$$' $(LOG_DIR)/scenebench.log
+	tail -n 1 $(LOG_DIR)/scenebench.log | grep -q '^exit=0$$'
+	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/scenebench.log | grep -v $(WINDOWED_LOG_NOISE) | grep -q .
+	test -f $(LOG_DIR)/scenebench.json
+	ls $(LOG_DIR)/scenebench-*.png
+
 # エディタなしでゲームを起動する (人が遊んで確かめる)。先にアセットをインポートする (.godot/ が無い初回や素材の
 # 追加後に、エディタを開かずに起動すると素材が読み込めず起動に失敗するため)
 run: import
@@ -302,8 +317,8 @@ build-all: build-macos build-windows build-linux
 # ディレクトリごとや *.log をまとめては消さない)。ログは target ごとの <target>.log と、ENGINE_LOG の <target>.godot.log
 clean:
 	rm -rf build
-	rm -f $(foreach target,import check selfcheck integration integration-cmdline uidcheck failure-path bot-play-failure-path simulate-failure-path simulate-json-failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-automation simulate playtest hairbench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
-	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4 $(LOG_DIR)/movie-automation.avi $(LOG_DIR)/movie-automation.mp4
+	rm -f $(foreach target,import check selfcheck integration integration-cmdline uidcheck failure-path bot-play-failure-path simulate-failure-path simulate-json-failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-automation simulate playtest hairbench scenebench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
+	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/scenebench-*.png $(LOG_DIR)/scenebench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4 $(LOG_DIR)/movie-automation.avi $(LOG_DIR)/movie-automation.mp4
 	rm -f $(LOG_DIR)/simulate.json $(LOG_DIR)/simulate-fail.json $(LOG_DIR)/playtest.avi $(LOG_DIR)/playtest.mp4
 
 # 引数なしの make で run を実行する (人が手で動作確認するための入口。検査・テストは CI が行う)

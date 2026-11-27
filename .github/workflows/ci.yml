@@ -189,6 +189,8 @@ jobs:
         run: make hairbench GODOT="${{ steps.godot.outputs.godot }}"
       - name: Playtest movie
         run: make playtest GODOT="${{ steps.godot.outputs.godot }}"
+      - name: Mansion frame time benchmark
+        run: make scenebench GODOT="${{ steps.godot.outputs.godot }}"
       - name: Upload screenshots and movie
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -198,6 +200,8 @@ jobs:
             tmp/screenshot-*.png
             tmp/hairbench-*.png
             tmp/hairbench.json
+            tmp/scenebench-*.png
+            tmp/scenebench.json
             tmp/movie.mp4
             tmp/movie-automation.mp4
             tmp/playtest.mp4
