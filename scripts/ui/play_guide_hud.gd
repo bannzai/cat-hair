@@ -32,6 +32,12 @@ const MOUSE_HINT_BOTTOM_PX: float = (
 	LookPrototypeHud.SCREEN_MARGIN_PX + LookPrototypeHud.TOOL_SLOT_SIZE_PX.y
 	+ LookPrototypeHud.ROW_GAP_PX + LookPrototypeHud.LABEL_LINE_HEIGHT_PX
 )
+## マウスの案内の文字の大きさ (px)。道具の枠の名前 (LookPrototypeHud の ToolName) と同じ 16 にし、すぐ下の今やることの
+## 案内 (18) より小さくして、今やることの方を先に読ませる
+const HINT_FONT_SIZE_PX: int = 16
+## 操作の一覧の文字の大きさ (px)。11 行を、1280x720 の画面で住人の様子の枠 (左上) と今やることの案内 (左下) の間に
+## 収めるため、マウスの案内より 1 小さい 15 にする
+const CONTROLS_FONT_SIZE_PX: int = 15
 ## マウスの案内の行の高さ (px)。16 px の文字 1 行に上下の余白を足した高さ
 const MOUSE_HINT_HEIGHT_PX: float = 26.0
 ## マウスの案内の行と操作の一覧の枠の幅 (px)。1280 px の幅で、右下の道具の様子の行 (main.gd の ToolDetail。
@@ -69,7 +75,9 @@ func _init() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-	_mouse_hint_label = LookPrototypeHud.make_label("MouseHint", 16, HORIZONTAL_ALIGNMENT_LEFT)
+	_mouse_hint_label = LookPrototypeHud.make_label(
+		"MouseHint", HINT_FONT_SIZE_PX, HORIZONTAL_ALIGNMENT_LEFT
+	)
 	_anchor_bottom_left(_mouse_hint_label, MOUSE_HINT_BOTTOM_PX, MOUSE_HINT_HEIGHT_PX)
 	add_child(_mouse_hint_label)
 	refresh_mouse_hint(false)
@@ -89,7 +97,9 @@ func _init() -> void:
 		CONTROLS_PANEL_HEIGHT_PX,
 	)
 	add_child(_controls_panel)
-	_controls_label = LookPrototypeHud.make_label("ControlsText", 15, HORIZONTAL_ALIGNMENT_LEFT)
+	_controls_label = LookPrototypeHud.make_label(
+		"ControlsText", CONTROLS_FONT_SIZE_PX, HORIZONTAL_ALIGNMENT_LEFT
+	)
 	_controls_label.text = "\n".join(CONTROLS_LINES)
 	_controls_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_controls_panel.add_child(_controls_label)

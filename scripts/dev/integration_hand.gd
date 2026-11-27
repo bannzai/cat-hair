@@ -39,6 +39,8 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await suite._verify_short_press_twice(main, game_state)
 	await suite._verify_bare_floor_reason(main, game_state)
 	await suite._verify_out_of_reach_reason(main, game_state)
+	await suite._verify_obstacle_only_reason(main, game_state)
+	await suite._verify_no_reason_when_interrupted(main)
 	await suite._verify_release_midway_and_pluck(main, game_state)
 	await suite._verify_upgrades_change_pull(main, game_state)
 	await suite._verify_hold_plucks_and_capture_gate(main, game_state)
@@ -177,7 +179,8 @@ func _verify_bare_floor_reason(main: Node3D, game_state: Node) -> void:
 
 
 ## 届かない所: 床の毛から手の届く距離より遠く離れて、その毛を狙ってつまむと、理由が出るか。
-## 遊び始めの立ち位置と目線 (屋敷の出入り口) でつまむと何が出るかも確かめ、理由をログに残す
+## 遊び始めの立ち位置と目線 (水平に近く、照準が手の届く距離より遠い隣の部屋の奥を指す) でつまむと、
+## 「届かない」が出るかも確かめ、理由をログに残す
 func _verify_out_of_reach_reason(main: Node3D, game_state: Node) -> void:
 	var hand: HandController = main.hand
 	var player: FirstPersonPlayer = main.player
@@ -185,8 +188,12 @@ func _verify_out_of_reach_reason(main: Node3D, game_state: Node) -> void:
 	if aimed_id < 0:
 		_check(false, "届かない所の検証で床の毛を狙える")
 		return
-	var root: Vector3 = main.mansion_world.get_hair_field().get_hair_transform(aimed_id).origin
-	await _move_to_root_distance(player, root, HandController.REACH_M * 2.0)
+	# 手の届く距離の 2 倍 (5.2 m) は、届く距離を少し超えた所での判定の揺れ (根元と狙いの点の差) に左右されない遠さ
+	await _move_to_root_distance(
+		player,
+		main.mansion_world.get_hair_field().get_hair_transform(aimed_id).origin,
+		HandController.REACH_M * 2.0,
+	)
 	await _checker.physics_frame
 	var before_total: int = game_state.get_total_remaining_hairs()
 	main.tool_message_label.text = ""
@@ -210,17 +217,96 @@ func _verify_out_of_reach_reason(main: Node3D, game_state: Node) -> void:
 		% [hand.is_pulling(), hand.pull_failure_reason(), main.tool_message_label.text]
 	)
 	_check(
-		hand.is_pulling() or not main.tool_message_label.text.is_empty(),
-		"遊び始めの立ち位置と目線でつまむと、毛をつまむか、抜けなかった理由が照準の下に出る (何も起きないままにならない)",
+		main.tool_message_label.text
+		== HandController.failure_message(HandController.REASON_OUT_OF_REACH),
+		"遊び始めの立ち位置と目線のままつまむと、毛に手が届かず、照準の下に「毛まで手が届かない」理由が出る",
 	)
-	Input.action_release(HandController.ACTION_PLUCK)
-	await _checker.process_frame
+
+
+## 届かない・毛が無いの見分けのうち、光線が毛の付く表面に当たらず壁・家具の衝突体だけに当たる時:
+## 衝突体が手の届く距離より遠ければ「届かない」、届く距離にあれば「狙った所に毛が無い」になるか。
+## 屋敷の上空 (屋根より 60 m 上。毛の付く表面も衝突体も無い) へ立ち位置を移して真上を狙い、光線の上に衝突体を置いて
+## 確かめる。終わったら遊び始めの立ち位置へ戻す
+func _verify_obstacle_only_reason(main: Node3D, game_state: Node) -> void:
+	var hand: HandController = main.hand
+	var camera: Camera3D = main.player.get_camera()
+	var layout: MansionLayout = game_state.current_layout
+	main.player.set_spawn(layout.spawn_position + Vector3(0.0, 60.0, 0.0), layout.spawn_yaw)
+	await _checker.physics_frame
+	main.player.look_at_point(camera.global_position + Vector3(0.0, 10.0, 0.1))
+	await _checker.physics_frame
+	if not main.mansion_world.get_hair_field().intersect_surfaces(
+		camera.global_position, -camera.global_basis.z, HandController.AIM_PROBE_M
+	).is_empty():
+		_check(false, "屋敷の上空で真上を狙うと、光線の先に毛の付く表面が無い")
+		main.player.set_spawn(layout.spawn_position, layout.spawn_yaw)
+		return
+	var blocker: StaticBody3D = StaticBody3D.new()
+	var shape: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(1.0, 0.05, 1.0)
+	shape.shape = box
+	blocker.add_child(shape)
+	main.add_child(blocker)
+	# 届く距離の 2 倍 (遠い) と半分 (届く) の 2 か所に置く
+	for case: Array in [
+		[HandController.REACH_M * 2.0, HandController.REASON_OUT_OF_REACH, "遠い"],
+		[HandController.REACH_M * 0.5, HandController.REASON_NO_HAIR, "手の届く"],
+	]:
+		# 上空で落ち続ける分を合わせるため、毎回その時の目線の光線の上に置く
+		blocker.global_position = camera.global_position - camera.global_basis.z * float(case[0])
+		await _checker.physics_frame
+		_check(
+			hand.pull_failure_reason() == case[1],
+			"毛の付く表面の無い向きで、%s所の壁・家具にだけ光線が当たる時の理由が %s になる" % [case[2], case[1]],
+		)
+	blocker.queue_free()
+	main.player.set_spawn(layout.spawn_position, layout.spawn_yaw)
+	await _checker.physics_frame
+	await _checker.physics_frame
+
+
+## 引いている途中に道具を買う画面を開いた時と、マウスの捕捉が外れた時は、遊ぶ人が離したのではないので、
+## 引くのをやめても照準の下に理由を出さないか
+func _verify_no_reason_when_interrupted(main: Node3D) -> void:
+	var hand: HandController = main.hand
+	for interruption: String in ["shop", "capture"]:
+		if await HandAim.aim_at_floor_hair(_checker, main) < 0:
+			_check(false, "中断の検証で床の毛を狙える")
+			return
+		main.tool_message_label.text = ""
+		await _press_pluck()
+		if not hand.is_pulling():
+			_check(false, "中断の検証で毛をつまめる")
+			Input.action_release(HandController.ACTION_PLUCK)
+			return
+		if interruption == "shop":
+			main.toggle_tool_shop()
+		else:
+			hand.allow_uncaptured_pluck = false
+		await _checker.process_frame
+		await _checker.process_frame
+		_check(
+			not hand.is_pulling() and main.tool_message_label.text.is_empty(),
+			(
+				"引いている途中に道具を買う画面を開くと、引くのをやめ、照準の下に理由を出さない"
+				if interruption == "shop"
+				else "引いている途中にマウスの捕捉が外れると、引くのをやめ、照準の下に理由を出さない"
+			),
+		)
+		Input.action_release(HandController.ACTION_PLUCK)
+		if interruption == "shop":
+			main.toggle_tool_shop()
+		else:
+			hand.allow_uncaptured_pluck = true
+		await _checker.process_frame
 
 
 ## 6 番の発言の別の読み: 道具を買う画面の「手の強化」のボタンを続けて 2 回押すと、2 回とも段が上がるか
 func _verify_hand_upgrade_twice(main: Node3D, game_state: Node) -> void:
 	var dexterity: StringName = HandRulesScript.UPGRADE_DEXTERITY
 	var level_before: int = game_state.get_hand_upgrade_level(dexterity)
+	# 2 段分の値段 (ToolRules.hand_upgrade_price) より十分に多い所持金。値段の調整で 2 回目が買えずに落ちないようにする
 	game_state.save_data.building_progress.money = 100000
 	main.toggle_tool_shop()
 	await _checker.process_frame
@@ -267,6 +353,11 @@ func _verify_play_guide(main: Node3D) -> void:
 		guide.is_controls_guide_visible(),
 		"道具を買う画面を開いている間の H キーは効かず、画面を閉じると操作の一覧がまた出る",
 	)
+	# タイトル画面 (遊んでいない間) の H キーは効かない。タイトルへ戻る操作が無いため、遊んでいるかの値だけを戻して確かめる
+	main._is_playing = false
+	await _checker._press_physical_key(MainScript.TOGGLE_GUIDE_KEY)
+	main._is_playing = true
+	_check(guide.is_controls_guide_visible(), "遊んでいない間 (タイトル画面) の H キーでは操作の一覧が閉じない")
 	_check(
 		guide.get_mouse_hint_text() == PlayGuideHud.mouse_hint_text(false)
 		and PlayGuideHud.mouse_hint_text(true).contains("Esc: マウスを放す"),
@@ -280,9 +371,10 @@ func _aim_at_bare_floor(main: Node3D) -> bool:
 		return false
 	var hand: HandController = main.hand
 	var hair_field: Node3D = main.mansion_world.get_hair_field()
-	var base: Dictionary = hand.aim_target()
-	var surface_index: int = int(base["surface_index"])
-	var center: Vector3 = base["point"]
+	var floor_hair_target: Dictionary = hand.aim_target()
+	var surface_index: int = int(floor_hair_target["surface_index"])
+	var center: Vector3 = floor_hair_target["point"]
+	# 狙った毛の周りを、0.12 m (つかむ半径 0.08 m より広い) ずつ 7 輪、1 輪を 8 方向で探す (最大 0.84 m 先まで)
 	for ring: int in range(1, 8):
 		for step: int in range(8):
 			var angle: float = TAU * float(step) / 8.0

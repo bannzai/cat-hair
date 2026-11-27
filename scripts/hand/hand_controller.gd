@@ -101,8 +101,7 @@ func _process(delta: float) -> void:
 	var captured: bool = (
 		Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED or allow_uncaptured_pluck
 	)
-	var held: bool = Input.is_action_pressed(ACTION_PLUCK)
-	var pressed: bool = enabled and captured and held
+	var pressed: bool = enabled and captured and Input.is_action_pressed(ACTION_PLUCK)
 	if is_pulling():
 		if pressed and is_pull_in_reach():
 			advance_pull(delta)
@@ -128,11 +127,10 @@ func pull_failure_reason() -> StringName:
 	var from: Vector3 = _camera.global_position
 	var direction: Vector3 = -_camera.global_basis.z
 	var hair_field: Node3D = _world.get_hair_field()
-	var near: Dictionary = hair_field.intersect_surfaces(from, direction, REACH_M)
-	if not near.is_empty():
-		return REASON_BLOCKED if is_view_blocked(near["point"]) else REASON_NO_HAIR
-	var far: Dictionary = hair_field.intersect_surfaces(from, direction, AIM_PROBE_M)
-	if not far.is_empty():
+	var surface_hit_in_reach: Dictionary = hair_field.intersect_surfaces(from, direction, REACH_M)
+	if not surface_hit_in_reach.is_empty():
+		return REASON_BLOCKED if is_view_blocked(surface_hit_in_reach["point"]) else REASON_NO_HAIR
+	if not hair_field.intersect_surfaces(from, direction, AIM_PROBE_M).is_empty():
 		return REASON_OUT_OF_REACH
 	var space: PhysicsDirectSpaceState3D = _camera.get_world_3d().direct_space_state
 	if space == null:
@@ -141,8 +139,8 @@ func pull_failure_reason() -> StringName:
 		from, from + direction.normalized() * AIM_PROBE_M
 	)
 	query.exclude = _excluded_rids
-	var hit: Dictionary = space.intersect_ray(query)
-	if not hit.is_empty() and from.distance_to(hit["position"]) > REACH_M:
+	var obstacle_hit: Dictionary = space.intersect_ray(query)
+	if not obstacle_hit.is_empty() and from.distance_to(obstacle_hit["position"]) > REACH_M:
 		return REASON_OUT_OF_REACH
 	return REASON_NO_HAIR
 
