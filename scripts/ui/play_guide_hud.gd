@@ -171,7 +171,7 @@ func get_controls_guide_text() -> String:
 ## 手で引いている進み具合のゲージを progress (0〜1) にする。pulling が false の時は隠す
 func show_pull_progress(progress: float, pulling: bool) -> void:
 	_pull_bar.value = clampf(progress, 0.0, 1.0)
-	_pull_bar.visible = pulling and false
+	_pull_bar.visible = pulling
 
 
 ## 進み具合のゲージが画面に出ているか
