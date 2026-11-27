@@ -40,7 +40,7 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await suite._verify_bare_floor_reason(main, game_state)
 	await suite._verify_out_of_reach_reason(main, game_state)
 	await suite._verify_obstacle_only_reason(main, game_state)
-	await suite._verify_no_reason_when_interrupted(main)
+	await suite._verify_no_reason_when_interrupted(main, game_state)
 	await suite._verify_release_midway_and_pluck(main, game_state)
 	await suite._verify_upgrades_change_pull(main, game_state)
 	await suite._verify_hold_plucks_and_capture_gate(main, game_state)
@@ -267,9 +267,9 @@ func _verify_obstacle_only_reason(main: Node3D, game_state: Node) -> void:
 
 ## 引いている途中に道具を買う画面を開いた時と、マウスの捕捉が外れた時は、遊ぶ人が離したのではないので、
 ## 引くのをやめても照準の下に理由を出さないか。つまんでいる毛を手以外が取った時も、届かないのではないので出さないか
-func _verify_no_reason_when_interrupted(main: Node3D) -> void:
+func _verify_no_reason_when_interrupted(main: Node3D, game_state: Node) -> void:
 	var hand: HandController = main.hand
-	for interruption: String in ["shop", "capture", "taken"]:
+	for interruption: String in ["shop", "capture", "taken", "taken_and_released"]:
 		if await HandAim.aim_at_floor_hair(_checker, main) < 0:
 			_check(false, "中断の検証で床の毛を狙える")
 			return
@@ -284,10 +284,12 @@ func _verify_no_reason_when_interrupted(main: Node3D) -> void:
 				main.toggle_tool_shop()
 			"capture":
 				hand.allow_uncaptured_pluck = false
-			"taken":
+			"taken", "taken_and_released":
 				# 掃除ロボットなど、手以外が引いている途中の毛を取った時と同じく、つまんでいる毛を屋敷から消す
-				for hair_id: int in hand._pulling_ids:
+				for hair_id: int in hand.get_pulling_ids():
 					main.mansion_world.get_hair_field().remove_hair(hair_id)
+				if interruption == "taken_and_released":
+					Input.action_release(HandController.ACTION_PLUCK)
 		await _checker.process_frame
 		await _checker.process_frame
 		_check(
@@ -296,6 +298,8 @@ func _verify_no_reason_when_interrupted(main: Node3D) -> void:
 				"shop": "引いている途中に道具を買う画面を開くと、引くのをやめ、照準の下に理由を出さない",
 				"capture": "引いている途中にマウスの捕捉が外れると、引くのをやめ、照準の下に理由を出さない",
 				"taken": "押したまま引いている途中に、つまんでいる毛が手以外に取られると、引くのをやめ、「届かない」を出さない",
+				"taken_and_released":
+				"つまんでいる毛が手以外に取られたのと同じ時に離しても、「途中で離した」を出さない",
 			}[interruption],
 		)
 		Input.action_release(HandController.ACTION_PLUCK)
@@ -304,6 +308,9 @@ func _verify_no_reason_when_interrupted(main: Node3D) -> void:
 				main.toggle_tool_shop()
 			"capture":
 				hand.allow_uncaptured_pluck = true
+			"taken", "taken_and_released":
+				# 毛の表示だけから消した毛を残り本数 (GameState) と合わせるため、屋敷を組み直す (図鑑の検証と同じ後始末)
+				game_state.mansion_rebuilt.emit(game_state.current_layout)
 		await _checker.process_frame
 
 
@@ -311,6 +318,7 @@ func _verify_no_reason_when_interrupted(main: Node3D) -> void:
 func _verify_hand_upgrade_twice(main: Node3D, game_state: Node) -> void:
 	var dexterity: StringName = HandRulesScript.UPGRADE_DEXTERITY
 	var level_before: int = game_state.get_hand_upgrade_level(dexterity)
+	var money_before: int = game_state.save_data.building_progress.money
 	# 2 段分の値段 (ToolRules.hand_upgrade_price) より十分に多い所持金。値段の調整で 2 回目が買えずに落ちないようにする
 	game_state.save_data.building_progress.money = 100000
 	main.toggle_tool_shop()
@@ -329,7 +337,7 @@ func _verify_hand_upgrade_twice(main: Node3D, game_state: Node) -> void:
 	main.toggle_tool_shop()
 	await _checker.process_frame
 	game_state.set_hand_upgrade_level(dexterity, level_before)
-	game_state.save_data.building_progress.money = 0
+	game_state.save_data.building_progress.money = money_before
 
 
 ## 遊び始めに操作の一覧が出ていて、H キーで閉じる・開く。画面を開いている間は隠れて H が効かず、
