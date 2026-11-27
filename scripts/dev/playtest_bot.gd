@@ -31,11 +31,12 @@ const LookPrototypeRoomScript := preload("res://scripts/look/look_prototype_room
 const CLOCK_STEP_SECONDS: float = 1.0
 ## 取る毛・猫から離れて立つ水平の距離 (m。手の届く距離より短い)
 const STAND_DISTANCE_M: float = 0.9
-## 部屋ごとにかける道具を使う時に、部屋の中心から離れて立つ距離の割合 (部屋の短い辺の半分に対する比率)
+## 部屋ごとにかける道具を使う時に、部屋の中心から離れて立つ距離の割合 (部屋の短い辺の半分に対する比率)。
+## 中心と壁の中ほどに立ち、録画に部屋の床が広く映る値
 const ROOM_VIEW_RATIO: float = 0.5
 ## 買取業者から離れて立つ距離 (m。main.TRADER_RANGE_M より短い)
 const TRADER_STAND_M: float = 1.2
-## 経過を記録する間隔 (ゲーム内の秒)
+## 経過を記録する間隔 (ゲーム内の秒)。住人が掃除代を払う間隔 (EconomyRules.PAYMENT_INTERVAL_SECONDS) と同じ 60 秒
 const SAMPLE_INTERVAL_SECONDS: float = 60.0
 
 ## 節目の名前: 最初の道具を買った
@@ -89,7 +90,7 @@ func all_happy_reached() -> bool:
 	return _milestones.has(MILESTONE_ALL_HAPPY)
 
 
-## 次の 1 手を選んで行い、その手の秒だけ時計を進める。行った 1 手 (方針の戻り値に "seconds" と "done" を足した物) を返す
+## 次の 1 手を選んで行い、その手の秒だけ時計を進める。行った 1 手 (方針の戻り値に、かけた秒 "seconds" を足した物) を返す
 func step() -> Dictionary:
 	var action: Dictionary = PolicyScript.choose_action(snapshot())
 	var seconds: float = _execute(action)
@@ -310,9 +311,10 @@ func _densest_point(surface_index: int, radius: float) -> Vector3:
 
 ## 掃除ロボットを 1 台買い、きれいさがいちばん低い部屋から全部屋を順に回らせる
 func _buy_robot() -> void:
-	var room: Dictionary = PolicyScript.dirtiest_room(snapshot())
 	var rooms: Array[MansionLayout.RoomDef] = _game_state.current_layout.rooms
-	var first_room_id: StringName = room.get("room_id", rooms[0].room_id)
+	var first_room_id: StringName = PolicyScript.dirtiest_room(snapshot()).get(
+		"room_id", rooms[0].room_id
+	)
 	if not _game_state.automation.buy_robot(first_room_id):
 		return
 	var start: int = 0

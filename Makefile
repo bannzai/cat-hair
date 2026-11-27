@@ -217,7 +217,7 @@ simulate: import
 	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/simulate.log
 	test -f $(LOG_DIR)/simulate.json
 
-# 自動テストプレイの録画。描画付きで、bot が 1 フレームに 1 手ずつ遊ぶ様子 (毛を取る・道具を買う・掃除ロボットを置く) を
+# 自動テストプレイの録画。描画付きで、bot が早送りで遊ぶ様子 (毛を取る・道具を買う・掃除ロボットを置く) を
 # tmp/playtest.mp4 に撮る (検査は movie target と同じ)。make simulate と同じ屋敷を早送りで遊ぶ (PLAYTEST_STEPS_PER_FRAME)
 playtest: import
 	rm -f $(LOG_DIR)/playtest.avi $(LOG_DIR)/playtest.mp4

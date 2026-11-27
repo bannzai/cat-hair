@@ -92,7 +92,8 @@ func _audio_settings_path() -> String:
 	return ProjectSettings.globalize_path("res://tmp/playtest-audio-settings.cfg")
 
 
-## bot を住人全員のご機嫌か MAX_GAME_SECONDS まで遊ばせ、集計を SIMULATE_JSON_PATH に書く。書けたら true
+## bot を住人全員のご機嫌か MAX_GAME_SECONDS まで遊ばせ、集計を SIMULATE_JSON_PATH に書く。
+## 書けて、最初の道具を買う節目に届いていたら true
 func _simulate(bot: RefCounted) -> bool:
 	while not bot.all_happy_reached() and bot.elapsed_seconds() < MAX_GAME_SECONDS:
 		bot.step()
@@ -108,6 +109,10 @@ func _simulate(bot: RefCounted) -> bool:
 	file.store_string(JSON.stringify(report, "  "))
 	file.close()
 	print("simulate milestones (minutes): %s" % JSON.stringify(report["milestone_minutes"]))
+	# 所要時間が目標から外れても結果は書いて成功にするが、最初の道具すら買えない時は bot か値の壊れなので失敗にする
+	if not (report["milestone_minutes"] as Dictionary).has(PlaytestBotScript.MILESTONE_FIRST_TOOL):
+		push_error("bot_play.gd: %d 秒遊んでも最初の道具を買えなかった" % int(MAX_GAME_SECONDS))
+		return false
 	print("simulate OK")
 	return true
 

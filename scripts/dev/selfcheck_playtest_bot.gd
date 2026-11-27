@@ -43,6 +43,10 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_robot_raises_rate()
 	suite._check_after_cleaning_tools()
 	suite._check_room_tool_needs_covered_hairs()
+	suite._check_purchase_score_counts_saving_time()
+	suite._check_brush_needs_brush_and_speed()
+	suite._check_purchase_candidates()
+	suite._check_buys_at_exact_price()
 
 
 ## 手しか持たず、お金も在庫も無い屋敷の様子 (部屋 a・b。b の方がきれいさが低い)
@@ -143,12 +147,12 @@ func _check_buys_affordable_best_purchase() -> void:
 	_checker._check(
 		best_is_min, "選んだ物 %s は、候補のうち貯めて元を取るまでの秒がいちばん短い" % str(best)
 	)
+	var truck_price: int = int(
+		ToolCatalogScript.find_tool(ToolCatalogScript.TOOL_SUCTION_TRUCK)["price"]
+	)
 	_checker._check(
-		(
-			int(best.get("price", 0))
-			< int(ToolCatalogScript.find_tool(ToolCatalogScript.TOOL_SUCTION_TRUCK)["price"])
-		),
-		"手しか持たない時に最初に選ぶ物 %s は、吸引車 (3,000 円) より安い" % str(best)
+		int(best.get("price", 0)) < truck_price,
+		"手しか持たない時に最初に選ぶ物 %s は、吸引車 (%d 円) より安い" % [str(best), truck_price]
 	)
 	var action: Dictionary = PolicyScript.choose_action(snapshot)
 	_checker._check(
@@ -325,4 +329,89 @@ func _check_room_tool_needs_covered_hairs() -> void:
 		and covered.get("tool_id") == ToolCatalogScript.TOOL_ADHESIVE_SHEET
 		and covered.get("room_id") == &"b",
 		"シートのかかる表面に毛がある部屋 b ではシートを使う (実際: %s)" % str(covered)
+	)
+
+
+## 買う物の点数は「貯める秒 (値段 ÷ 今の速さ) + 元を取る秒 (値段 ÷ 伸び)」で、1 円あたりの伸びが大きくても
+## 今の稼ぎで貯めるのに長くかかる高い物より、安い物を先に選ぶ
+func _check_purchase_score_counts_saving_time() -> void:
+	_checker._check(
+		is_equal_approx(PolicyScript.purchase_score_seconds(100, 2.0, 4.0), 75.0)
+		and is_equal_approx(PolicyScript.purchase_score_seconds(100, 0.0, 4.0), 100000.0 + 25.0),
+		"値段 100 円・速さ 2 本 / 秒・伸び 4 本 / 秒の点数は 50 + 25 = 75 秒、速さ 0 は下限 0.001 で割る (実際: %s / %s)"
+		% [
+			PolicyScript.purchase_score_seconds(100, 2.0, 4.0),
+			PolicyScript.purchase_score_seconds(100, 0.0, 4.0),
+		]
+	)
+	_checker._check(
+		(
+			PolicyScript.purchase_score_seconds(100, 1.0, 1.0)
+			< PolicyScript.purchase_score_seconds(1000, 1.0, 20.0)
+		),
+		"1 円あたりの伸びが 2 倍の 1000 円の物より、今の速さ 1 本 / 秒で早く貯まる 100 円の物の点数が小さい"
+	)
+
+
+## ブラシをかけるのは、ブラシを持ち、休んでいない猫がいて、ブラシの方が持っている道具より速い時だけ
+func _check_brush_needs_brush_and_speed() -> void:
+	var no_brush: Dictionary = _base_snapshot()
+	no_brush["ready_cat_ids"] = [&"cat_0"]
+	var without: Dictionary = PolicyScript.choose_action(no_brush)
+	_checker._check(
+		without.get("kind") == PolicyScript.ACTION_CLEAN,
+		"休んでいない猫がいてもブラシを持っていなければ毛を取る (実際: %s)" % str(without)
+	)
+	var fast_tool: Dictionary = _with_tool(
+		_with_tool(_base_snapshot(), ToolCatalogScript.TOOL_BRUSH), ToolCatalogScript.TOOL_VACUUM
+	)
+	fast_tool["ready_cat_ids"] = [&"cat_0"]
+	var vacuum_rate: float = PolicyScript.tool_rate(
+		fast_tool, ToolCatalogScript.TOOL_VACUUM, fast_tool["rooms"][1]
+	)
+	var with_vacuum: Dictionary = PolicyScript.choose_action(fast_tool)
+	_checker._check(
+		vacuum_rate > PolicyScript.brush_rate()
+		and with_vacuum.get("kind") == PolicyScript.ACTION_CLEAN
+		and with_vacuum.get("tool_id") == ToolCatalogScript.TOOL_VACUUM,
+		"ブラシと猫がいても、掃除機 (%.2f 本 / 秒) がブラシ (%.2f 本 / 秒) より速ければ掃除機で取る (実際: %s)"
+		% [vacuum_rate, PolicyScript.brush_rate(), str(with_vacuum)]
+	)
+
+
+## 買う物の候補は、持っていない毛を取る道具とブラシ (ライトのような毛を取らない道具は入らない)、
+## 持っている道具のレベル上げ、手の強化 2 つ、上限まで置いていない掃除ロボット
+func _check_purchase_candidates() -> void:
+	var snapshot: Dictionary = _with_tool(_base_snapshot(), ToolCatalogScript.TOOL_TWEEZERS)
+	var kinds_by_item: Dictionary = {}
+	for candidate: Dictionary in PolicyScript.purchase_candidates(snapshot):
+		kinds_by_item[candidate["item_id"]] = candidate["purchase_kind"]
+	_checker._check(
+		kinds_by_item.get(ToolCatalogScript.TOOL_PACKING_TAPE) == GameStateScript.PURCHASE_TOOL
+		and kinds_by_item.get(ToolCatalogScript.TOOL_BRUSH) == GameStateScript.PURCHASE_TOOL
+		and kinds_by_item.get(ToolCatalogScript.TOOL_TWEEZERS) == GameStateScript.PURCHASE_LEVEL_UP
+		and not kinds_by_item.has(ToolCatalogScript.TOOL_GLOW_LIGHT)
+		and not kinds_by_item.has(ToolCatalogScript.TOOL_HAND)
+		and kinds_by_item.get(HandRulesScript.UPGRADE_DEXTERITY)
+		== GameStateScript.PURCHASE_HAND_UPGRADE
+		and kinds_by_item.get(HandRulesScript.UPGRADE_GRAB_COUNT)
+		== GameStateScript.PURCHASE_HAND_UPGRADE
+		and kinds_by_item.get(&"") == PolicyScript.PURCHASE_ROBOT,
+		"候補は持っていない毛を取る道具とブラシ・持っている道具のレベル上げ・手の強化・掃除ロボットで、ライトと手は入らない (実際: %s)"
+		% str(kinds_by_item)
+	)
+
+
+## 所持金が値段ちょうどの時は売りに行かずに買う
+func _check_buys_at_exact_price() -> void:
+	var snapshot: Dictionary = _base_snapshot()
+	var best: Dictionary = PolicyScript.best_purchase(snapshot)
+	snapshot["money"] = int(best["price"])
+	snapshot["stock_value"] = 100
+	var action: Dictionary = PolicyScript.choose_action(snapshot)
+	_checker._check(
+		action.get("kind") in [PolicyScript.ACTION_BUY, PolicyScript.ACTION_BUY_ROBOT]
+		and action.get("item_id", &"") == best["item_id"],
+		"所持金が値段 %d 円ちょうどなら売らずに %s を買う (実際: %s)"
+		% [int(best["price"]), best["item_id"], str(action)]
 	)

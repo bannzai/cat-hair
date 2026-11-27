@@ -30,23 +30,25 @@ const GameStateScript := preload("res://scripts/state/game_state.gd")
 ## 大型の道具 (アンドロイドが働く間隔)
 const BigToolSiteScript := preload("res://scripts/tools/big_tool_site.gd")
 
-## 人が遊ぶ速さの見積もり (bot が 1 手にかけるゲーム内の秒)。所要時間はこの値に比例して伸び縮みするため、
-## 変えた時は DIRECTION.md「決めたこと」の自動テストプレイの行も直す。
-## 次に取る毛へ目線を向ける秒
+## 人が遊ぶ速さの見積もり (bot が 1 手にかけるゲーム内の秒)。実機で人が遊んで測っていない見積もりで、
+## 所要時間はこの値に比例して伸び縮みするため、変えた時は DIRECTION.md「決めたこと」の自動テストプレイの行も直す。
+## 次に取る毛へ目線を向ける秒。マウスで照準を隣の毛へ動かして止める 1 動作の見積もり
 const AIM_SECONDS: float = 1.0
-## 手に持つ道具を 1 回かける秒 (狙いを合わせた後)
+## 手に持つ道具を 1 回かける秒 (狙いを合わせた後)。クリック 1 回で使い終わるため、狙う秒の半分と見積もった
 const SWEEP_USE_SECONDS: float = 0.5
-## 部屋ごとにかける道具 (吸引車・粘着シート) を部屋に 1 回かける秒
+## 部屋ごとにかける道具 (吸引車・粘着シート) を部屋に 1 回かける秒。キーで持ち替えてクリックするまでの見積もり
 const ROOM_TOOL_SECONDS: float = 3.0
-## 隣の部屋へ歩いて移る秒 (取る部屋を変えた時)
+## 隣の部屋へ歩いて移る秒 (取る部屋を変えた時)。既定の部屋の幅 6 m の半分ずつを歩く 6 m を、歩く速さ 4.2 m/s
+## (FirstPersonPlayer.DEFAULT_MOVE_SPEED) と曲がる・ドアを抜ける時間で約 1.5 秒 + 余裕に見積もり、6 秒にした
 const ROOM_MOVE_SECONDS: float = 6.0
-## 買取業者まで歩いて毛を売り、戻る秒
+## 買取業者まで歩いて毛を売り、戻る秒。4 部屋の屋敷の端から端 (約 24 m) の往復を 4.2 m/s で約 12 秒、
+## 画面を開いて売る数秒を足して 20 秒にした
 const TRADER_TRIP_SECONDS: float = 20.0
-## 道具を買う画面を開いて 1 つ買う秒
+## 道具を買う画面を開いて 1 つ買う秒。T で開き、ボタンを探して押し、閉じる 3 動作を 1 秒ずつと見積もった
 const SHOP_SECONDS: float = 3.0
-## 猫に近づいてブラシをかける秒
+## 猫に近づいてブラシをかける秒。動いている猫に照準を合わせる分、道具を床にかけるより長く見積もった
 const BRUSH_SECONDS: float = 4.0
-## することが無い時に待つ秒
+## することが無い時に待つ秒。時計を進める刻み (playtest_bot.gd の CLOCK_STEP_SECONDS) と同じ 1 秒
 const WAIT_SECONDS: float = 1.0
 ## 道具の取れる本数を見積もる表面の種類 (屋敷の毛のほとんどが乗る床)
 const ESTIMATE_SURFACE: StringName = MansionLayoutScript.SURFACE_FLOOR
@@ -55,7 +57,7 @@ const ESTIMATE_SURFACE: StringName = MansionLayoutScript.SURFACE_FLOOR
 const ACTION_CLEAN: StringName = &"clean"
 ## 1 手の種類: purchase_kind (GameState.PURCHASE_*) の item_id を買う
 const ACTION_BUY: StringName = &"buy"
-## 1 手の種類: 掃除ロボットを 1 台買い、部屋 room_id から回らせる
+## 1 手の種類: 掃除ロボットを 1 台買う (回らせる部屋は playtest_bot.gd が選ぶ)
 const ACTION_BUY_ROBOT: StringName = &"buy_robot"
 ## 1 手の種類: 買取業者へ行き、在庫をすべて売る
 const ACTION_SELL: StringName = &"sell"
@@ -76,6 +78,9 @@ const ROOM_TOOL_IDS: Array[StringName] = [
 	ToolCatalogScript.TOOL_ADHESIVE_SHEET,
 	ToolCatalogScript.TOOL_ANDROID,
 ]
+## 毛の密度を求める時に面積で割る下限 (m2)。毛の付く表面の無い部屋で 0 で割らないための値で、
+## 道具の範囲 (いちばん小さいピンセットで約 0.045 m2) より小さい
+const MIN_AREA_M2: float = 0.01
 ## 人が持って毛を取る道具の種類 (手のほか。アンドロイドは自分で働くので含めない)
 const MANUAL_TOOL_KINDS: Array[StringName] = [
 	ToolCatalogScript.KIND_SWEEP, ToolCatalogScript.KIND_ROOM, ToolCatalogScript.KIND_SHEET
@@ -106,8 +111,9 @@ static func choose_action(snapshot: Dictionary) -> Dictionary:
 		and brush_rate() > tool_rate(snapshot, tool_id, room)
 	):
 		return {"kind": ACTION_BRUSH, "cat_id": cats[0]}
-	var consumables: int = int(_owned_entry(snapshot, tool_id).get("consumables", 0))
-	if not ToolRulesScript.can_use(tool_id, consumables):
+	if not ToolRulesScript.can_use(
+		tool_id, int(_owned_entry(snapshot, tool_id).get("consumables", 0))
+	):
 		return {
 			"kind": ACTION_BUY,
 			"purchase_kind": GameStateScript.PURCHASE_CONSUMABLE,
@@ -216,9 +222,9 @@ static func apply_purchase(snapshot: Dictionary, candidate: Dictionary) -> Dicti
 	var item_id: StringName = candidate["item_id"]
 	match candidate["purchase_kind"]:
 		GameStateScript.PURCHASE_TOOL:
-			var tool_def: Dictionary = ToolCatalogScript.find_tool(item_id)
 			after["owned"][item_id] = {
-				"level": 1, "consumables": int(tool_def["initial_consumables"])
+				"level": 1,
+				"consumables": int(ToolCatalogScript.find_tool(item_id)["initial_consumables"]),
 			}
 		GameStateScript.PURCHASE_LEVEL_UP:
 			after["owned"][item_id]["level"] = int(after["owned"][item_id]["level"]) + 1
@@ -294,10 +300,11 @@ static func best_cleaning_tool(snapshot: Dictionary, room: Dictionary) -> String
 	var best_id: StringName = ToolCatalogScript.TOOL_HAND
 	var best_rate: float = tool_rate(snapshot, best_id, room)
 	for tool_id: StringName in cleaning_tool_ids(snapshot):
-		var owned: Dictionary = _owned_entry(snapshot, tool_id)
 		if (
 			tool_id != ToolCatalogScript.TOOL_HAND
-			and not ToolRulesScript.can_use(tool_id, int(owned.get("consumables", 0)))
+			and not ToolRulesScript.can_use(
+				tool_id, int(_owned_entry(snapshot, tool_id).get("consumables", 0))
+			)
 			and int(snapshot["money"]) < int(ToolCatalogScript.find_tool(tool_id)["refill_price"])
 		):
 			continue
@@ -328,9 +335,16 @@ static func tool_rate(snapshot: Dictionary, tool_id: StringName, room: Dictionar
 	var taken_ratio: float = 1.0 - ToolRulesScript.miss_ratio(tool_id, level, ESTIMATE_SURFACE)
 	if tool_def["kind"] == ToolCatalogScript.KIND_SWEEP:
 		var radius: float = float(tool_def["radius_m"])
-		var density: float = float(room["hair_count"]) / maxf(0.01, float(room["area_m2"]))
-		var in_range: float = minf(float(tool_def["max_hairs"]), density * PI * radius * radius)
-		return in_range * taken_ratio / (AIM_SECONDS + SWEEP_USE_SECONDS)
+		return (
+			minf(
+				float(tool_def["max_hairs"]),
+				(
+					float(room["hair_count"]) / maxf(MIN_AREA_M2, float(room["area_m2"]))
+					* PI * radius * radius
+				)
+			)
+			* taken_ratio / (AIM_SECONDS + SWEEP_USE_SECONDS)
+		)
 	return _room_tool_hairs(tool_id, room) * taken_ratio / ROOM_TOOL_SECONDS
 
 
