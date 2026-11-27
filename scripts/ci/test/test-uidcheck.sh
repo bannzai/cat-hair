@@ -44,7 +44,11 @@ check() {
 }
 
 printf 'extends Node\n' > "$probe"
-make --no-print-directory uid > /dev/null
+# make uid が .uid を作れなかった時に、import で Godot が作った .uid で次のケースが通ってしまわないよう、ここで止める
+if ! make --no-print-directory uid > /dev/null || [ ! -f "$probe.uid" ]; then
+  echo "FAIL: make uid が $probe.uid を作れなかった"
+  exit 1
+fi
 check "make uid の .uid は通る" "$(run_uidcheck case-1)" '^ok $'
 
 printf 'uid://BAD\n' > "$probe.uid"
