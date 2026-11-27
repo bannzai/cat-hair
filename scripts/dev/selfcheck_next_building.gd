@@ -50,6 +50,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_game_state_advance()
 	suite._check_last_building_and_new_game()
 	suite._check_advance_without_progress()
+	suite._check_advance_with_cmdline_override()
 
 
 ## 検証結果を selfcheck 本体へ記録する
@@ -378,6 +379,27 @@ func _check_advance_without_progress() -> void:
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
 
+## 調整値を引数で上書きして起動した時は、進んでも既定のセーブ (この検証では一時セーブ) を書かない
+func _check_advance_with_cmdline_override() -> void:
+	var state: Node = _new_state()
+	state.save_current_state()
+	state.launched_with_cmdline_override = true
+	make_everyone_happy(state)
+	var record: BuildingRecord = state.next_building.advance()
+	var saved: Node = GameStateScript.new()
+	saved.initialize_from_storage(TEST_SAVE_PATH)
+	_check(
+		record != null
+		and state.save_data.building_progress.building_id == BuildingRulesScript.BUILDING_HOTEL
+		and saved.save_data.building_records.is_empty()
+		and saved.save_data.building_progress.building_id == BuildingProgressScript.BUILDING_MANSION,
+		"引数で上書きして起動した時は、次の建物へ進んでも保存せず、既定のセーブの進行を壊さない",
+	)
+	saved.free()
+	state.free()
+	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+
+
 ## 最後の建物 (街全体) では進めず、「はじめから」は屋敷・手の強化なし・成績なしに戻す
 func _check_last_building_and_new_game() -> void:
 	var state: Node = _new_state()
@@ -419,6 +441,8 @@ func _new_state() -> Node:
 			"%s%d" % [MansionTuningScript.ARG_ROOM_COUNT, TEST_ROOM_COUNT],
 		]),
 	)
+	# 引数は検証の屋敷を軽くするためだけに渡しており、進んだ時の保存は通常の起動と同じに確かめる
+	state.launched_with_cmdline_override = false
 	return state
 
 

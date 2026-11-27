@@ -44,7 +44,8 @@ func can_advance() -> bool:
 
 
 ## 次の建物へ進む。今の建物の成績を記録し、手の強化に探し物を返した数の分を足して持ち越し、図鑑と成績を残して、
-## お金と道具を置いていった次の建物を組み立てて保存する。戻り値は記録した成績 (進めない時は何も変えずに null)
+## お金と道具を置いていった次の建物を組み立てて保存する。調整値を引数で上書きして起動した時は、既定のセーブの進行を
+## 壊さないよう保存しない (GameState の自動保存と同じ)。戻り値は記録した成績 (進めない時は何も変えずに null)
 func advance() -> BuildingRecord:
 	if not can_advance():
 		return null
@@ -55,5 +56,7 @@ func advance() -> BuildingRecord:
 	)
 	save_data.building_records.append(record)
 	# 調整値は最初の屋敷の作りのまま渡し、終えた建物の数が 1 つ増えたことで次の建物の作りになる
-	_game_state.apply_tuning_and_rebuild(_game_state.get_tuning(), true)
+	_game_state.apply_tuning_and_rebuild(
+		_game_state.get_tuning(), not _game_state.launched_with_cmdline_override
+	)
 	return record
