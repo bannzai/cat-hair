@@ -167,6 +167,8 @@ func _verify_runaway_cat(main: Node3D, game_state: Node) -> void:
 	# 隠れる部屋に立っていると逃げた直後に抱えてしまうため、毛の跡の始まる持ち主の部屋に立つ
 	await _stand_in_room(main, owner_room.room_id)
 	game_state.advance_time(RequestRulesScript.RUNAWAY_START_SECONDS)
+	# SceneTree の process_frame はノードの _process より前に出るため、猫の位置を動かす _process を 1 回通すには 2 フレーム待つ
+	await _checker.process_frame
 	await _checker.process_frame
 	var cat_node: Node3D = main.automation.get_cat_node(RequestRulesScript.runaway_cat_id())
 	var hiding: Vector3 = RequestRulesScript.runaway_hiding_point(layout)
