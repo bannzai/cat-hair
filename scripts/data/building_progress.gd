@@ -30,6 +30,10 @@ const BUILDING_MANSION: StringName = &"mansion"
 @export var resident_moods: Dictionary = {}
 ## 探し物ごとの状態
 @export var found_items: Array[FoundItemProgress] = []
+## 黒いスーツの服の毛の依頼で、出かける前に取り切って上乗せを受け取ったスーツの面の id
+@export var cleared_suit_surface_ids: Array[StringName] = []
+## 逃げた猫を持ち主に届けたか
+@export var runaway_cat_returned: bool = false
 
 
 ## 建物全体に残っている毛の総本数を返す
@@ -79,6 +83,10 @@ func to_dict() -> Dictionary:
 		"owned_tools": tools_out,
 		"resident_moods": moods_out,
 		"found_items": items_out,
+		"cleared_suit_surface_ids": cleared_suit_surface_ids.map(
+			func(surface_id: StringName) -> String: return String(surface_id)
+		),
+		"runaway_cat_returned": runaway_cat_returned,
 	}
 
 
@@ -108,6 +116,8 @@ static func from_dict(raw_progress_dict: Variant) -> BuildingProgress:
 	if not _load_resident_moods(progress_dict.get("resident_moods"), progress):
 		return null
 	if not _load_found_items(progress_dict.get("found_items"), progress):
+		return null
+	if not _load_requests(progress_dict, progress):
 		return null
 	return progress
 
@@ -176,4 +186,19 @@ static func _load_found_items(raw_entries: Variant, target_progress: BuildingPro
 		if parsed == null:
 			return false
 		target_progress.found_items.append(parsed)
+	return true
+
+
+## 依頼の進み (取り切ったスーツの面・猫を届けたか) を復元して target_progress へ格納する。
+## 依頼を足す前の保存データにはキーが無いため、キーが無い時は依頼を始める前の値のままにする。型が不正なら false
+static func _load_requests(progress_dict: Dictionary, target_progress: BuildingProgress) -> bool:
+	var raw_suits: Variant = progress_dict.get("cleared_suit_surface_ids", [])
+	var raw_returned: Variant = progress_dict.get("runaway_cat_returned", false)
+	if not (raw_suits is Array) or not (raw_returned is bool):
+		return false
+	for entry: Variant in raw_suits:
+		if not (entry is String):
+			return false
+		target_progress.cleared_suit_surface_ids.append(StringName(entry))
+	target_progress.runaway_cat_returned = raw_returned
 	return true

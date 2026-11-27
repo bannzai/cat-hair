@@ -23,7 +23,7 @@ const CONTROLS_LINES: Array[String] = [
 	"左クリック / E: 手以外の道具を使う",
 	SHOP_KEY_TEXT,
 	ROBOT_KEY_TEXT,
-	"B: 図鑑 / F5: セーブ",
+	"B: 図鑑 / J: 住人の依頼 / F5: セーブ",
 	RELEASE_MOUSE_TEXT + " (クリックで戻す)",
 ]
 ## マウスの案内の行の下端の、画面の下端からの高さ (px)。今やることの案内 (LookPrototypeHud の GuideLabel) の上端

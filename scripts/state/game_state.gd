@@ -11,6 +11,9 @@ signal state_changed
 signal automation_advanced(changes: Dictionary)
 ## 調整値から屋敷レイアウトが組み立て直された時に発火し、3D 空間を再構築する
 signal mansion_rebuilt(layout: MansionLayout)
+## 住人の依頼で出来事 (探し物が出てきた・取った・返した、スーツの毛を取り切った、猫が逃げた・届けた) が起きた時に発火する
+## (event は RequestState.EVENT_* の kind と中身の辞書)。画面に知らせを出すため
+signal request_event(event: Dictionary)
 
 ## セーブデータ全体型スクリプト
 const SaveDataScript := preload("res://scripts/data/save_data.gd")
@@ -36,6 +39,8 @@ const OwnedToolScript := preload("res://scripts/data/owned_tool.gd")
 const ProcessingRulesScript := preload("res://scripts/economy/processing_rules.gd")
 ## 猫と掃除ロボットの状態と入口のスクリプト
 const AutomationStateScript := preload("res://scripts/state/automation_state.gd")
+## 住人の依頼の状態と入口のスクリプト
+const RequestStateScript := preload("res://scripts/state/request_state.gd")
 ## お金で買う物の種類: 道具
 const PURCHASE_TOOL: StringName = &"tool"
 ## お金で買う物の種類: 道具のレベルを 1 上げる
@@ -60,14 +65,18 @@ var launched_with_cmdline_override: bool = false
 ## 猫と掃除ロボットの状態 (時計・猫の通り道) と、時計を進める・掃除ロボットを買う・回る順を変える・猫をブラッシングする入口
 ## (scripts/state/automation_state.gd)
 var automation: RefCounted = null
+## 住人の依頼 (探し物・黒いスーツの服の毛・逃げた猫) の状態と、道具をかけた・返す・猫を抱える・届ける入口
+## (scripts/state/request_state.gd)
+var requests: RefCounted = null
 ## 部屋ごとの最初の毛の本数 (room_id -> int。きれいさの分母)。屋敷を組み直した時に 1 回だけ求める。
 ## 保存データには入れない (調整値とレイアウトから同じ値が求まるため)
 var _initial_room_hairs: Dictionary = {}
 
 
-## 猫と掃除ロボットの状態を持つ
+## 猫と掃除ロボットの状態と、住人の依頼の状態を持つ
 func _init() -> void:
 	automation = AutomationStateScript.new(self)
+	requests = RequestStateScript.new(self)
 
 
 ## autoload 起動時に保存ファイルとコマンドライン引数から初期状態を構築する
@@ -209,6 +218,7 @@ func pluck_hair(
 	result["new_rare"] = HandRulesScript.register_rare_hair(
 		save_data.found_rare_hair_ids, rare_hair_id
 	)
+	requests.after_hairs_removed()
 	state_changed.emit()
 	return result
 
@@ -276,6 +286,8 @@ func apply_tool_sweep(tool_id: StringName, counts_by_surface: Dictionary) -> int
 			surface.hair_counts[color_id] = surface.count_for_color(color_id) - removed
 			_add_raw_stock(color_id, &"", removed)
 			removed_total += removed
+	if removed_total > 0:
+		requests.after_hairs_removed()
 	if consumed or removed_total > 0:
 		state_changed.emit()
 	return removed_total
@@ -468,6 +480,7 @@ func advance_time(delta_seconds: float) -> int:
 	var safe_delta: float = maxf(0.0, delta_seconds)
 	var before: float = progress.elapsed_seconds
 	progress.elapsed_seconds = before + safe_delta
+	requests.after_time_advanced(before, progress.elapsed_seconds)
 	_run_processors(ProcessingRulesScript.runs_due(before, progress.elapsed_seconds))
 	for room: MansionLayout.RoomDef in current_layout.rooms:
 		var status: Dictionary = get_room_status(room.room_id)
@@ -540,6 +553,7 @@ func _recompute_initial_room_hairs() -> void:
 				int(_initial_room_hairs.get(surface_def.room_id, 0)) + count
 			)
 	automation.reset(current_layout, initial_surface_hairs)
+	requests.reset()
 
 
 ## 毛のままの在庫のうち、色と珍しい毛の種類が一致する 1 件に count 本足す (無ければ作る)

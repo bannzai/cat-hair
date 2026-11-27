@@ -100,6 +100,10 @@ func step_android() -> Dictionary:
 	var hair_field: Node3D = _world.get_hair_field()
 	for hair_id: int in removed_ids:
 		hair_field.remove_hair(hair_id)
+	_game_state.requests.apply_tool(
+		ToolCatalogScript.TOOL_ANDROID,
+		_game_state.requests.items_on_surfaces(plan["counts_by_surface"].keys()),
+	)
 	_android_room_id = room_id
 	refresh_models()
 	return {"room_id": room_id, "in_range": int(plan["in_range"]), "removed": removed}

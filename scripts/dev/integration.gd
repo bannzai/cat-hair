@@ -34,6 +34,8 @@ const IntegrationTools := preload("res://scripts/dev/integration_tools.gd")
 const IntegrationAutomation := preload("res://scripts/dev/integration_automation.gd")
 ## 大型の道具の入力統合テスト
 const IntegrationBigTools := preload("res://scripts/dev/integration_big_tools.gd")
+## 住人の依頼 (探し物・逃げた猫) の入力統合テスト
+const IntegrationRequests := preload("res://scripts/dev/integration_requests.gd")
 
 ## integration テスト専用のセーブパス
 const TEST_SAVE_PATH: String = "user://integration_save_data.json"
@@ -99,6 +101,7 @@ func _run() -> void:
 	await IntegrationTools.run_all(self, main, game_state)
 	await IntegrationAutomation.run_all(self, main, game_state)
 	await IntegrationBigTools.run_all(self, main, game_state)
+	await IntegrationRequests.run_all(self, main, game_state)
 	await _verify_manual_save_and_close_request(game_state)
 
 	root.remove_child(main)

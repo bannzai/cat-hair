@@ -14,6 +14,8 @@ const RouteClockScript := preload("res://scripts/automation/route_clock.gd")
 const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## 面ごとの毛の型 (毛の色の id)
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
+## 依頼の計算 (逃げた猫が隠れている所)
+const RequestRulesScript := preload("res://scripts/requests/request_rules.gd")
 ## 猫の名札の字 (日本語の字形を持つ。出典は assets/CREDITS.md)
 const FONT: Font = preload("res://assets/fonts/NotoSansJP[wght].ttf")
 ## 猫の毛の色ごとの体の色。白・黒は毛の色そのもの、三毛は白地 (茶と黒のぶちは別に付ける)
@@ -123,6 +125,14 @@ func update_positions() -> void:
 		var cat: Node3D = _cat_nodes.get(route["cat_id"])
 		if cat == null:
 			continue
+		# 逃げた猫は隠れている所にじっとし、抱えられている間は見せない
+		cat.visible = not (
+			route["cat_id"] == RequestRulesScript.runaway_cat_id()
+			and _game_state.requests.runaway_status() == &"carried"
+		)
+		if _game_state.requests.is_cat_away(route["cat_id"]):
+			cat.position = RequestRulesScript.runaway_hiding_point(_game_state.current_layout)
+			continue
 		var position_now: Vector3 = RouteClockScript.position_at(route, now)
 		var moved: Vector3 = position_now - cat.position
 		moved.y = 0.0
@@ -159,6 +169,8 @@ func cat_centers() -> Dictionary:
 	var centers: Dictionary = {}
 	for cat_id: Variant in _cat_nodes.keys():
 		var cat: Node3D = _cat_nodes[cat_id]
+		if not cat.visible:
+			continue
 		centers[cat_id] = cat.global_position + Vector3.UP * CatRulesScript.BODY_CENTER_HEIGHT_M
 	return centers
 
