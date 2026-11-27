@@ -2,7 +2,8 @@ extends SceneTree
 ## 自動テストプレイ。bot (scripts/dev/playtest_bot.gd) が屋敷をはじめから遊ぶ。
 ## 引数 --simulate (make simulate): headless で、住人全員がご機嫌になるか MAX_GAME_SECONDS に届くまで 1 フレームの中で遊び切り、
 ## 節目までのゲーム内の時間を tmp/simulate.json に書いて「simulate OK」を出す。
-## 引数 --frames=<N> --fps=<N> (make playtest): 描画付きで、1 フレームごとに bot の 1 手を行い、録画を撮って「playtest OK」を出す。
+## 引数 --frames=<N> --fps=<N> [--steps-per-frame=<N>] (make playtest): 描画付きで、1 フレームごとに bot の手を
+## 行い (早送り)、録画を撮って「playtest OK」を出す。
 ## どちらも遊んでいる人のセーブと分けた一時セーブを使い、終わったら消す。
 
 ## AudioManager の準備・後始末と GameState の用意を借りる検証の土台
@@ -53,9 +54,6 @@ func _run() -> void:
 	var audio_handle: Dictionary = HeadlessCheck.prepare_audio_manager(self, _audio_settings_path())
 	SaveStorageScript.delete_save_file(SAVE_PATH)
 	var state_handle: Dictionary = HeadlessCheck.acquire_game_state(root, SAVE_PATH)
-	# acquire_game_state は調整値の引数を渡さないため、--room-count= などの引数 (make playtest の
-	# PLAYTEST_TUNING_ARGS) で屋敷を組み直す。調整値の引数が無ければ既定の屋敷のまま
-	(state_handle["node"] as Node).initialize_from_storage(SAVE_PATH, user_args)
 	var main: Node3D = MAIN_SCENE.instantiate()
 	main.auto_advance_time = false
 	main.auto_advance_automation = false
@@ -114,15 +112,17 @@ func _simulate(bot: RefCounted) -> bool:
 	return true
 
 
-## 録画の総フレーム数 options["total_frames"] から音声解放待ちと終了の余裕を除いたフレームで、1 フレーム 1 手ずつ遊ぶ。
-## 遊び終えたら true
+## 録画の総フレーム数 options["total_frames"] から音声解放待ちと終了の余裕を除いたフレームで、1 フレームに
+## steps_per_frame 手ずつ遊ぶ (引数 --steps-per-frame=<N>。無い・正でない時は 1)。遊び終えたら true
 func _play_frames(bot: RefCounted, options: Dictionary) -> bool:
+	var steps_per_frame: int = maxi(1, _int_arg(OS.get_cmdline_user_args(), "--steps-per-frame="))
 	for _i: int in range(
 		MovieScript.calc_record_frames(
 			int(options["total_frames"]), MovieScript.calc_release_frames(int(options["fps"]))
 		)
 	):
-		bot.step()
+		for _step: int in range(steps_per_frame):
+			bot.step()
 		await process_frame
 	# 録画に節目が映らなかった時に理由を追えるよう、集計の要点をログに残す
 	var report: Dictionary = bot.report()
@@ -132,3 +132,11 @@ func _play_frames(bot: RefCounted, options: Dictionary) -> bool:
 		print("playtest %s: %s" % [key, JSON.stringify(report[key])])
 	print("playtest OK")
 	return true
+
+
+## 引数 args のうち prefix で始まる物の後ろの整数 (無い時は 0)
+static func _int_arg(args: PackedStringArray, prefix: String) -> int:
+	for arg: String in args:
+		if arg.begins_with(prefix):
+			return arg.trim_prefix(prefix).to_int()
+	return 0

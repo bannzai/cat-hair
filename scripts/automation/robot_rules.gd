@@ -14,8 +14,9 @@ const RouteClockScript := preload("res://scripts/automation/route_clock.gd")
 const ROBOT_TOOL_ID: StringName = &"cleaning_robot"
 ## 表示名
 const ROBOT_NAME: String = "掃除ロボット"
-## 1 台の値段 (円)。手に持つ道具でいちばん高い掃除機 (400 円) より安く、何台か買い足して回る順を組める値段
-const ROBOT_PRICE: int = 300
+## 1 台の値段 (円)。手に持つ道具でいちばん高い掃除機 (2,000 円) より安く、何台か買い足して回る順を組める値段。
+## issue #13 の make simulate の結果で、道具の値段と同じく 5 倍にした (DIRECTION.md「決めたこと」)
+const ROBOT_PRICE: int = 1500
 ## 持てる台数の上限。回る順を決める画面に 1 台ずつ並べて選べる数
 const MAX_ROBOTS: int = 4
 ## 回る順の 1 部屋に留まる秒数。移る 2 秒の後に部屋の中の輪を LOOP_COUNT 周する長さ。値は仮で、自動テストプレイ (issue #13) で調整する。

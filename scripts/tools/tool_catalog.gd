@@ -1,7 +1,9 @@
 extends RefCounted
 ## 道具の定義 (値段・レベルごとの取りこぼし・得意な表面・消耗品・探し物を傷めるか)。手に持って使う道具 8 つと、
 ## 大型の道具 (業務用の吸引車・建物を覆う粘着シート・アンドロイド・毛の加工機・毛を運ぶダンプカー) を持つ。
-## 値は触れる版の感想を取るための仮の値で、自動テストプレイ (issue #13) の結果で調整する。
+## 買う値段 (price) は自動テストプレイ (make simulate。issue #13) の結果で、最初に書いた値の 5 倍にした
+## (DIRECTION.md「決めたこと」)。消耗品の値段 (refill_price) とほかの値は、触れる版の感想を取るための仮の値のまま
+## (消耗品は 1 回で取れる毛の売値と釣り合わせてあり、上げると道具を使うほど損になるため変えない)。
 ## 掃除ロボットは issue #11 が足す。
 
 ## 屋敷レイアウト型スクリプト (表面の種類の定数を使う)
@@ -104,7 +106,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_TWEEZERS,
 		"name": "ピンセット",
 		"kind": KIND_SWEEP,
-		"price": 30,
+		"price": 150,
 		"radius_m": 0.12,
 		"max_hairs": 4,
 		"base_miss_ratio": 0.3,
@@ -120,7 +122,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_PACKING_TAPE,
 		"name": "ガムテープ",
 		"kind": KIND_SWEEP,
-		"price": 60,
+		"price": 300,
 		"radius_m": 0.18,
 		"max_hairs": 25,
 		"base_miss_ratio": 0.45,
@@ -136,7 +138,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_RUBBER_GLOVE,
 		"name": "ゴム手袋とスポンジ",
 		"kind": KIND_SWEEP,
-		"price": 120,
+		"price": 600,
 		"radius_m": 0.25,
 		"max_hairs": 40,
 		"base_miss_ratio": 0.4,
@@ -152,7 +154,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_LINT_ROLLER,
 		"name": "粘着ローラー",
 		"kind": KIND_SWEEP,
-		"price": 150,
+		"price": 750,
 		"radius_m": 0.3,
 		"max_hairs": 60,
 		"base_miss_ratio": 0.35,
@@ -172,7 +174,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_VACUUM,
 		"name": "掃除機",
 		"kind": KIND_SWEEP,
-		"price": 400,
+		"price": 2000,
 		"radius_m": 0.5,
 		"max_hairs": 200,
 		"base_miss_ratio": 0.4,
@@ -190,7 +192,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_GLOW_LIGHT,
 		"name": "毛を光らせるライト",
 		"kind": KIND_LIGHT,
-		"price": 80,
+		"price": 400,
 		"radius_m": 0.0,
 		"max_hairs": 0,
 		"base_miss_ratio": 0.0,
@@ -206,7 +208,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_BRUSH,
 		"name": "ブラシ",
 		"kind": KIND_CAT,
-		"price": 100,
+		"price": 500,
 		"radius_m": 0.0,
 		"max_hairs": 0,
 		"base_miss_ratio": 0.0,
@@ -222,7 +224,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_SUCTION_TRUCK,
 		"name": "業務用の吸引車",
 		"kind": KIND_ROOM,
-		"price": 3000,
+		"price": 15000,
 		"radius_m": 0.0,
 		"max_hairs": 400,
 		"base_miss_ratio": 0.35,
@@ -242,7 +244,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_ADHESIVE_SHEET,
 		"name": "建物を覆う粘着シート",
 		"kind": KIND_SHEET,
-		"price": 1500,
+		"price": 7500,
 		"radius_m": 0.0,
 		"max_hairs": 600,
 		"base_miss_ratio": 0.3,
@@ -258,7 +260,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_ANDROID,
 		"name": "アンドロイド",
 		"kind": KIND_AUTO,
-		"price": 20000,
+		"price": 100000,
 		"radius_m": 0.0,
 		"max_hairs": 30,
 		"base_miss_ratio": 0.4,
@@ -281,7 +283,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_HAIR_PROCESSOR,
 		"name": "毛の加工機",
 		"kind": KIND_PROCESS,
-		"price": 800,
+		"price": 4000,
 		"radius_m": 0.0,
 		"max_hairs": 0,
 		"base_miss_ratio": 0.0,
@@ -298,7 +300,7 @@ const TOOLS: Array[Dictionary] = [
 		"id": TOOL_DUMP_TRUCK,
 		"name": "毛を運ぶダンプカー",
 		"kind": KIND_TRANSPORT,
-		"price": 2500,
+		"price": 12500,
 		"radius_m": 0.0,
 		"max_hairs": 0,
 		"base_miss_ratio": 0.0,

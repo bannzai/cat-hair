@@ -288,7 +288,7 @@ func _capture_tools(main: Node3D) -> String:
 	var game_state: Node = main.get_game_state()
 	var roller: StringName = ToolCatalogScript.TOOL_LINT_ROLLER
 	# 手に持つ 8 つの道具を全部持った時の右下の道具の枠の並びも同じ 1 枚で確かめる (大型の道具は後で撮る)。
-	# 所持金は 7 つの道具の値段の合計 (940 円) を足りる額で、HUD に 5 桁の所持金が出る見え方も撮れる額にする
+	# 所持金は 7 つの道具の値段の合計 (4700 円) を足りる額で、HUD に 5 桁の所持金が出る見え方も撮れる額にする
 	game_state.save_data.building_progress.money = 100000
 	for tool_def: Dictionary in ToolCatalogScript.hand_held_tools():
 		if tool_def["id"] != ToolCatalogScript.TOOL_HAND:

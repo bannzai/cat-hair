@@ -32,7 +32,7 @@ const ROOM_PITCH: float = -0.5
 ## 撮れたら空文字、失敗したら理由を返す
 static func capture_all(shooter: SceneTree, main: Node3D) -> String:
 	var game_state: Node = main.get_game_state()
-	game_state.save_data.building_progress.money = 100000
+	game_state.save_data.building_progress.money = 1000000
 	for tool_id: StringName in [
 		ToolCatalogScript.TOOL_SUCTION_TRUCK,
 		ToolCatalogScript.TOOL_ADHESIVE_SHEET,

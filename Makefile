@@ -44,13 +44,13 @@ MOVIE_FRAMES ?= 150
 # movie-automation target が録画するフレーム数 (30 fps × 11 秒 = 330)。時計を 4 倍で進めるため、掃除ロボットが
 # 1 部屋に留まる 20 秒より長い 40 秒分を録り、毛を取る様子と残り本数の減り方が見える長さ (倍率は scripts/dev/movie.gd)
 MOVIE_AUTOMATION_FRAMES ?= 330
-# playtest target の固定 FPS とフレーム数 (15 fps × 60 秒 = 900)。bot は 1 フレームに 1 手を行うため、約 870 手
-# (人の秒で数十分) で道具を買い掃除ロボットを置くまでが映る。CI の lavapipe の実測 (run 45920087313 の movie-automation:
-# 330 フレームを約 74 秒) から、900 フレームは 4 分前後で終わり、screenshot-and-movie job の timeout に収まる
+# playtest target の固定 FPS とフレーム数 (15 fps × 60 秒 = 900)。CI の lavapipe の実測 (run 45920087313 の
+# movie-automation: 330 フレームを約 74 秒) から、900 フレームは 4 分前後で終わり、screenshot-and-movie job の timeout に収まる
 PLAYTEST_FPS ?= 15
 PLAYTEST_FRAMES ?= 900
-# playtest target の屋敷の調整値 (#7 の OS 引数)。録画の 870 手で最初の道具と掃除ロボットまで届くよう、部屋と毛を減らす
-PLAYTEST_TUNING_ARGS ?= --room-count=2 --hair-count=2000
+# playtest target で bot が 1 フレームに行う手の数 (早送り)。make simulate と同じ屋敷で、約 870 フレーム × 6 手 ≒ 5,200 手
+# (1 手は人の 1〜2 秒で、ゲーム内の 2 時間前後) を録り、最初の道具と最初の掃除ロボット (simulate で 2 時間以内) まで映す
+PLAYTEST_STEPS_PER_FRAME ?= 6
 # hairbench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/hairbench.gd の DEFAULT_COUNTS が SSOT)
 HAIRBENCH_COUNTS ?=
 
@@ -218,10 +218,10 @@ simulate: import
 	test -f $(LOG_DIR)/simulate.json
 
 # 自動テストプレイの録画。描画付きで、bot が 1 フレームに 1 手ずつ遊ぶ様子 (毛を取る・道具を買う・掃除ロボットを置く) を
-# tmp/playtest.mp4 に撮る (検査は movie target と同じ)。録画の長さに収まるよう、小さい屋敷 (PLAYTEST_TUNING_ARGS) で遊ぶ
+# tmp/playtest.mp4 に撮る (検査は movie target と同じ)。make simulate と同じ屋敷を早送りで遊ぶ (PLAYTEST_STEPS_PER_FRAME)
 playtest: import
 	rm -f $(LOG_DIR)/playtest.avi $(LOG_DIR)/playtest.mp4
-	"$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) --write-movie $(LOG_DIR)/playtest.avi --fixed-fps $(PLAYTEST_FPS) --quit-after $(PLAYTEST_FRAMES) --script res://scripts/dev/bot_play.gd -- --frames=$(PLAYTEST_FRAMES) --fps=$(PLAYTEST_FPS) $(PLAYTEST_TUNING_ARGS) > $(LOG_DIR)/playtest.log 2>&1; \
+	"$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) --write-movie $(LOG_DIR)/playtest.avi --fixed-fps $(PLAYTEST_FPS) --quit-after $(PLAYTEST_FRAMES) --script res://scripts/dev/bot_play.gd -- --frames=$(PLAYTEST_FRAMES) --fps=$(PLAYTEST_FPS) --steps-per-frame=$(PLAYTEST_STEPS_PER_FRAME) > $(LOG_DIR)/playtest.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/playtest.log; \
 	grep -q '^playtest OK$$' $(LOG_DIR)/playtest.log
 	tail -n 1 $(LOG_DIR)/playtest.log | grep -q '^exit=0$$'
