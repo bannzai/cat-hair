@@ -214,7 +214,7 @@ func _check_uses_fastest_owned_tool() -> void:
 	_checker._check(
 		action.get("kind") == PolicyScript.ACTION_CLEAN
 		and action.get("tool_id") == ToolCatalogScript.TOOL_VACUUM,
-		"毛抜きと掃除機を持っている時は速い掃除機で取る (実際: %s)" % str(action)
+		"ピンセットと掃除機を持っている時は速い掃除機で取る (実際: %s)" % str(action)
 	)
 
 
@@ -228,7 +228,7 @@ func _check_refills_empty_tool() -> void:
 	_checker._check(
 		broke.get("kind") == PolicyScript.ACTION_CLEAN
 		and broke.get("tool_id") == ToolCatalogScript.TOOL_TWEEZERS,
-		"掃除機のパックが尽きて買い足すお金も無い時は毛抜きで取る (実際: %s)" % str(broke)
+		"掃除機のパックが尽きて買い足すお金も無い時はピンセットで取る (実際: %s)" % str(broke)
 	)
 	snapshot["money"] = int(ToolCatalogScript.find_tool(ToolCatalogScript.TOOL_VACUUM)["refill_price"])
 	var refill: Dictionary = PolicyScript.choose_action(snapshot)
