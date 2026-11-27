@@ -19,7 +19,11 @@ run_uidcheck() {
   rm -f tmp/uidcheck-test/*.log
   make --no-print-directory uidcheck GODOT="$godot" LOG_DIR=tmp/uidcheck-test > /dev/null 2>&1 || status=$?
   printf '%s %s' "$([ "$status" -eq 0 ] && echo ok || echo failed)" \
-    "$(grep -oE "uid_check FAIL: res://$probe\.uid .*" tmp/uidcheck-test/uidcheck.log 2> /dev/null || echo no-log)"
+    "$(if [ -f tmp/uidcheck-test/uidcheck.log ]; then
+      grep -oE "uid_check FAIL: res://$probe\.uid .*" tmp/uidcheck-test/uidcheck.log
+    else
+      echo no-log
+    fi)"
 }
 
 # 重なりのケースの落ち方 (import で落ちるか、uid_check のどの検証で落ちるか) を CI のログで見るため、
