@@ -37,13 +37,10 @@ func everyone_happy() -> bool:
 	return BuildingRulesScript.everyone_happy(resident_moods())
 
 
-## 次の建物へ進めるか (住人全員がご機嫌で、次の建物がある)
+## 次の建物へ進めるか (住人全員がご機嫌で、次の建物がある)。保存データか今いる建物の進行が無い時は、
+## GameState.get_room_status が機嫌を 0 として返すため進めない
 func can_advance() -> bool:
-	return (
-		_game_state.save_data != null
-		and _game_state.save_data.building_progress != null
-		and BuildingRulesScript.can_advance(building_index(), resident_moods())
-	)
+	return BuildingRulesScript.can_advance(building_index(), resident_moods())
 
 
 ## 次の建物へ進む。今の建物の成績を記録し、手の強化に探し物を返した数の分を足して持ち越し、図鑑と成績を残して、
