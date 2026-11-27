@@ -188,6 +188,7 @@ func _build() -> void:
 		"・".join(damaging)
 	)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# 案内は補足なので行 (18) より小さくし、図鑑の画面の案内 (14) とそろえる
 	hint.add_theme_font_size_override("font_size", 14)
 	layout.add_child(hint)
 

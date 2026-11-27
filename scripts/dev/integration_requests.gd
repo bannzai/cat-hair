@@ -39,6 +39,7 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await suite._verify_find_take_and_return(main, game_state)
 	await suite._verify_rough_tool_damages(main, game_state)
 	await suite._verify_room_tool_damages(main, game_state)
+	await suite._verify_android_and_same_use_reveal(main, game_state)
 	await suite._verify_runaway_cat(main, game_state)
 	main.tools.allow_uncaptured_use = false
 	main.tools.select_tool(ToolCatalogScript.TOOL_HAND)
@@ -78,6 +79,12 @@ func _verify_request_list_screen(main: Node3D, game_state: Node) -> void:
 		not panel.visible and main.player.controls_enabled and main.tools.enabled,
 		"J キーをもう一度押すと依頼の一覧が閉じ、操作が戻る",
 	)
+	main.open_tool_shop()
+	await _checker._press_physical_key(KEY_J)
+	var opened_over_shop: bool = panel.visible
+	main.close_tool_shop()
+	await _checker.process_frame
+	_check(not opened_over_shop, "道具を買う画面を開いている間は J キーで依頼の一覧が開かない")
 
 
 ## 探し物の面の毛を手でつまんで半分にすると探し物が出てきて、合う道具で取り、持ち主の部屋に入ると返してお礼が入るか
@@ -88,7 +95,7 @@ func _verify_find_take_and_return(main: Node3D, game_state: Node) -> void:
 	var popups: Array[String] = []
 	var on_notice: Callable = func(text: String) -> void: popups.append(text)
 	main.requests.notice_posted.connect(on_notice)
-	_pluck_until_revealed(game_state, spot)
+	pluck_until_revealed(game_state, spot)
 	await _checker.process_frame
 	var item_node: Node3D = main.requests.get_item_node(spot.found_item_id)
 	_check(
@@ -101,6 +108,7 @@ func _verify_find_take_and_return(main: Node3D, game_state: Node) -> void:
 	# 持ち主の部屋に立ったまま取ると、取った直後に返してしまうため、別の部屋に立ってから道具をかける
 	await _stand_in_room(main, _other_room_id(game_state, spot.room_id))
 	var match_tool: StringName = kind["match_tool"]
+	# 合う道具と掃除機を買っても足りなくならない額 (どちらも値段は 6,000 円以下)
 	game_state.save_data.building_progress.money = 100000
 	game_state.purchase(GameStateScript.PURCHASE_TOOL, match_tool)
 	main.tools.select_tool(match_tool)
@@ -149,7 +157,7 @@ func _verify_find_take_and_return(main: Node3D, game_state: Node) -> void:
 func _verify_rough_tool_damages(main: Node3D, game_state: Node) -> void:
 	var spot: MansionLayout.FoundItemSpotDef = game_state.current_layout.found_item_spots[1]
 	var item: FoundItemProgress = game_state.requests.find_item(spot.found_item_id)
-	_pluck_until_revealed(game_state, spot)
+	pluck_until_revealed(game_state, spot)
 	await _stand_in_room(main, _other_room_id(game_state, spot.room_id))
 	var vacuum: StringName = ToolCatalogScript.TOOL_VACUUM
 	game_state.purchase(GameStateScript.PURCHASE_TOOL, vacuum)
@@ -210,6 +218,7 @@ func _verify_room_tool_damages(main: Node3D, game_state: Node) -> void:
 		game_state.requests.find_item(other.found_item_id).condition
 	)
 	var truck: StringName = ToolCatalogScript.TOOL_SUCTION_TRUCK
+	# 吸引車 (45,000 円) を買える額
 	game_state.save_data.building_progress.money = 1000000
 	game_state.purchase(GameStateScript.PURCHASE_TOOL, truck)
 	await _stand_in_room(main, target.room_id)
@@ -225,6 +234,71 @@ func _verify_room_tool_damages(main: Node3D, game_state: Node) -> void:
 			str(result), str(target.found_item_id),
 			game_state.requests.find_item(target.found_item_id).condition,
 		],
+	)
+	main.tools.select_tool(ToolCatalogScript.TOOL_HAND)
+
+
+## アンドロイドが掃除した部屋の探し物は埋もれていてもきれいに取れ、別の部屋の探し物は変わらないか。
+## 合う道具の 1 回で面の毛が半分になった時は、毛を減らしてから判定するので、埋もれていた探し物がそのままきれいに取れるか
+func _verify_android_and_same_use_reveal(main: Node3D, game_state: Node) -> void:
+	var progress: BuildingProgress = game_state.save_data.building_progress
+	for item: FoundItemProgress in progress.found_items:
+		item.condition = FoundItemProgressScript.Condition.HIDDEN
+		item.is_returned = false
+	# アンドロイド (値段は ToolCatalog の表) を買える額
+	progress.money = 10000000
+	game_state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_ANDROID)
+	var spots: Array[MansionLayout.FoundItemSpotDef] = game_state.current_layout.found_item_spots
+	var cleaned_room: StringName = &""
+	# 掃除する部屋は毛のいちばん多い部屋なので、探し物のある部屋に当たるまで繰り返す (部屋の数より多くは要らない)
+	for _attempt: int in range(game_state.current_layout.rooms.size() * 2):
+		cleaned_room = main.big_tools.step_android().get("room_id", &"")
+		if spots.any(
+			func(spot: MansionLayout.FoundItemSpotDef) -> bool: return spot.room_id == cleaned_room
+		):
+			break
+	var in_room_clean: bool = true
+	var elsewhere_untouched: bool = true
+	for spot: MansionLayout.FoundItemSpotDef in spots:
+		var condition: FoundItemProgress.Condition = (
+			game_state.requests.find_item(spot.found_item_id).condition
+		)
+		if spot.room_id == cleaned_room:
+			in_room_clean = in_room_clean and condition == FoundItemProgressScript.Condition.CLEAN
+		elif condition in [
+			FoundItemProgressScript.Condition.CLEAN, FoundItemProgressScript.Condition.DAMAGED
+		]:
+			elsewhere_untouched = false
+	_check(
+		cleaned_room != &"" and in_room_clean and elsewhere_untouched,
+		"アンドロイドが掃除した部屋 (%s) の探し物は埋もれていてもきれいに取れ、別の部屋の探し物は取らない"
+		% cleaned_room,
+	)
+	var spot: MansionLayout.FoundItemSpotDef = null
+	for candidate: MansionLayout.FoundItemSpotDef in spots:
+		if candidate.room_id != cleaned_room:
+			spot = candidate
+	if spot == null:
+		spot = spots[0]
+	var item: FoundItemProgress = game_state.requests.find_item(spot.found_item_id)
+	item.condition = FoundItemProgressScript.Condition.HIDDEN
+	item.is_returned = false
+	var surface: SurfaceHair = progress.find_surface_hair(spot.surface_id)
+	var initial: int = game_state.automation.get_initial_surface_hairs(spot.surface_id)
+	# 道具の 1 回で 1 本以上取れば境目を越える、半分の境目のすぐ上の本数にする
+	surface.hair_counts = {
+		SurfaceHair.COLOR_WHITE: floori(initial * RequestRulesScript.REVEAL_REMAINING_RATIO) + 1
+	}
+	var match_tool: StringName = RequestRulesScript.kind_for_item_id(spot.found_item_id)["match_tool"]
+	game_state.purchase(GameStateScript.PURCHASE_TOOL, match_tool)
+	main.tools.select_tool(match_tool)
+	await _stand_in_room(main, _other_room_id(game_state, spot.room_id))
+	var result: Dictionary = main.tools.use_selected_tool_at(_target_at(main, spot))
+	_check(
+		bool(result.get("used", false)) and int(result.get("removed", 0)) > 0
+		and item.condition == FoundItemProgressScript.Condition.CLEAN,
+		"合う道具の 1 回で面の毛が半分になると、埋もれていた探し物がその 1 回できれいに取れる (実際: %s・状態 %d)"
+		% [str(result), item.condition],
 	)
 	main.tools.select_tool(ToolCatalogScript.TOOL_HAND)
 
@@ -253,7 +327,9 @@ func _verify_runaway_cat(main: Node3D, game_state: Node) -> void:
 		],
 	)
 	var resident: StringName = MansionBuilderScript.resident_id_for_room(owner_room.room_id)
+	# 届けた時に最大 (1.0) へ上がったと分かるよう、ご機嫌の線 (0.8) より下にしておく
 	game_state.save_data.building_progress.resident_moods[resident] = 0.2
+	# 抱えられる距離 (RequestController.CARRY_RANGE_M = 1.5 m) の内側に立つ
 	main.player.set_spawn(hiding + Vector3(0.5, 0.0, 0.0), 0.0)
 	for _frame: int in range(SETTLE_FRAMES):
 		await _checker.physics_frame
@@ -277,7 +353,8 @@ func _verify_runaway_cat(main: Node3D, game_state: Node) -> void:
 
 
 ## 探し物 spot の面の毛を、手でつまむ GameState の入口 (pluck_hair) で 1 本ずつ取り、探し物が出てくるまで続ける
-static func _pluck_until_revealed(game_state: Node, spot: MansionLayout.FoundItemSpotDef) -> void:
+## (撮影の scripts/dev/screenshot_requests.gd も使う)
+static func pluck_until_revealed(game_state: Node, spot: MansionLayout.FoundItemSpotDef) -> void:
 	var item: FoundItemProgress = game_state.requests.find_item(spot.found_item_id)
 	var surface: SurfaceHair = game_state.save_data.building_progress.find_surface_hair(
 		spot.surface_id

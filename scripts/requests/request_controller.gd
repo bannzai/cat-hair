@@ -144,8 +144,7 @@ func interact_at(player_position: Vector3) -> void:
 	var layout: MansionLayout = _game_state.current_layout
 	var requests: RefCounted = _game_state.requests
 	if requests.runaway_status() == &"escaped":
-		var hiding: Vector3 = RequestRulesScript.runaway_hiding_point(layout)
-		if Vector2(player_position.x - hiding.x, player_position.z - hiding.z).length() <= CARRY_RANGE_M:
+		if can_carry(player_position, RequestRulesScript.runaway_hiding_point(layout)):
 			requests.carry_runaway_cat()
 	var room: MansionLayout.RoomDef = LookPrototypeRoomScript.room_at(layout, player_position)
 	if room == null:
@@ -154,6 +153,14 @@ func interact_at(player_position: Vector3) -> void:
 	for spot: MansionLayout.FoundItemSpotDef in layout.found_item_spots:
 		if spot.room_id == room.room_id:
 			requests.return_item(spot.found_item_id, room.room_id)
+
+
+## 足元 player_position から、隠れている所 hiding まで抱えられる距離か (水平の距離が CARRY_RANGE_M 以内)
+static func can_carry(player_position: Vector3, hiding: Vector3) -> bool:
+	return (
+		Vector2(player_position.x - hiding.x, player_position.z - hiding.z).length()
+		<= CARRY_RANGE_M
+	)
 
 
 ## 探し物 1 つの見た目 (種類の色の箱と名前の札) を作る
@@ -208,9 +215,10 @@ static func notice_text(event: Dictionary) -> String:
 				kind["name"], ToolCatalogScript.find_tool(kind["match_tool"]).get("name", "")
 			]
 		RequestStateScript.EVENT_TAKEN:
-			var taken_kind: Dictionary = RequestRulesScript.kind_for_item_id(event["found_item_id"])
-			var clean: bool = event["condition"] == FoundItemProgressScript.Condition.CLEAN
-			return "%sを%s取った" % [taken_kind["name"], "きれいに" if clean else "傷めて"]
+			return "%sを%s取った" % [
+				RequestRulesScript.kind_for_item_id(event["found_item_id"])["name"],
+				"きれいに" if event["condition"] == FoundItemProgressScript.Condition.CLEAN else "傷めて",
+			]
 		RequestStateScript.EVENT_RETURNED:
 			return "%sを返した: 次の掃除代にお礼 +%d 円" % [
 				RequestRulesScript.kind_for_item_id(event["found_item_id"])["name"], int(event["reward"])

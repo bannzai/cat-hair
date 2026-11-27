@@ -35,14 +35,6 @@ const GameStateScript := preload("res://scripts/state/game_state.gd")
 const SaveStorageScript := preload("res://scripts/state/save_storage.gd")
 ## selfcheck が使う一時セーブファイルパス (GameState の初期化だけに使い、保存はしない)
 const TEST_SAVE_PATH: String = "user://selfcheck_requests_save_data.json"
-## 探し物の状態の短い名前 (検証の文言用)
-const HIDDEN := FoundItemProgressScript.Condition.HIDDEN
-## 探し物の状態: 見つけた
-const FOUND := FoundItemProgressScript.Condition.FOUND
-## 探し物の状態: きれいに取った
-const CLEAN := FoundItemProgressScript.Condition.CLEAN
-## 探し物の状態: 傷めて取った
-const DAMAGED := FoundItemProgressScript.Condition.DAMAGED
 
 ## 検証結果を記録する selfcheck の SceneTree 参照
 var _checker: SceneTree = null
@@ -65,6 +57,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_reach_boundaries()
 	suite._check_runaway_path_on_fixed_layout()
 	suite._check_runaway_timing_and_reset()
+	suite._check_texts()
 
 
 ## 検証結果を selfcheck 本体へ記録する
@@ -99,20 +92,76 @@ func _check_condition_after_tool() -> void:
 	var scarf: Dictionary = RequestRulesScript.kind_for_item_id(&"found_item_1")
 	# [種類, 道具, 前の状態, 期待する後の状態, 文言]
 	var cases: Array[Array] = [
-		[watch, ToolCatalogScript.TOOL_TWEEZERS, FOUND, CLEAN, "懐中時計をピンセットで取るときれい"],
-		[scarf, ToolCatalogScript.TOOL_LINT_ROLLER, FOUND, CLEAN, "スカーフを粘着ローラーで取るときれい"],
-		[watch, ToolCatalogScript.TOOL_LINT_ROLLER, FOUND, FOUND, "懐中時計に粘着ローラーでは取れない"],
-		[scarf, ToolCatalogScript.TOOL_TWEEZERS, FOUND, FOUND, "スカーフにピンセットでは取れない"],
-		[watch, ToolCatalogScript.TOOL_VACUUM, FOUND, DAMAGED, "掃除機で吸うと懐中時計が傷む"],
-		[scarf, ToolCatalogScript.TOOL_SUCTION_TRUCK, FOUND, DAMAGED, "吸引車で吸うとスカーフが傷む"],
-		[scarf, ToolCatalogScript.TOOL_PACKING_TAPE, FOUND, DAMAGED, "ガムテープで剥がすとスカーフが傷む"],
-		[watch, ToolCatalogScript.TOOL_VACUUM, HIDDEN, DAMAGED, "埋もれた探し物も掃除機で吸うと傷む"],
-		[watch, ToolCatalogScript.TOOL_TWEEZERS, HIDDEN, HIDDEN, "埋もれた探し物には合う道具が届かない"],
-		[scarf, ToolCatalogScript.TOOL_ANDROID, HIDDEN, CLEAN, "アンドロイドは埋もれた探し物も見分けてきれいに取る"],
-		[watch, ToolCatalogScript.TOOL_HAND, FOUND, FOUND, "手では探し物を取らない"],
-		[watch, ToolCatalogScript.TOOL_ADHESIVE_SHEET, FOUND, FOUND, "粘着シートは探し物を取らない"],
-		[watch, ToolCatalogScript.TOOL_VACUUM, CLEAN, CLEAN, "きれいに取った後に掃除機をかけても変わらない"],
-		[watch, ToolCatalogScript.TOOL_TWEEZERS, DAMAGED, DAMAGED, "傷めた後に合う道具をかけても戻らない"],
+		[
+			watch, ToolCatalogScript.TOOL_TWEEZERS,
+			FoundItemProgress.Condition.FOUND, FoundItemProgress.Condition.CLEAN,
+			"懐中時計をピンセットで取るときれい",
+		],
+		[
+			scarf, ToolCatalogScript.TOOL_LINT_ROLLER,
+			FoundItemProgress.Condition.FOUND, FoundItemProgress.Condition.CLEAN,
+			"スカーフを粘着ローラーで取るときれい",
+		],
+		[
+			watch, ToolCatalogScript.TOOL_LINT_ROLLER,
+			FoundItemProgress.Condition.FOUND, FoundItemProgress.Condition.FOUND,
+			"懐中時計に粘着ローラーでは取れない",
+		],
+		[
+			scarf, ToolCatalogScript.TOOL_TWEEZERS,
+			FoundItemProgress.Condition.FOUND, FoundItemProgress.Condition.FOUND,
+			"スカーフにピンセットでは取れない",
+		],
+		[
+			watch, ToolCatalogScript.TOOL_VACUUM,
+			FoundItemProgress.Condition.FOUND, FoundItemProgress.Condition.DAMAGED,
+			"掃除機で吸うと懐中時計が傷む",
+		],
+		[
+			scarf, ToolCatalogScript.TOOL_SUCTION_TRUCK,
+			FoundItemProgress.Condition.FOUND, FoundItemProgress.Condition.DAMAGED,
+			"吸引車で吸うとスカーフが傷む",
+		],
+		[
+			scarf, ToolCatalogScript.TOOL_PACKING_TAPE,
+			FoundItemProgress.Condition.FOUND, FoundItemProgress.Condition.DAMAGED,
+			"ガムテープで剥がすとスカーフが傷む",
+		],
+		[
+			watch, ToolCatalogScript.TOOL_VACUUM,
+			FoundItemProgress.Condition.HIDDEN, FoundItemProgress.Condition.DAMAGED,
+			"埋もれた探し物も掃除機で吸うと傷む",
+		],
+		[
+			watch, ToolCatalogScript.TOOL_TWEEZERS,
+			FoundItemProgress.Condition.HIDDEN, FoundItemProgress.Condition.HIDDEN,
+			"埋もれた探し物には合う道具が届かない",
+		],
+		[
+			scarf, ToolCatalogScript.TOOL_ANDROID,
+			FoundItemProgress.Condition.HIDDEN, FoundItemProgress.Condition.CLEAN,
+			"アンドロイドは埋もれた探し物も見分けてきれいに取る",
+		],
+		[
+			watch, ToolCatalogScript.TOOL_HAND,
+			FoundItemProgress.Condition.FOUND, FoundItemProgress.Condition.FOUND,
+			"手では探し物を取らない",
+		],
+		[
+			watch, ToolCatalogScript.TOOL_ADHESIVE_SHEET,
+			FoundItemProgress.Condition.FOUND, FoundItemProgress.Condition.FOUND,
+			"粘着シートは探し物を取らない",
+		],
+		[
+			watch, ToolCatalogScript.TOOL_VACUUM,
+			FoundItemProgress.Condition.CLEAN, FoundItemProgress.Condition.CLEAN,
+			"きれいに取った後に掃除機をかけても変わらない",
+		],
+		[
+			watch, ToolCatalogScript.TOOL_TWEEZERS,
+			FoundItemProgress.Condition.DAMAGED, FoundItemProgress.Condition.DAMAGED,
+			"傷めた後に合う道具をかけても戻らない",
+		],
 	]
 	for case: Array in cases:
 		var actual: FoundItemProgress.Condition = RequestRulesScript.condition_after_tool(
@@ -138,11 +187,12 @@ func _check_condition_after_tool() -> void:
 
 ## きれいに返した時のお礼が傷めて返した時より大きく、取っていない探し物にはお礼が無いか
 func _check_rewards() -> void:
-	var clean: int = RequestRulesScript.reward(CLEAN)
-	var damaged: int = RequestRulesScript.reward(DAMAGED)
+	var clean: int = RequestRulesScript.reward(FoundItemProgress.Condition.CLEAN)
+	var damaged: int = RequestRulesScript.reward(FoundItemProgress.Condition.DAMAGED)
 	_check(
 		clean > damaged and damaged > 0
-		and RequestRulesScript.reward(HIDDEN) == 0 and RequestRulesScript.reward(FOUND) == 0,
+		and RequestRulesScript.reward(FoundItemProgress.Condition.HIDDEN) == 0
+		and RequestRulesScript.reward(FoundItemProgress.Condition.FOUND) == 0,
 		"お礼はきれい (%d 円) > 傷んだ (%d 円) > 0 で、見つけただけ・埋もれた物は 0" % [clean, damaged],
 	)
 
@@ -203,21 +253,24 @@ func _check_found_item_flow_in_game_state() -> void:
 	var item: FoundItemProgress = state.requests.find_item(spot.found_item_id)
 	var surface: SurfaceHair = state.save_data.building_progress.find_surface_hair(spot.surface_id)
 	var initial: int = state.automation.get_initial_surface_hairs(spot.surface_id)
-	_check(initial > 0 and item.condition == HIDDEN, "毛のある面に埋めた探し物は最初は埋もれている")
+	_check(
+		initial > 0 and item.condition == FoundItemProgress.Condition.HIDDEN,
+		"毛のある面に埋めた探し物は最初は埋もれている",
+	)
 	var half: int = floori(initial * RequestRulesScript.REVEAL_REMAINING_RATIO)
 	_set_surface_count(surface, half + 1)
 	state.requests.after_hairs_removed()
-	_check(item.condition == HIDDEN, "面の毛が半分より多く残っている間は出てこない")
+	_check(item.condition == FoundItemProgress.Condition.HIDDEN, "面の毛が半分より多く残っている間は出てこない")
 	_set_surface_count(surface, half)
 	state.requests.after_hairs_removed()
 	_check(
-		item.condition == FOUND and not events.is_empty()
+		item.condition == FoundItemProgress.Condition.FOUND and not events.is_empty()
 		and events[-1]["kind"] == RequestStateScript.EVENT_REVEALED,
 		"面の毛が半分になると探し物が出てきて、出来事を知らせる",
 	)
 	_set_surface_count(surface, initial)
 	state.requests.after_hairs_removed()
-	_check(item.condition == FOUND, "猫がまた毛を落として面の毛が増えても、出てきた探し物は埋もれ直さない")
+	_check(item.condition == FoundItemProgress.Condition.FOUND, "猫がまた毛を落として面の毛が増えても、出てきた探し物は埋もれ直さない")
 	var other_room: StringName = &""
 	for room: MansionLayout.RoomDef in state.current_layout.rooms:
 		if room.room_id != spot.room_id:
@@ -226,19 +279,20 @@ func _check_found_item_flow_in_game_state() -> void:
 		state.requests.return_item(spot.found_item_id, spot.room_id) == 0,
 		"見つけただけで取っていない探し物は返せない",
 	)
-	var match_tool: StringName = RequestRulesScript.kind_for_item_id(spot.found_item_id)["match_tool"]
 	var reach: Array[StringName] = state.requests.items_in_reach(spot.surface_id, spot.position, 0.05)
-	var far: Array[StringName] = state.requests.items_in_reach(
-		spot.surface_id, spot.position + Vector3(1.0, 0.0, 0.0), 0.05
-	)
 	_check(
-		reach.has(spot.found_item_id) and not far.has(spot.found_item_id),
+		reach.has(spot.found_item_id)
+		and not state.requests.items_in_reach(
+			spot.surface_id, spot.position + Vector3(1.0, 0.0, 0.0), 0.05
+		).has(spot.found_item_id),
 		"道具の範囲 (半径 + %.2f m) に入った探し物だけが道具に当たる" % RequestRulesScript.ITEM_REACH_MARGIN_M,
 	)
-	state.requests.apply_tool(match_tool, reach)
+	state.requests.apply_tool(
+		RequestRulesScript.kind_for_item_id(spot.found_item_id)["match_tool"], reach
+	)
 	var money_before: int = state.get_money()
 	_check(
-		item.condition == CLEAN
+		item.condition == FoundItemProgress.Condition.CLEAN
 		and state.requests.return_item(spot.found_item_id, other_room) == 0
 		and state.get_money() == money_before,
 		"合う道具で取るときれいになり、持ち主でない部屋では返せない",
@@ -262,7 +316,7 @@ func _check_found_item_flow_in_game_state() -> void:
 	state.requests.apply_tool(ToolCatalogScript.TOOL_VACUUM, second_ids)
 	var damaged_paid: int = state.requests.return_item(second.found_item_id, second.room_id)
 	_check(
-		state.requests.find_item(second.found_item_id).condition == DAMAGED
+		state.requests.find_item(second.found_item_id).condition == FoundItemProgress.Condition.DAMAGED
 		and damaged_paid == RequestRulesScript.REWARD_DAMAGED and damaged_paid < paid,
 		"掃除機で吸った探し物は傷み、返した時のお礼が %d 円と少ない" % damaged_paid,
 	)
@@ -316,7 +370,7 @@ func _check_save_round_trip() -> void:
 	var progress: BuildingProgress = BuildingProgressScript.new()
 	var item: FoundItemProgress = FoundItemProgressScript.new()
 	item.found_item_id = &"found_item_3"
-	item.condition = DAMAGED
+	item.condition = FoundItemProgress.Condition.DAMAGED
 	item.is_returned = true
 	progress.found_items.append(item)
 	progress.cleared_suit_surface_ids.append(&"surface_9")
@@ -326,7 +380,8 @@ func _check_save_round_trip() -> void:
 	var loaded: BuildingProgress = BuildingProgressScript.from_dict(data)
 	_check(
 		loaded != null and loaded.found_items.size() == 1
-		and loaded.found_items[0].condition == DAMAGED and loaded.found_items[0].is_returned
+		and loaded.found_items[0].condition == FoundItemProgress.Condition.DAMAGED
+		and loaded.found_items[0].is_returned
 		and loaded.cleared_suit_surface_ids.size() == 1
 		and loaded.cleared_suit_surface_ids[0] == &"surface_9" and loaded.runaway_cat_returned
 		and int(loaded.pending_rewards.get(&"resident_room_1", 0)) == 250,
@@ -348,10 +403,16 @@ func _check_save_round_trip() -> void:
 	bad_suits["cleared_suit_surface_ids"] = [3]
 	var bad_rewards: Dictionary = data.duplicate(true)
 	bad_rewards["pending_rewards"] = {"resident_room_1": "many"}
+	var suits_not_array: Dictionary = data.duplicate(true)
+	suits_not_array["cleared_suit_surface_ids"] = "surface_9"
+	var rewards_not_dict: Dictionary = data.duplicate(true)
+	rewards_not_dict["pending_rewards"] = [250]
 	_check(
 		BuildingProgressScript.from_dict(bad) == null
 		and BuildingProgressScript.from_dict(bad_suits) == null
-		and BuildingProgressScript.from_dict(bad_rewards) == null,
+		and BuildingProgressScript.from_dict(bad_rewards) == null
+		and BuildingProgressScript.from_dict(suits_not_array) == null
+		and BuildingProgressScript.from_dict(rewards_not_dict) == null,
 		"依頼の進みの型が違う保存データは読まない",
 	)
 
@@ -389,6 +450,7 @@ func _check_runaway_cat() -> void:
 	# 面の毛の上限で落とせない状態を除くため、全部の面を空にしてから時計を進める
 	for surface: SurfaceHair in state.save_data.building_progress.surface_hairs:
 		_set_surface_count(surface, 0)
+	# 猫の通り道を 1 周以上回り、どの猫も毛を落とす時刻を通る長さ
 	var changes: Dictionary = state.automation.advance(120.0)
 	var dropped_by_runaway: int = 0
 	var dropped_by_others: int = 0
@@ -397,18 +459,18 @@ func _check_runaway_cat() -> void:
 			dropped_by_runaway += int(drop["count"])
 		else:
 			dropped_by_others += int(drop["count"])
-	var other_cat: StringName = CatRulesScript.CATS[1]["id"]
 	_check(
-		dropped_by_runaway == 0 and dropped_by_others > 0 and not state.requests.is_cat_away(other_cat),
+		dropped_by_runaway == 0 and dropped_by_others > 0
+		and not state.requests.is_cat_away(CatRulesScript.CATS[1]["id"]),
 		"隠れている猫は毛を落とさず、ほかの猫は落とし続ける (実際: 逃げた猫 %d 本・ほかの猫 %d 本)"
 		% [dropped_by_runaway, dropped_by_others],
 	)
 	var resident: StringName = MansionBuilderScript.resident_id_for_room(owner_room.room_id)
+	# 届けた時に最大 (1.0) へ上がったと分かるよう、ご機嫌の線 (0.8) より下にしておく
 	state.save_data.building_progress.resident_moods[resident] = 0.2
-	var wrong_room: StringName = path[path.size() - 1].room_id
 	_check(
 		state.requests.carry_runaway_cat() and state.requests.runaway_status() == &"carried"
-		and not state.requests.deliver_runaway_cat(wrong_room),
+		and not state.requests.deliver_runaway_cat(path[path.size() - 1].room_id),
 		"逃げた猫を抱えられ、持ち主でない部屋では届けられない",
 	)
 	_check(
@@ -455,6 +517,7 @@ func _check_reveal_by_tool_and_robot() -> void:
 	var initial: int = state.automation.get_initial_surface_hairs(spot.surface_id)
 	_set_surface_count(progress.find_surface_hair(spot.surface_id), initial)
 	var half: int = floori(initial * RequestRulesScript.REVEAL_REMAINING_RATIO)
+	# 掃除機 (6,000 円) を買える額
 	progress.money = 1000000
 	state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_VACUUM)
 	state.apply_tool_sweep(
@@ -462,7 +525,7 @@ func _check_reveal_by_tool_and_robot() -> void:
 		{spot.surface_id: {SurfaceHairScript.COLOR_WHITE: initial - half}},
 	)
 	_check(
-		item.condition == FOUND,
+		item.condition == FoundItemProgress.Condition.FOUND,
 		"道具で面の毛を半分にすると探し物が出てくる (実際: 状態 %d・残り %d / %d 本)"
 		% [item.condition, state.get_surface_hair_count(spot.surface_id), initial],
 	)
@@ -491,11 +554,13 @@ func _check_reveal_by_tool_and_robot() -> void:
 		robot_progress.find_surface_hair(floor_spot.surface_id),
 		floori(robot_initial * RequestRulesScript.REVEAL_REMAINING_RATIO) + 1,
 	)
+	# 掃除ロボット (値段は RobotRules.ROBOT_PRICE) を買える額
 	robot_progress.money = 1000000
 	robot_state.automation.buy_robot(floor_spot.room_id)
+	# ロボットが部屋を何周もして、境目の上の 1 本以上を取る長さ
 	robot_state.automation.advance(600.0)
 	_check(
-		robot_item.condition == FOUND,
+		robot_item.condition == FoundItemProgress.Condition.FOUND,
 		"掃除ロボットが取った毛で面の毛が半分になると探し物が出てくる (実際: 状態 %d・残り %d / %d 本)"
 		% [
 			robot_item.condition, robot_state.get_surface_hair_count(floor_spot.surface_id),
@@ -506,7 +571,7 @@ func _check_reveal_by_tool_and_robot() -> void:
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
 
-## 道具の範囲の境目: 半径 + 余白ちょうどは当たり、そのすぐ外と別の面は当たらない
+## 道具の範囲の境目: 半径 + 余白の 1 mm 内は当たり、1 mm 外と別の面は当たらない
 func _check_reach_boundaries() -> void:
 	var spot: MansionLayout.FoundItemSpotDef = MansionLayout.FoundItemSpotDef.new()
 	spot.surface_id = &"surface_a"
@@ -528,21 +593,10 @@ func _check_reach_boundaries() -> void:
 ## 間取りを固定した屋敷で、逃げた猫がドアをたどって最も遠い部屋に隠れ、毛の跡が 0.8 m おきに続くか。
 ## 間取り: 持ち主の部屋 A (0,0) - ドア - B (1,0) - ドア - C (2,0)。A の南の D (0,1) は隣り合うがドアが無い
 func _check_runaway_path_on_fixed_layout() -> void:
-	var layout: MansionLayout = MansionLayout.new()
-	var specs: Array[Array] = [
-		[&"room_a", 0, 0, false, true], [&"room_b", 1, 0, true, true],
-		[&"room_c", 2, 0, true, false], [&"room_d", 0, 1, false, false],
-	]
-	for spec: Array in specs:
-		var room: MansionLayout.RoomDef = MansionLayout.RoomDef.new()
-		room.room_id = spec[0]
-		room.grid_x = spec[1]
-		room.grid_z = spec[2]
-		room.open_west = spec[3]
-		room.open_east = spec[4]
-		room.center = Vector3(float(spec[1]) * 4.0, 0.0, float(spec[2]) * 4.0)
-		room.size = Vector3(4.0, 3.0, 4.0)
-		layout.rooms.append(room)
+	var layout: MansionLayout = _fixed_layout([
+		[&"room_a", 0, 0, false, true, false, false], [&"room_b", 1, 0, true, true, false, false],
+		[&"room_c", 2, 0, true, false, false, false], [&"room_d", 0, 1, false, false, false, false],
+	])
 	var path: Array[MansionLayout.RoomDef] = RequestRulesScript.runaway_path(layout)
 	var ids: Array[StringName] = []
 	for room: MansionLayout.RoomDef in path:
@@ -552,11 +606,30 @@ func _check_runaway_path_on_fixed_layout() -> void:
 		"逃げた猫はドアのある部屋だけをたどって最も遠い部屋 C に隠れ、ドアの無い D には入らない (実際: %s)"
 		% str(ids),
 	)
+	var vertical: MansionLayout = _fixed_layout([
+		[&"room_n", 0, 0, false, false, false, true], [&"room_s", 0, 1, false, false, true, false],
+		[&"room_far", 0, 2, false, false, false, false],
+	])
+	var vertical_ids: Array[StringName] = []
+	for room: MansionLayout.RoomDef in RequestRulesScript.runaway_path(vertical):
+		vertical_ids.append(room.room_id)
+	var single: MansionLayout = _fixed_layout([[&"room_only", 0, 0, false, false, false, false]])
+	var empty: MansionLayout = MansionLayout.new()
+	_check(
+		vertical_ids == [&"room_n", &"room_s"]
+		and RequestRulesScript.runaway_path(single).size() == 1
+		and RequestRulesScript.runaway_path(empty).is_empty()
+		and RequestRulesScript.runaway_hiding_point(empty) == Vector3.ZERO
+		and RequestRulesScript.trail_points(empty).is_empty(),
+		"南北のドアもたどってドアの無い部屋で止まり、部屋が 1 つなら持ち主の部屋に隠れ、部屋が無ければ経路も跡も無い (実際: %s)"
+		% str(vertical_ids),
+	)
 	var trail: Array[Vector3] = RequestRulesScript.trail_points(layout)
 	var spaced: bool = trail.size() >= 9
 	for index: int in range(1, mini(trail.size(), 5)):
-		var step: float = trail[index].distance_to(trail[index - 1])
-		if not is_equal_approx(step, RequestRulesScript.TRAIL_SPACING_M):
+		if not is_equal_approx(
+			trail[index].distance_to(trail[index - 1]), RequestRulesScript.TRAIL_SPACING_M
+		):
 			spaced = false
 	_check(
 		spaced and trail[0].is_equal_approx(Vector3.ZERO),
@@ -587,13 +660,106 @@ func _check_runaway_timing_and_reset() -> void:
 		"逃げ出す時刻をまたいだ時だけ 1 回知らせ、その後に時間が進んでも知らせない (実際: %d 回)" % escaped[0],
 	)
 	state.requests.carry_runaway_cat()
-	state.requests.reset()
+	state.apply_tuning_and_rebuild(state.get_tuning(), false)
 	_check(
 		state.requests.runaway_status() == &"escaped",
 		"猫を抱えたまま屋敷を作り直す・読み込むと、猫は隠れている所に戻る",
 	)
 	state.free()
 	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
+
+
+## 一覧の行と知らせの文言が、探し物・スーツ・猫の状態ごとに分かれるか。抱えられる距離の境目
+func _check_texts() -> void:
+	var layout: MansionLayout = _fixed_layout([[&"room_a", 0, 0, false, false, false, false]])
+	layout.rooms[0].display_name = "玄関"
+	var spot: MansionLayout.FoundItemSpotDef = MansionLayout.FoundItemSpotDef.new()
+	spot.found_item_id = &"found_item_0"
+	spot.room_id = &"room_a"
+	var item: FoundItemProgress = FoundItemProgressScript.new()
+	var item_texts: Array[String] = []
+	for condition: FoundItemProgress.Condition in [
+		FoundItemProgress.Condition.HIDDEN, FoundItemProgress.Condition.FOUND,
+		FoundItemProgress.Condition.CLEAN, FoundItemProgress.Condition.DAMAGED,
+	]:
+		item.condition = condition
+		item_texts.append(RequestListPanelScript._item_text(spot, item, layout))
+	item.is_returned = true
+	item_texts.append(RequestListPanelScript._item_text(spot, item, layout))
+	_check(
+		item_texts[0].contains("埋もれている") and item_texts[1].contains("ピンセットで丁寧に取る")
+		and item_texts[2].contains("きれいに取った") and item_texts[3].contains("傷めて取った")
+		and item_texts[4].contains("返した (お礼 %d 円)" % RequestRulesScript.REWARD_DAMAGED)
+		and item_texts[0].begins_with("・懐中時計 (玄関の住人)"),
+		"一覧の探し物の行は、埋もれた・見つけた・きれい・傷んだ・返したで文言が分かれる (実際: %s)"
+		% str(item_texts),
+	)
+	var suit: Dictionary = {"room_id": &"room_a", "remaining": 12, "seconds_left": 125.0}
+	var suit_texts: Array[String] = []
+	for status: StringName in [&"open", &"done", &"missed"]:
+		suit_texts.append(RequestListPanelScript._suit_text(suit.merged({"status": status}), layout))
+	_check(
+		suit_texts[0].contains("残り 12 本 / 出かけるまで 2:05")
+		and suit_texts[1].contains("取り切った") and suit_texts[2].contains("出かけた"),
+		"一覧のスーツの行は、受付中 (残りの本数と分:秒)・取り切った・出かけたで文言が分かれる (実際: %s)"
+		% str(suit_texts),
+	)
+	var cat_texts: Array[String] = []
+	for status: StringName in [&"home", &"escaped", &"carried", &"returned"]:
+		cat_texts.append(RequestListPanelScript._cat_text(status, layout.rooms[0]))
+	_check(
+		cat_texts[0].contains("まだ逃げていない") and cat_texts[1].contains("毛の跡をたどって")
+		and cat_texts[2].contains("玄関に届ける") and cat_texts[3].ends_with("届けた"),
+		"一覧の猫の行は、逃げる前・隠れている・抱えている・届けたで文言が分かれる (実際: %s)"
+		% str(cat_texts),
+	)
+	var notices: Array[String] = [
+		RequestControllerScript.notice_text({
+			"kind": RequestStateScript.EVENT_TAKEN, "found_item_id": &"found_item_0",
+			"condition": FoundItemProgress.Condition.DAMAGED,
+		}),
+		RequestControllerScript.notice_text(
+			{"kind": RequestStateScript.EVENT_SUIT_CLEARED, "reward": 150}
+		),
+		RequestControllerScript.notice_text({"kind": RequestStateScript.EVENT_CAT_ESCAPED}),
+		RequestControllerScript.notice_text({"kind": RequestStateScript.EVENT_CAT_CARRIED}),
+		RequestControllerScript.notice_text({"kind": &"unknown"}),
+	]
+	_check(
+		notices[0] == "懐中時計を傷めて取った"
+		and notices[1] == "黒いスーツの毛を取り切った: 次の掃除代に +150 円"
+		and notices[2].ends_with("毛の跡をたどって探す") and notices[3].ends_with("持ち主の部屋に届ける")
+		and notices[4].is_empty(),
+		"知らせの文言は、傷めて取った・スーツ・猫が逃げた・抱えたで分かれ、知らない出来事は出さない (実際: %s)"
+		% str(notices),
+	)
+	var carry_range: float = RequestControllerScript.CARRY_RANGE_M
+	_check(
+		RequestControllerScript.can_carry(Vector3(carry_range - 0.01, 5.0, 0.0), Vector3.ZERO)
+		and not RequestControllerScript.can_carry(
+			Vector3(carry_range + 0.01, 0.0, 0.0), Vector3.ZERO
+		),
+		"隠れている猫は水平に %.1f m の 1 cm 内なら抱えられ (高さは見ない)、1 cm 外では抱えない"
+		% carry_range,
+	)
+
+
+## rows の [id, grid_x, grid_z, 西のドア, 東のドア, 北のドア, 南のドア] で、4 m 四方の部屋を並べた屋敷を作る
+static func _fixed_layout(rows: Array) -> MansionLayout:
+	var layout: MansionLayout = MansionLayout.new()
+	for spec: Array in rows:
+		var room: MansionLayout.RoomDef = MansionLayout.RoomDef.new()
+		room.room_id = spec[0]
+		room.grid_x = spec[1]
+		room.grid_z = spec[2]
+		room.open_west = spec[3]
+		room.open_east = spec[4]
+		room.open_north = spec[5]
+		room.open_south = spec[6]
+		room.center = Vector3(float(spec[1]) * 4.0, 0.0, float(spec[2]) * 4.0)
+		room.size = Vector3(4.0, 3.0, 4.0)
+		layout.rooms.append(room)
+	return layout
 
 
 ## 面 surface の毛を白い毛 count 本だけにする

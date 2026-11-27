@@ -230,8 +230,7 @@ static func trail_points(layout: MansionLayout) -> Array[Vector3]:
 	for index: int in range(corners.size() - 1):
 		var from: Vector3 = corners[index]
 		var span: Vector3 = corners[index + 1] - from
-		var steps: int = floori(span.length() / TRAIL_SPACING_M)
-		for step: int in range(steps):
+		for step: int in range(floori(span.length() / TRAIL_SPACING_M)):
 			points.append(from + span * (float(step) * TRAIL_SPACING_M / span.length()))
 	return points
 
