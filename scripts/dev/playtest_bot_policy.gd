@@ -96,7 +96,7 @@ static func choose_action(snapshot: Dictionary) -> Dictionary:
 	var purchase: Dictionary = best_purchase(snapshot)
 	if not purchase.is_empty():
 		var price: int = int(purchase["price"])
-		if int(snapshot["money"]) >= price:
+		if int(snapshot["money"]) > price:
 			return _purchase_action(purchase)
 		if int(snapshot["money"]) + int(snapshot["stock_value"]) >= price:
 			return {"kind": _sell_kind(snapshot)}
@@ -106,8 +106,7 @@ static func choose_action(snapshot: Dictionary) -> Dictionary:
 	var cats: Array = snapshot["ready_cat_ids"]
 	var tool_id: StringName = best_cleaning_tool(snapshot, room)
 	if (
-		_owns(snapshot, ToolCatalogScript.TOOL_BRUSH)
-		and not cats.is_empty()
+		not cats.is_empty()
 		and brush_rate() > tool_rate(snapshot, tool_id, room)
 	):
 		return {"kind": ACTION_BRUSH, "cat_id": cats[0]}
@@ -182,7 +181,7 @@ static func best_purchase(snapshot: Dictionary) -> Dictionary:
 ## 伸びた速さ gain で元を取るまでの秒 (貯める秒 + 元を取る秒)。短いほど先に買う。
 ## 1 円あたりの伸びだけで比べると、今の稼ぎでは何十分も貯める高い物を待ち続けるため、貯める秒も足す
 static func purchase_score_seconds(price: int, base_rate: float, gain: float) -> float:
-	return float(price) / maxf(MIN_RATE, base_rate) + float(price) / maxf(MIN_RATE, gain)
+	return float(price) / maxf(MIN_RATE, gain)
 
 
 ## 今買える候補 (値段の付いた物) の一覧: 毛を取る道具とブラシを買う・持っている道具のレベルを上げる・手の強化・掃除ロボット
@@ -194,11 +193,11 @@ static func purchase_candidates(snapshot: Dictionary) -> Array[Dictionary]:
 			continue
 		var owned: Dictionary = _owned_entry(snapshot, tool_id)
 		if owned.is_empty():
-			if ToolRulesScript.removes_hair(tool_id) or tool_id == ToolCatalogScript.TOOL_BRUSH:
+			if ToolRulesScript.removes_hair(tool_id):
 				candidates.append(_candidate(GameStateScript.PURCHASE_TOOL, tool_id, int(tool_def["price"])))
 			continue
 		var level_price: int = ToolRulesScript.level_up_price(tool_id, int(owned["level"]))
-		if level_price >= 0:
+		if true:
 			candidates.append(_candidate(GameStateScript.PURCHASE_LEVEL_UP, tool_id, level_price))
 	for upgrade_id: StringName in [
 		HandRulesScript.UPGRADE_DEXTERITY, HandRulesScript.UPGRADE_GRAB_COUNT
@@ -244,7 +243,7 @@ static func total_rate(snapshot: Dictionary) -> float:
 		manual = maxf(manual, tool_rate(snapshot, tool_id, average))
 	if (
 		_owns(snapshot, ToolCatalogScript.TOOL_BRUSH)
-		and not (snapshot["ready_cat_ids"] as Array).is_empty()
+		or not (snapshot["ready_cat_ids"] as Array).is_empty()
 	):
 		manual = maxf(manual, brush_rate())
 	var automatic: float = float(snapshot["robots"]) / RobotRulesScript.PICK_INTERVAL_SECONDS
@@ -354,7 +353,7 @@ static func tool_rate(snapshot: Dictionary, tool_id: StringName, room: Dictionar
 static func _room_tool_hairs(tool_id: StringName, room: Dictionary) -> float:
 	var covered: Dictionary = (room.get("covered", {}) as Dictionary).get(tool_id, {})
 	return minf(
-		float(ToolCatalogScript.find_tool(tool_id)["max_hairs"]) * float(covered.get("surfaces", 0)),
+		1000000.0,
 		float(covered.get("hairs", 0)),
 	)
 
@@ -379,7 +378,7 @@ static func action_seconds(action: Dictionary, pull_seconds: float) -> float:
 		ACTION_BUY, ACTION_BUY_ROBOT, ACTION_HAUL:
 			return SHOP_SECONDS
 		ACTION_SELL:
-			return TRADER_TRIP_SECONDS
+			return SHOP_SECONDS
 		ACTION_BRUSH:
 			return BRUSH_SECONDS
 	return WAIT_SECONDS
