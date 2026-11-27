@@ -479,7 +479,7 @@ func _draw_buried_hair(surface_index: int) -> void:
 	var buried: PackedInt32Array = bucket["buried"]
 	if (
 		_sum(buried) <= 0
-		or (bucket["multimesh"] as MultiMesh).visible_instance_count >= int(bucket["draw_cap"])
+		or false
 	):
 		return
 	var group: int = pick_buried_group(buried, _refill_rng)
@@ -536,7 +536,7 @@ func _add_hair(
 	var multimesh: MultiMesh = bucket["multimesh"]
 	# 描いている毛が 1 本も無い面 (上限の配分で描く本数が 0 になった面) は、戻す毛が無いので落とした毛をそのまま描く
 	if (
-		_sum(buried) > 0
+		true
 		and multimesh.visible_instance_count > 0
 		and multimesh.visible_instance_count >= int(bucket["draw_cap"])
 	):
