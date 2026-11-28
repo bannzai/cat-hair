@@ -22,3 +22,53 @@ jobs:
           make -k selfcheck integration || status=$?
           cat tmp/selfcheck.log tmp/integration.log
           exit "${status:-0}"
+  screenshot-and-movie:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: godot
+        uses: ./.github/actions/setup-godot
+        with:
+          # エディタバイナリで動かすため export templates は要らない (tpz を取得しない)
+          templates: ""
+      - name: Start Xvfb with software Vulkan (lavapipe)
+        # ランナーに入っている Microsoft のリポジトリ (packages.microsoft.com) は 403 を返すことがあり、apt-get update が
+        # exit 100 で止まる (https://github.com/bannzai/cat-hair/issues/51)。この job が入れるパッケージは Ubuntu の
+        # リポジトリから取るため、Microsoft のリポジトリを指す sources のファイルを外してから update する。
+        # update は -qq を付けず、取りに行った URL をログに残す
+        run: |
+          grep -rlsZ 'packages.microsoft.com' /etc/apt/sources.list /etc/apt/sources.list.d/ \
+            | xargs -0 -r -t sudo rm -f
+          if grep -rqs 'packages.microsoft.com' /etc/apt/sources.list /etc/apt/sources.list.d/; then
+            echo "::error::Microsoft のリポジトリを指す apt の sources が残っています"
+            exit 1
+          fi
+          sudo apt-get update
+          sudo apt-get install -y -qq xvfb ffmpeg libgl1-mesa-dri \
+            libvulkan1 mesa-vulkan-drivers \
+            libxcursor1 libxinerama1 libxrandr2 libxi6 libxext6 libxkbcommon0
+          nohup Xvfb :99 -screen 0 1280x720x24 > "$RUNNER_TEMP/xvfb.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            [ -S /tmp/.X11-unix/X99 ] && break
+            sleep 1
+          done
+          [ -S /tmp/.X11-unix/X99 ] || { cat "$RUNNER_TEMP/xvfb.log"; exit 1; }
+          lvp_icd=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n 1 || true)
+          [ -n "$lvp_icd" ] || { echo "::error::lavapipe ICD JSON が見つかりません"; exit 1; }
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+          echo "LIBGL_ALWAYS_SOFTWARE=1" >> "$GITHUB_ENV"
+          echo "VK_ICD_FILENAMES=$lvp_icd" >> "$GITHUB_ENV"
+          echo "VK_DRIVER_FILES=$lvp_icd" >> "$GITHUB_ENV"
+      # ffmpeg が要るため、ffmpeg を入れたこの job で回す
+      - name: Test the movie brightness check
+        run: bash scripts/ci/test/test-check-movie-brightness.sh
+      - name: Screenshot
+        run: make screenshot GODOT="${{ steps.godot.outputs.godot }}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: issue-88-before
+          path: |
+            tmp/screenshot*.png
+            tmp/screenshot*.log

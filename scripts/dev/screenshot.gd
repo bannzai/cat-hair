@@ -6,6 +6,7 @@ extends SceneTree
 
 ## AudioManager / GameState 準備・後始末を借りる検証の土台
 const HeadlessCheck := preload("res://scripts/dev/headless_check.gd")
+const ScreenshotInteractions := preload("res://scripts/dev/screenshot_interactions.gd")
 ## 撮影するメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 ## メインシーンのノードパス定数参照用
@@ -277,6 +278,9 @@ func _capture_mansion_scenes(main: Node3D) -> String:
 		capture_error = await _capture_guide_toggle(main)
 	if capture_error.is_empty():
 		capture_error = await _capture_distant_hair(main)
+	if capture_error.is_empty():
+		if not await ScreenshotInteractions.capture(self, main, _capture_frozen):
+			capture_error = "毛を取る操作と買取業者の操作を保存できない"
 	if capture_error.is_empty():
 		capture_error = await _capture_pluck(main)
 	if not capture_error.is_empty():
