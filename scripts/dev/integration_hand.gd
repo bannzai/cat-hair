@@ -474,8 +474,11 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		if not part.visible:
 			continue
 		var to_player: Transform3D = main.player.global_transform.affine_inverse() * part.global_transform
-		var vertices: PackedVector3Array = part.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
-		for vertex: Vector3 in vertices:
+		# 骨で動く手のモデルは、骨の姿勢を当てた後の頂点で測る (メッシュの頂点は glb の結び付けの
+		# 姿勢の座標で、表示される位置と違う)。出典:
+		# https://github.com/godotengine/godot/blob/4.7-stable/doc/classes/MeshInstance3D.xml#L24
+		var mesh: Mesh = part.bake_mesh_from_current_skeleton_pose() if part.skin != null else part.mesh
+		for vertex: Vector3 in mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
 			var point: Vector3 = to_player * vertex
 			var radius: float = Vector2(point.x, point.z).length()
 			if radius > arm_radius:
