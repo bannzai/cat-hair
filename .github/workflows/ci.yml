@@ -183,7 +183,7 @@ jobs:
         run: make screenshot GODOT="${{ steps.godot.outputs.godot }}"
       - name: Movie
         run: make movie GODOT="${{ steps.godot.outputs.godot }}"
-      - name: 毛を途中で離す・引き抜く操作の録画
+      - name: 毛を一度押して取る操作の録画
         run: make movie-pull GODOT="${{ steps.godot.outputs.godot }}"
       - name: Movie of the cleaning robots
         run: make movie-automation GODOT="${{ steps.godot.outputs.godot }}"

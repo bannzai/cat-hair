@@ -278,7 +278,7 @@ func _hair_target(room_id: StringName, tool_id: StringName) -> Dictionary:
 
 
 ## 道具 tool_id が 1 回で毛に届く半径 (m。手はつまむ半径)
-static func _reach_radius(tool_id: StringName, surface_index: int) -> float:
+func _reach_radius(tool_id: StringName, surface_index: int) -> float:
 	if tool_id == ToolCatalogScript.TOOL_HAND:
 		return HandRulesScript.grab_radius(
 			_main.mansion_world.get_surface_def(surface_index).surface_type,
@@ -291,7 +291,7 @@ static func _reach_radius(tool_id: StringName, surface_index: int) -> float:
 func _densest_point(surface_index: int, radius: float) -> Vector3:
 	var hair_field: Node3D = _main.mansion_world.get_hair_field()
 	# 升目の一辺の下限 1 cm。半径 0 の道具で 0 で割らないための値で、
-	# いちばん小さい手のつまむ範囲 (直径 16 cm) より十分小さい
+	# 布を手でつまむ範囲より十分小さい
 	var cell_size: float = maxf(0.01, radius * 2.0)
 	var points_by_cell: Dictionary = {}
 	var best_cell: Vector3i = Vector3i.ZERO
