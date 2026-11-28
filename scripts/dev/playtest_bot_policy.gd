@@ -70,7 +70,7 @@ const ACTION_WAIT: StringName = &"wait"
 ## 買う物の種類 (bot だけが使う): 掃除ロボット。GameState.purchase ではなく automation.buy_robot で買う
 const PURCHASE_ROBOT: StringName = &"robot"
 
-## 速さで割る時の下限 (本 / 秒)。速さが 0 の時に 0 で割らないための値で、手 1 本の速さ (約 0.5 本 / 秒) より十分小さい
+## 速さで割る時の下限 (本 / 秒)。速さが 0 の時に 0 で割らないための値で、手 1 本の速さより十分小さい
 const MIN_RATE: float = 0.001
 ## 部屋ごとにかける道具 (アンドロイドを含む)。部屋の様子に、これらがかかる表面の毛の本数を持たせる
 const ROOM_TOOL_IDS: Array[StringName] = [
@@ -315,19 +315,14 @@ static func best_cleaning_tool(snapshot: Dictionary, room: Dictionary) -> String
 	return best_id
 
 
-## 道具 tool_id で部屋 room の毛を取る速さ (本 / 秒) の見積もり。手は一度につまむ本数 / (狙う + 引く秒)、
+## 道具 tool_id で部屋 room の毛を取る速さ (本 / 秒) の見積もり。手は一度につまむ本数 / 狙って押す秒、
 ## 手に持つ道具は範囲の本数 (部屋の毛の密度 × 範囲の面積。1 回で触れる上限まで) × 取れる割合 / (狙う + かける秒)、
 ## 部屋ごとにかける道具は部屋の毛 (かかる表面ごとに上限まで) × 取れる割合 / 部屋にかける秒
 static func tool_rate(snapshot: Dictionary, tool_id: StringName, room: Dictionary) -> float:
 	if tool_id == ToolCatalogScript.TOOL_HAND:
 		return float(
 			HandRulesScript.grab_count(_hand_level(snapshot, HandRulesScript.UPGRADE_GRAB_COUNT))
-		) / (
-			AIM_SECONDS
-			+ HandRulesScript.pull_seconds(
-				ESTIMATE_SURFACE, _hand_level(snapshot, HandRulesScript.UPGRADE_DEXTERITY)
-			)
-		)
+		) / AIM_SECONDS
 	var tool_def: Dictionary = ToolCatalogScript.find_tool(tool_id)
 	if tool_def.is_empty():
 		return 0.0
@@ -364,15 +359,15 @@ static func brush_rate() -> float:
 	return float(CatRulesScript.BRUSH_HAIRS) / BRUSH_SECONDS
 
 
-## 1 手にかけるゲーム内の秒 (毛を取る 1 手の秒は道具で変わる。手は引く秒 pull_seconds を足す)
-static func action_seconds(action: Dictionary, pull_seconds: float) -> float:
+## 1 手にかけるゲーム内の秒 (毛を取る 1 手の秒は道具で変わる。手は狙って押す時間のみ)
+static func action_seconds(action: Dictionary) -> float:
 	match action["kind"]:
 		ACTION_CLEAN:
 			match ToolCatalogScript.find_tool(action["tool_id"]).get(
 				"kind", ToolCatalogScript.KIND_HAND
 			):
 				ToolCatalogScript.KIND_HAND:
-					return AIM_SECONDS + pull_seconds
+					return AIM_SECONDS
 				ToolCatalogScript.KIND_SWEEP:
 					return AIM_SECONDS + SWEEP_USE_SECONDS
 			return ROOM_TOOL_SECONDS

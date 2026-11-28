@@ -60,4 +60,4 @@
 
 ## 床の毛
 
-`textures/floor_fur.png` は本作のために Python と Pillow で描いた画像。色と曲がり方が異なる短い毛を重ね、端をまたぐ毛は反対側にも描いている。
+`textures/floor_fur.png` は本作のために Ruby で白・黒・茶の先細りのベジェ曲線を重ね、resvg で描画した画像。端をまたぐ毛は反対側にも描いている。

@@ -52,6 +52,7 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await suite._verify_empty_consumable(main, game_state)
 	await suite._verify_every_tool_once(main, game_state)
 	await suite._verify_cleaning_fee(main, game_state)
+	await suite._verify_talk_to_trader(main)
 	await suite._verify_trader_range_and_room_gauge(main)
 	await suite._verify_edge_inputs(main, game_state)
 	await suite._verify_rebuild_resets_tools(main, game_state, dense_tuning)
@@ -292,7 +293,7 @@ func _verify_capture_click(main: Node3D, game_state: Node, owned: OwnedTool) -> 
 	await _verify_switch_while_held(main, owned)
 
 
-## 手でつまむ入力を押したまま (毛を引いている途中に) 道具へ持ち替えると、引くのをやめ、押し直すまで道具を使わないか
+## 手でつまむ入力を押したまま道具へ持ち替えると、押し直すまで道具を使わないか
 func _verify_switch_while_held(main: Node3D, owned: OwnedTool) -> void:
 	var tools: ToolController = main.tools
 	await _checker._press_physical_key(_select_key(ToolCatalogScript.TOOL_HAND))
@@ -300,15 +301,13 @@ func _verify_switch_while_held(main: Node3D, owned: OwnedTool) -> void:
 	Input.action_press(HandController.ACTION_PLUCK)
 	await _checker.process_frame
 	await _checker.process_frame
-	var pulling: bool = main.hand.is_pulling()
 	await _checker._press_physical_key(_select_key(ToolCatalogScript.TOOL_LINT_ROLLER))
 	await _checker.process_frame
 	await _checker.process_frame
 	_check(
-		pulling and not main.hand.is_pulling()
-		and tools.get_selected_tool_id() == ToolCatalogScript.TOOL_LINT_ROLLER
+		tools.get_selected_tool_id() == ToolCatalogScript.TOOL_LINT_ROLLER
 		and owned.consumable_count == 19,
-		"手で引いている途中に粘着ローラーへ持ち替えると引くのをやめ、押したままでは道具を使わない",
+		"手の操作を押したまま粘着ローラーへ持ち替えても道具を使わない",
 	)
 	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
@@ -422,14 +421,17 @@ func _verify_cleaning_fee(main: Node3D, game_state: Node) -> void:
 	var progress: BuildingProgress = game_state.save_data.building_progress
 	progress.elapsed_seconds = EconomyRulesScript.PAYMENT_INTERVAL_SECONDS - 0.001
 	var money_before: int = game_state.get_money()
+	await _checker._press_physical_key(_select_key(ToolCatalogScript.TOOL_HAND))
+	main.player.look_at_point(main.player.get_camera().global_position + Vector3.UP)
 	main.auto_advance_time = true
 	await _checker.create_timer(0.2).timeout
 	main.auto_advance_time = false
+	await _checker._press_physical_key(KEY_E)
 	_check(
 		game_state.get_money() > money_before
 		and progress.elapsed_seconds > EconomyRulesScript.PAYMENT_INTERVAL_SECONDS
 		and main.get_pluck_popup_text().contains("掃除代"),
-		"プレイ中に 60 秒の区切りをまたぐと掃除代が所持金に入り、「掃除代 +N 円」と出る (%d → %d 円)"
+		"プレイ中に 60 秒の区切りをまたぐと掃除代が所持金に入り、空振りしても「掃除代 +N 円」が残る (%d → %d 円)"
 		% [money_before, game_state.get_money()],
 	)
 
@@ -444,6 +446,68 @@ func _aim_at_floor_hairs(main: Node3D) -> bool:
 			MIN_HAIRS_IN_RANGE
 		)
 		>= 0
+	)
+
+
+## 買取業者の胸を狙うと売る操作が案内され、案内されたキーで販売画面を開けるか。
+## 照準を外した時や話せる距離の外では同じ入力で販売画面を開かないか。
+func _verify_talk_to_trader(main: Node3D) -> void:
+	var trader: Vector3 = main.mansion_world.get_trader_position()
+	var chest: Vector3 = trader + Vector3.UP * 1.1
+	var guide: Label = main.look_hud.get_node("GuideLabel")
+	main.player.set_spawn(trader + Vector3.FORWARD * 1.5, 0.0)
+	await _checker.physics_frame
+	main.player.look_at_point(chest)
+	main.hand.allow_uncaptured_pluck = false
+	await _checker._press_physical_key(KEY_E)
+	_check(not guide.is_visible_in_tree() and not main.tool_shop_panel.visible,
+		"マウスを解放した状態では買取業者の案内が消え、E で販売画面が開かない")
+	main.hand.allow_uncaptured_pluck = true
+	main.player.controls_enabled = false
+	await _checker._press_physical_key(KEY_E)
+	_check(not guide.is_visible_in_tree() and not main.tool_shop_panel.visible,
+		"操作を止めている間は買取業者を狙っても案内と販売画面が出ない")
+	main.player.controls_enabled = true
+	var blocker := HandAim.block_view(main, main.player.get_camera().global_position, chest)
+	await _checker.physics_frame
+	await _checker.physics_frame
+	await _checker._press_physical_key(KEY_E)
+	_check(not (guide.is_visible_in_tree() and guide.text.contains("毛を売る"))
+		and not main.tool_shop_panel.visible, "間に壁があると買取業者の案内と販売画面が出ない")
+	blocker.queue_free()
+	await _checker.physics_frame
+	await _checker.physics_frame
+	await _checker.process_frame
+	await _checker.process_frame
+	_check(
+		guide.is_visible_in_tree() and guide.text.contains("E") and guide.text.contains("毛を売る")
+		and main.crosshair.is_visible_in_tree(),
+		"近くの買取業者に照準を合わせると、E で毛を売る案内が見える",
+	)
+	await _checker._press_physical_key(KEY_E)
+	_check(
+		main.tool_shop_panel.is_visible_in_tree()
+		and main.tool_shop_panel.get_sell_button().is_visible_in_tree(),
+		"買取業者に向けて E を押すと毛を売るボタンが見える",
+	)
+	main.close_tool_shop()
+	main.player.look_at_point(main.player.get_camera().global_position + Vector3.FORWARD)
+	await _checker.process_frame
+	await _checker.process_frame
+	await _checker._press_physical_key(KEY_E)
+	_check(
+		not (guide.is_visible_in_tree() and guide.text.contains("毛を売る"))
+		and not main.tool_shop_panel.visible, "照準を外すと売る案内が消え、E で販売画面が開かない",
+	)
+	main.player.set_spawn(trader + Vector3.FORWARD * 2.5, 0.0)
+	await _checker.physics_frame
+	main.player.look_at_point(chest)
+	await _checker.process_frame
+	await _checker.process_frame
+	await _checker._press_physical_key(KEY_E)
+	_check(
+		not (guide.is_visible_in_tree() and guide.text.contains("毛を売る"))
+		and not main.tool_shop_panel.visible, "離れた買取業者を狙っても売る案内と販売画面が出ない",
 	)
 
 
@@ -608,14 +672,12 @@ func _use_on_floor(main: Node3D, game_state: Node) -> Dictionary:
 	return result
 
 
-## 手で床の毛を 1 本つまんで抜く (引き終わるまで押し続ける)。抜けたら true
+## 手で床の毛を 1 本つまんで抜く。抜けたら true
 func _pluck_with_hand(main: Node3D, game_state: Node) -> bool:
 	var aimed: int = await HandAim.aim_at_floor_hair(_checker, main)
 	var before_total: int = game_state.get_total_remaining_hairs()
-	Input.action_press(HandController.ACTION_PLUCK)
-	await _checker.create_timer(main.hand.get_pull_duration() + 1.0).timeout
-	Input.action_release(HandController.ACTION_PLUCK)
+	await _checker._press_physical_key(KEY_E)
 	await _checker.process_frame
 	var plucked: bool = aimed >= 0 and game_state.get_total_remaining_hairs() < before_total
-	_check(plucked, "手を選んでつまむ入力を押し続けると床の毛が抜ける")
+	_check(plucked, "手を選んでつまむ入力を 1 回押すと床の毛が抜ける")
 	return plucked

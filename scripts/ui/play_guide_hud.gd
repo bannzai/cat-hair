@@ -1,7 +1,7 @@
 class_name PlayGuideHud
 extends Control
 ## プレイ中の画面に重ねる操作の案内。画面の左下 (今やることの案内の上) に、操作の一覧の枠と、マウスの捕捉の
-## 案内 (取られている間は放すキー) の 1 行を出し、画面中央の照準の下に、手で引いている進み具合のゲージを出す。
+## 案内 (取られている間は放すキー) の 1 行を出す。
 ## 操作の一覧は main が遊び始めに開き、H キーで閉じる・開く。画面 (道具を買う画面など) を開いている間は隠す。
 
 ## 道具を買う画面を開くキーの案内 (main.gd の TOGGLE_SHOP_KEY のキー。右下の道具の様子の行と操作の一覧で使う)
@@ -17,8 +17,7 @@ const CONTROLS_LINES: Array[String] = [
 	GUIDE_KEY_TEXT + " (閉じる・開く)",
 	"W A S D / 矢印キー: 歩く",
 	"マウス: 視点を動かす",
-	"左クリック / E を押したまま: 手で毛を抜く",
-	"  (抜けるまで押したまま。途中で離すと戻る)",
+	"左クリック / E: 毛を取る",
 	"1〜9・0: 道具を持ち替える",
 	"左クリック / E: 手以外の道具を使う",
 	SHOP_KEY_TEXT,
@@ -35,7 +34,7 @@ const MOUSE_HINT_BOTTOM_PX: float = (
 ## マウスの案内の文字の大きさ (px)。道具の枠の名前 (LookPrototypeHud の ToolName) と同じ 16 にし、すぐ下の今やることの
 ## 案内 (18) より小さくして、今やることの方を先に読ませる
 const HINT_FONT_SIZE_PX: int = 16
-## 操作の一覧の文字の大きさ (px)。11 行を、1280x720 の画面で住人の様子の枠 (左上) と今やることの案内 (左下) の間に
+## 操作の一覧の文字の大きさ (px)。操作一覧を、1280x720 の画面で住人の様子の枠 (左上) と今やることの案内 (左下) の間に
 ## 収めるため、マウスの案内より 1 小さい 15 にする
 const CONTROLS_FONT_SIZE_PX: int = 15
 ## マウスの案内の行の高さ (px)。16 px の文字 1 行に上下の余白を足した高さ
@@ -43,16 +42,11 @@ const MOUSE_HINT_HEIGHT_PX: float = 26.0
 ## マウスの案内の行と操作の一覧の枠の幅 (px)。1280 px の幅で、右下の道具の様子の行 (main.gd の ToolDetail。
 ## 右端から 918 px までの右寄せ) の箱の左端 (画面の左から 362 px) に届かない幅
 const LEFT_COLUMN_WIDTH_PX: float = 340.0
-## 操作の一覧の枠の高さ (px)。15 px の文字 11 行と上下の余白が収まる高さ (収まらない時は上へ伸びる)
+## 操作の一覧の枠の高さ (px)。15 px の文字と上下の余白が収まる高さ (収まらない時は上へ伸びる)
 const CONTROLS_PANEL_HEIGHT_PX: float = 270.0
 ## 操作の一覧の枠の内側の余白 (px)。枠の外の左端の余白 (LookPrototypeHud.SCREEN_MARGIN_PX = 18) の半分弱にし、
-## 文字を枠の縁から離しつつ、11 行を枠の高さに収める
+## 文字を枠の縁から離しつつ、操作一覧を枠の高さに収める
 const PANEL_PADDING_PX: float = 8.0
-## 引いている進み具合のゲージの大きさ (px)。照準 (16 px) より広く、照準の下の道具の結果の文字 (中央から 30 px 下) に
-## 重ならない高さ
-const PULL_BAR_SIZE_PX: Vector2 = Vector2(120.0, 8.0)
-## 引いている進み具合のゲージの上端の、画面中央からの距離 (px)。照準の線 (中央から 8 px) の下に離して置く
-const PULL_BAR_OFFSET_Y_PX: float = 16.0
 ## 操作の一覧の枠の背景の色。LookPrototypeHud の道具の枠と同じく、3D の絵を透かして文字を読める濃さ
 const PANEL_BACKGROUND_COLOR: Color = Color(0.0, 0.0, 0.0, 0.45)
 
@@ -62,15 +56,13 @@ var _controls_panel: PanelContainer = null
 var _controls_label: Label = null
 ## マウスの捕捉の案内の行
 var _mouse_hint_label: Label = null
-## 手で引いている進み具合のゲージ
-var _pull_bar: ProgressBar = null
 ## 操作の一覧を開いているか (画面を開いている間は開いたまま隠す)
 var _controls_open: bool = false
 ## 画面 (道具を買う画面など) を開いていて操作の一覧を隠すか
 var _suppressed: bool = false
 
 
-## インスタンス生成時に操作の一覧・マウスの案内・進み具合のゲージを組み立てる (親の大きさいっぱいに広がる)
+## インスタンス生成時に操作の一覧・マウスの案内を組み立てる (親の大きさいっぱいに広がる)
 func _init() -> void:
 	name = "PlayGuideHud"
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -105,24 +97,6 @@ func _init() -> void:
 	_controls_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_controls_panel.add_child(_controls_label)
 	_controls_panel.visible = false
-
-	_pull_bar = ProgressBar.new()
-	_pull_bar.name = "PullProgress"
-	_pull_bar.min_value = 0.0
-	_pull_bar.max_value = 1.0
-	_pull_bar.step = 0.0
-	_pull_bar.show_percentage = false
-	_pull_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_pull_bar.anchor_left = 0.5
-	_pull_bar.anchor_right = 0.5
-	_pull_bar.anchor_top = 0.5
-	_pull_bar.anchor_bottom = 0.5
-	_pull_bar.offset_left = -PULL_BAR_SIZE_PX.x * 0.5
-	_pull_bar.offset_right = PULL_BAR_SIZE_PX.x * 0.5
-	_pull_bar.offset_top = PULL_BAR_OFFSET_Y_PX
-	_pull_bar.offset_bottom = PULL_BAR_OFFSET_Y_PX + PULL_BAR_SIZE_PX.y
-	_pull_bar.visible = false
-	add_child(_pull_bar)
 
 
 ## 毎フレーム、マウスの捕捉の案内を今のマウスの状態に合わせる (捕捉は FirstPersonPlayer と main が切り替える)
@@ -177,22 +151,6 @@ func is_controls_guide_visible() -> bool:
 ## 操作の一覧の文字列
 func get_controls_guide_text() -> String:
 	return _controls_label.text
-
-
-## 手で引いている進み具合のゲージを progress (0〜1) にする。pulling が false の時は隠す
-func show_pull_progress(progress: float, pulling: bool) -> void:
-	_pull_bar.value = clampf(progress, 0.0, 1.0)
-	_pull_bar.visible = pulling
-
-
-## 進み具合のゲージが画面に出ているか
-func is_pull_progress_visible() -> bool:
-	return _pull_bar.visible
-
-
-## 進み具合のゲージの値 (0〜1)
-func get_pull_progress_value() -> float:
-	return _pull_bar.value
 
 
 ## control を画面の左下に、幅 LEFT_COLUMN_WIDTH_PX・高さ height_px で、下端を画面の下端から bottom_px 上げて置く

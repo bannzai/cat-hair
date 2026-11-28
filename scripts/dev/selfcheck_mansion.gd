@@ -592,8 +592,8 @@ func _check_save_missing_corrupted_and_clamping() -> void:
 
 	var valid_dict: Dictionary = _create_rich_save_fixture().to_dict()
 
-	# 有効辞書で schema_version を 0 / 1.5 / 2 / 文字列 / 欠損に変更 (未対応・不正スキーマ判定を通す)
-	for bad_version: Variant in [0, 1.5, 2, "1"]:
+	# 未対応版、整数でない版、版の欠損を拒む。
+	for bad_version: Variant in [0, 1.5, SaveDataScript.SCHEMA_VERSION + 1, "1"]:
 		var bad_ver_dict: Dictionary = valid_dict.duplicate(true)
 		bad_ver_dict["schema_version"] = bad_version
 		_check(SaveDataScript.from_dict(bad_ver_dict) == null, "不正 schema_version で null")

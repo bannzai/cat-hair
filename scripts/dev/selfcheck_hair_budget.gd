@@ -47,6 +47,11 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_refill_on_tiny_surface()
 	suite._check_add_and_remove_buried()
 	suite._check_populate_over_budget_and_unlimited()
+	# 同じ残り 12 万本でも、保存版と開始時の本数で再開できるかが変わる。
+	suite._check_mansion_save(1, 120000, false, 9999999)
+	suite._check_mansion_save(1, 9999999, true, 120000)
+	suite._check_mansion_save(1, 120001, true, 120000)
+	suite._check_mansion_save(2, 120000, true, 120000)
 	suite._check_budget_boundary()
 	suite._check_every_surface_with_hairs_is_drawn()
 	suite._check_hair_ids_are_reused()
@@ -496,6 +501,32 @@ static func _make_budget_state(hair_count: int) -> Node:
 	)
 	state.save_data.building_progress.money = 100000
 	return state
+
+
+## 12 万本残った屋敷の保存版・開始時の本数を変えて保存し、実際の起動経路で状態を確かめる。
+func _check_mansion_save(version: int, initial: int, resumes: bool, expected: int) -> void:
+	var previous: Node = _make_budget_state(120000)
+	var saved: Dictionary = previous.save_data.to_dict()
+	saved["schema_version"] = version
+	saved["tuning"]["hair_count"] = initial
+	previous.free()
+	var file: FileAccess = FileAccess.open(TEST_SAVE_PATH, FileAccess.WRITE)
+	_check(file != null, "保存ファイルを作れる")
+	if file == null:
+		return
+	_check(file.store_string(JSON.stringify(saved)), "12 万本残った屋敷を保存できる")
+	file.close()
+	var state: Node = GameStateScript.new()
+	state.initialize_from_storage(TEST_SAVE_PATH)
+	_check(
+		state.loaded_from_save == resumes and state.get_total_remaining_hairs() == expected
+		and state.save_data.schema_version == SaveData.SCHEMA_VERSION,
+		"版 %d・開始時 %d 本・残り 12 万本で起動後の再開可否 %s と残り %d 本" % [
+			version, initial, resumes, expected,
+		],
+	)
+	state.free()
+	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
 
 ## state の屋敷を、描く本数の上限 WORLD_BUDGET で組んだ MansionWorld を返す

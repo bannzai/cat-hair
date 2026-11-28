@@ -1,11 +1,9 @@
 extends RefCounted
-## 手で毛を取るルール (引く時間・手の強化・珍しい毛・図鑑)・GameState の 1 本取り・HairField の照会と向きの付いた表面・
+## 手で毛を取るルール (つまむ半径・手の強化・珍しい毛・図鑑)・GameState の 1 本取り・HairField の照会と向きの付いた表面・
 ## 物の毛が乗る面の検証スイート (scripts/dev/selfcheck.gd から呼ぶ)。
 
 ## 手で毛を取る時のルールの計算
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
-## 狙った毛をつまんで抜く操作 (毛を伸ばす見た目の純粋関数を使う)
-const HandControllerScript := preload("res://scripts/hand/hand_controller.gd")
 ## 毛を 1 本ずつ持って描くノードのスクリプト
 const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## 屋敷レイアウト型スクリプト
@@ -37,7 +35,7 @@ var _checker: SceneTree = null
 static func run_all(checker: SceneTree) -> void:
 	var suite: RefCounted = load("res://scripts/dev/selfcheck_hand.gd").new()
 	suite._checker = checker
-	suite._check_pull_seconds()
+	suite._check_grab_radius()
 	suite._check_grab_count_and_levels()
 	suite._check_rare_hair_roll()
 	suite._check_register_rare_hair()
@@ -46,28 +44,12 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_group_counts_and_exclusions()
 	suite._check_object_surface_faces()
 	suite._check_world_hairs_match_progress()
-	suite._check_stretched_hair_transform()
 	suite._check_hair_book_panel()
-	suite._check_failure_messages_and_guide_text()
+	suite._check_mouse_hint()
 
 
-## 抜けなかった理由は、届かない時と知らない理由では空文字か。マウスの案内は取られている間だけ Esc で放すことを書くか
-func _check_failure_messages_and_guide_text() -> void:
-	_check(
-		HandController.failure_message(HandController.REASON_RELEASED).contains("離した")
-		and HandController.failure_message(HandController.REASON_NO_HAIR).contains("毛が無い")
-		and HandController.failure_message(HandController.REASON_BLOCKED).contains("手前に物")
-		and HandController.failure_message(HandController.REASON_OUT_OF_REACH).is_empty()
-		and HandController.failure_message(&"no_such_reason").is_empty(),
-		"途中で離した・毛が無い・手前に物がある時はその理由を出し、届かない時と知らない理由では文言を出さない",
-	)
-	# 屋敷に置く前 (カメラ・屋敷を受け取る前) の手は、光線を調べられないので「狙った所に毛が無い」を返す
-	var unprepared_hand: HandController = HandController.new()
-	_check(
-		unprepared_hand.pull_failure_reason() == HandController.REASON_NO_HAIR,
-		"カメラと屋敷を受け取る前の手で抜けなかった理由を求めると、「狙った所に毛が無い」を返す",
-	)
-	unprepared_hand.free()
+## マウスの捕捉状態に合う案内か。
+func _check_mouse_hint() -> void:
 	_check(
 		PlayGuideHud.mouse_hint_text(true).contains("Esc: マウスを放す")
 		and not PlayGuideHud.mouse_hint_text(false).contains("Esc"),
@@ -80,45 +62,16 @@ func _check(cond: bool, label: String) -> void:
 	_checker._check(cond, label)
 
 
-## 表面の種類と器用さの段から引く時間が決まり、絡む面ほど長く、強化で短くなり、下限で止まるか
-func _check_pull_seconds() -> void:
-	var floor_seconds: float = HandRulesScript.pull_seconds(MansionLayoutScript.SURFACE_FLOOR, 0)
-	var knit_seconds: float = HandRulesScript.pull_seconds(MansionLayoutScript.SURFACE_KNIT, 0)
-	var carpet_seconds: float = HandRulesScript.pull_seconds(MansionLayoutScript.SURFACE_CARPET, 0)
-	_check(
-		is_equal_approx(floor_seconds, 0.45)
-		and is_equal_approx(carpet_seconds, 1.0)
-		and is_equal_approx(knit_seconds, 1.3),
-		"強化なしの引く時間が床 0.45 秒・カーペット 1.0 秒・ニット 1.3 秒",
-	)
-	_check(
-		knit_seconds > carpet_seconds and carpet_seconds > floor_seconds,
-		"毛が繊維に絡む面ほど引く時間が長い (ニット > カーペット > 床)",
-	)
-	_check(
-		is_equal_approx(
-			HandRulesScript.pull_seconds(MansionLayoutScript.SURFACE_KNIT, 1), 1.3 * 0.85
-		)
-		and is_equal_approx(
-			HandRulesScript.pull_seconds(MansionLayoutScript.SURFACE_KNIT, 2), 1.3 * 0.85 * 0.85
-		),
-		"器用さ 1 段で 15% ずつ引く時間が短くなる",
-	)
-	_check(
-		is_equal_approx(
-			HandRulesScript.pull_seconds(MansionLayoutScript.SURFACE_FLOOR, 100),
-			HandRulesScript.MIN_PULL_SECONDS,
-		),
-		"器用さを上げ続けても引く時間は下限 MIN_PULL_SECONDS で止まる",
-	)
-	_check(
-		is_equal_approx(HandRulesScript.pull_seconds(MansionLayoutScript.SURFACE_FLOOR, -3), 0.45)
-		and is_equal_approx(
-			HandRulesScript.pull_seconds(&"unknown_surface", 0),
-			HandRulesScript.DEFAULT_PULL_SECONDS,
-		),
-		"負の段は 0 段として扱い、表に無い面は既定の引く時間になる",
-	)
+## 同じずれで床の毛を取れても布では取りにくく、器用さを上げると狙える範囲が広がる。
+func _check_grab_radius() -> void:
+	for surface: StringName in [MansionLayout.SURFACE_FLOOR, MansionLayout.SURFACE_FURNITURE]:
+		_check(is_equal_approx(HandRulesScript.grab_radius(surface, 0), 0.08),
+			"%s のつまむ範囲は 8 cm" % surface)
+	for surface: StringName in [MansionLayout.SURFACE_SOFA, MansionLayout.SURFACE_SUIT,
+			MansionLayout.SURFACE_CARPET, MansionLayout.SURFACE_KNIT]:
+		_check(is_equal_approx(HandRulesScript.grab_radius(surface, -1), 0.04)
+			and is_equal_approx(HandRulesScript.grab_radius(surface, 2), 0.06),
+			"%s のつまむ範囲は初期 4 cm、器用さを 2 段上げると 6 cm" % surface)
 
 
 ## 一度につまめる本数が段に応じて増え、上下限で止まり、段の辞書の読み取りが欠落・負値に耐えるか
@@ -386,16 +339,6 @@ func _check_oriented_surface_and_queries() -> void:
 		"半径内に毛が無い・面の添字が範囲外・本数 0 なら空を返す",
 	)
 
-	var rest: Transform3D = field.get_hair_transform(target_id)
-	field.set_hair_display_transform(target_id, Transform3D(Basis.IDENTITY, Vector3(9, 9, 9)))
-	var changed_display: bool = field.get_multimesh_slot_transform(0, 0).origin == Vector3(9, 9, 9)
-	var kept_rest: bool = field.get_hair_transform(target_id) == rest
-	field.set_hair_display_transform(target_id, rest)
-	_check(
-		kept_rest and field.get_hair_transform(target_id) == rest
-		and (changed_display or DisplayServer.get_name() == "headless"),
-		"伸ばす見た目を変えても照会用の位置は変わらず、元に戻せる",
-	)
 	field.free()
 
 
@@ -648,23 +591,6 @@ func _floor_hairs_clear_of_objects(layout: MansionLayout, hair_field: Node3D) ->
 				):
 					return false
 	return true
-
-
-## 引いている毛の見た目が、根元を保ったまま面の法線へ起き、長く・太くなるか
-func _check_stretched_hair_transform() -> void:
-	var rest: Transform3D = Transform3D(Basis.IDENTITY, Vector3(1.0, 0.0, 2.0))
-	var at_zero: Transform3D = HandControllerScript.stretched_hair_transform(rest, Vector3.UP, 0.0)
-	var at_one: Transform3D = HandControllerScript.stretched_hair_transform(rest, Vector3.UP, 1.0)
-	_check(at_zero.is_equal_approx(rest), "進み具合 0 では配置時と同じ見た目")
-	_check(
-		at_one.origin.is_equal_approx(rest.origin)
-		and is_equal_approx(at_one.basis.z.length(), HandControllerScript.MAX_STRETCH_RATIO)
-		and is_equal_approx(at_one.basis.x.length(), HandControllerScript.PULL_WIDTH_RATIO)
-		and at_one.basis.z.normalized().dot(Vector3.UP) > 0.9,
-		"引き終える時は根元を保ったまま、長く・太くなり法線 (上) へ起きる",
-	)
-	var over: Transform3D = HandControllerScript.stretched_hair_transform(rest, Vector3.UP, 5.0)
-	_check(over.is_equal_approx(at_one), "進み具合が 1 を超えても 1 と同じ見た目")
 
 
 ## 図鑑の画面が、見つけた珍しい毛だけ名前を出し、見つけた数を数えるか

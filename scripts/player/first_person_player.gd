@@ -2,11 +2,6 @@ class_name FirstPersonPlayer
 extends CharacterBody3D
 ## 屋敷の中を歩く一人称プレイヤー。WASD / 矢印キーで移動し、マウスで視点を回す。
 
-## 買取業者と同じ部品から一人称プレイヤーの体を組む。
-const HumanParts := preload("res://scripts/human/human_parts.gd")
-## 体と右手で袖と肌の色をそろえる。
-const HandViewScript := preload("res://scripts/player/hand_view.gd")
-
 ## 6m 部屋を約 1.4 秒で横切る一人称の標準歩行速度 (m/s)
 const DEFAULT_MOVE_SPEED: float = 4.2
 ## 画面幅の半分 (640px) のマウス移動で約 90 度回転する標準感度 (rad/px)
@@ -42,9 +37,6 @@ const MIN_MOVE_INPUT_LENGTH_SQ: float = 0.0001
 var controls_enabled: bool = false
 ## テスト等でマウス未捕捉のまま視点イベントを受け取るためのフラグ
 var allow_uncaptured_look: bool = false
-
-## 右の袖の付け根
-var right_shoulder: Node3D
 
 ## 現在のカメラ上下ピッチ角 (ラジアン)
 var _pitch: float = INITIAL_PITCH_RADIANS
@@ -128,8 +120,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not controls_enabled:
 		return
 	if should_capture_mouse(event):
-		if DisplayServer.get_name() != "headless":
+		if DisplayServer.get_name() != "headless" and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion:
 		var mouse_motion_event: InputEventMouseMotion = event
 		if should_apply_mouse_motion(Input.get_mouse_mode(), allow_uncaptured_look):
@@ -183,21 +176,12 @@ func _ensure_rig() -> void:
 		collider.position = Vector3(0.0, CAPSULE_HEIGHT_M * 0.5, 0.0)
 		add_child(collider)
 
-	var body: Node3D = get_node_or_null("Body")
-	if body == null:
-		body = _build_body()
-	right_shoulder = body.get_node_or_null("RightShoulder")
-	if right_shoulder == null:
-		right_shoulder = Node3D.new()
-		right_shoulder.name = "RightShoulder"
-		right_shoulder.position = Vector3(0.17, 1.35, 0.18)
-		body.add_child(right_shoulder)
-	_head = body.get_node_or_null("Head")
+	_head = get_node_or_null("Head")
 	if _head == null:
 		_head = Node3D.new()
 		_head.name = "Head"
 		_head.position = Vector3(0.0, EYE_HEIGHT_M, 0.0)
-		body.add_child(_head)
+		add_child(_head)
 
 	_camera = _head.get_node_or_null("Camera3D")
 	if _camera == null:
@@ -208,32 +192,3 @@ func _ensure_rig() -> void:
 		_camera.far = CAMERA_FAR_M
 		_camera.current = true
 		_head.add_child(_camera)
-
-
-## 足元を原点にして立つ体。頭部の内側には描画する面を置かず、前に出た目の位置から足元を見下ろす
-func _build_body() -> Node3D:
-	var body: Node3D = Node3D.new()
-	body.name = "Body"
-	add_child(body)
-	var shirt := StandardMaterial3D.new()
-	shirt.albedo_color = HandViewScript.SLEEVE_COLOR
-	var pants := StandardMaterial3D.new()
-	pants.albedo_color = Color(0.14, 0.16, 0.2)
-	var skin := StandardMaterial3D.new()
-	skin.albedo_color = HandViewScript.SKIN_COLOR
-	# 腰を目線より後ろに置き、肩を前に出す。真下を向いた時も胸の手前に床が見える。
-	var torso: MeshInstance3D = HumanParts.add_sphere(body, "Torso", Vector3(0, 1.18, 0.24),
-		0.5, Vector3(0.38, 0.54, 0.146), shirt, false)
-	torso.rotation.x = -0.23
-	for side: int in [-1, 1]:
-		var prefix: String = "Left" if side == -1 else "Right"
-		HumanParts.add_limb(body, prefix + "Leg", Vector3(side * 0.10, 0.12, 0.22),
-			Vector3(side * 0.10, 0.92, 0.25), 0.072, pants, false)
-		HumanParts.add_sphere(body, prefix + "Shoe", Vector3(side * 0.10, 0.07, 0.16), 0.5,
-			Vector3(0.14, 0.14, 0.26), pants, false)
-	var elbow := Vector3(-0.22, 1.04, 0.18)
-	HumanParts.add_limb(body, "LeftSleeve", Vector3(-0.17, 1.35, 0.18), elbow, 0.053, shirt, false)
-	HumanParts.add_limb(body, "LeftForearm", elbow, Vector3(-0.24, 0.8, 0.15), 0.033, skin, false)
-	HumanParts.add_sphere(body, "LeftHand", Vector3(-0.24, 0.74, 0.14), 0.5,
-		Vector3(0.07, 0.14, 0.06), skin, false)
-	return body

@@ -26,8 +26,7 @@ const SETTINGS_BUTTON_PATH: String = "UILayer/UI/TitleOverlay/Layout/SettingsBut
 const SETTINGS_PANEL_PATH: String = "UILayer/UI/AudioSettingsPanel"
 ## 手で毛を取る時のルールの計算 (珍しい毛の名前)
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
-## 毛を抜いた時に画面中央に出す「+N 本」の表示を残す秒数。床の毛を 1 本抜く時間 (0.45 秒) より長く、
-## 続けて抜いた時に次の表示で上書きされるまで読める長さにした仮の値
+## 毛を抜いた時に画面中央に出す「+N 本」の表示を残す秒数。続けて取る時も、次の表示までに本数を読める長さ。
 const PLUCK_POPUP_SECONDS: float = 1.5
 ## 画面中央の照準の線の長さと太さ (px)。線の交点が画面のちょうど中央 (狙いの光線の向き) に来る
 const CROSSHAIR_LINE_SIZE: Vector2 = Vector2(16.0, 2.0)
@@ -41,7 +40,7 @@ const TOGGLE_SHOP_KEY: Key = KEY_T
 const TOGGLE_ROBOT_KEY: Key = KEY_R
 ## 操作の案内の一覧を閉じる・開くキー (Help の H)
 const TOGGLE_GUIDE_KEY: Key = KEY_H
-## 操作の案内・マウスの捕捉の案内・手で引いている進み具合の表示のスクリプト
+## 操作の案内・マウスの捕捉の案内のスクリプト
 const PlayGuideHudScript := preload("res://scripts/ui/play_guide_hud.gd")
 ## 猫と掃除ロボットを描いて時計を進めるノードのスクリプト
 const AutomationControllerScript := preload("res://scripts/automation/automation_controller.gd")
@@ -68,7 +67,7 @@ var perf_overlay: PerfOverlay = null
 var look_room: LookPrototypeRoom = null
 ## 見た目の試作の画面の表示 (_ready で HUD の子に作る)
 var look_hud: LookPrototypeHud = null
-## 操作の案内・マウスの捕捉の案内・手で引いている進み具合の表示 (_ready で HUD の子に作る)
+## 操作の案内・マウスの捕捉の案内 (_ready で HUD の子に作る)
 var play_guide: PlayGuideHud = null
 
 ## 狙った毛を手でつまんで抜く操作
@@ -122,6 +121,8 @@ var _owned_game_state: Node = null
 var _is_playing: bool = false
 ## 「+N 本」の表示を消すまでの残り秒数
 var _pluck_popup_remaining: float = 0.0
+## 空振りで前の取得表示だけを消し、同じ場所に出る掃除代などの通知は残す。
+var _popup_is_plucked_hair: bool = false
 
 ## 屋敷 1 階の 3D 構築ノード
 @onready var mansion_world: MansionWorld = $MansionWorld
@@ -209,11 +210,21 @@ func _exit_tree() -> void:
 		_owned_game_state = null
 
 
+## 照準を合わせた相手に応じて毛を取るか買取業者の画面を開く。
 ## プレイ中の F1 (開発者調整画面開閉)・B (図鑑開閉)・T (道具を買う画面の開閉)・R (掃除ロボットの回る順の画面の開閉)・
 ## F5 (手動セーブ)・F3 (fps と 1 フレームの時間の表示の出し入れ)・H (操作の案内の開閉。画面を開いていない時だけ) を処理する。
 ## 画面は 1 つずつしか開かない (開いている画面と別の画面のキーは何もしない)。F3 は画面を開いていても効く (画面を開いた時の重さも読めるように)
 func _unhandled_input(event: InputEvent) -> void:
-	if _is_key_press(event, TOGGLE_PERF_KEY):
+	if event.is_action_pressed(HandController.ACTION_PLUCK):
+		if _can_talk_to_trader():
+			open_tool_shop()
+			get_viewport().set_input_as_handled()
+		elif hand != null and hand.enabled and hand.can_use_mouse():
+			tool_message_label.text = ""
+			if not hand.pluck_aimed() and _popup_is_plucked_hair:
+				pluck_popup_label.hide()
+				_pluck_popup_remaining = 0.0
+	elif _is_key_press(event, TOGGLE_PERF_KEY):
 		if _is_playing:
 			perf_overlay.toggle()
 	elif event.is_action_pressed("toggle_dev_panel"):
@@ -377,6 +388,16 @@ func is_near_trader() -> bool:
 	)
 
 
+## 画面中央で、毛を売れる距離にいる買取業者を直接狙っているか。
+func _can_talk_to_trader() -> bool:
+	if (not _is_playing or not player.controls_enabled
+			or not hand.can_use_mouse() or not is_near_trader()):
+		return false
+	var camera: Camera3D = player.get_camera()
+	var hit: Variant = mansion_world.intersect_trader(camera.global_position, -camera.global_basis.z)
+	return hit is Vector3 and not hand.is_view_blocked(hit)
+
+
 ## プレイヤーが今いる部屋を返す (どの部屋の床の上にもいなければ null)
 func get_current_room() -> MansionLayout.RoomDef:
 	if _game_state == null:
@@ -395,9 +416,10 @@ func _process(delta: float) -> void:
 		if auto_advance_time:
 			_advance_play_time(delta)
 		_refresh_room_gauge()
-		var can_pluck: bool = hand.can_begin_pull()
-		look_hud.set_pluck_guide_visible(can_pluck)
-		crosshair.visible = can_pluck or (tools.enabled and not hand.enabled)
+		var can_talk: bool = _can_talk_to_trader()
+		var can_pluck: bool = not can_talk and hand.can_pluck()
+		look_hud.set_interaction_guide(can_pluck, can_talk)
+		crosshair.visible = can_talk or can_pluck or (tools.enabled and not hand.enabled)
 	if _pluck_popup_remaining <= 0.0:
 		return
 	_pluck_popup_remaining -= delta
@@ -488,7 +510,6 @@ func _rebuild_world_from_state() -> void:
 	if _game_state == null or _game_state.current_layout == null:
 		return
 	var layout: MansionLayout = _game_state.current_layout
-	hand.cancel_pull()
 	tools.reset_for_new_progress()
 	mansion_world.rebuild(layout, _game_state.save_data.building_progress)
 	big_tools.reset_for_new_progress()
@@ -579,15 +600,13 @@ func _release_mouse() -> void:
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
 
-## 手・照準・在庫・「+N 本」・図鑑の部品を作り、手を一人称カメラに付ける
+## 一人称カメラから毛を取る操作と、照準・在庫・「+N 本」・図鑑を結ぶ
 func _build_hand_ui() -> void:
 	hand = HandController.new()
 	hand.name = "Hand"
 	add_child(hand)
 	hand.setup(player.get_camera(), mansion_world, _game_state, player)
 	hand.hairs_plucked.connect(_on_hairs_plucked)
-	hand.pull_progress_changed.connect(_on_pull_progress_changed)
-	hand.pull_failed.connect(_on_pull_failed)
 
 	crosshair = Control.new()
 	crosshair.name = "Crosshair"
@@ -662,7 +681,7 @@ func _build_tool_ui() -> void:
 	big_tools = BigToolSite.new()
 	big_tools.name = "BigTools"
 	add_child(big_tools)
-	big_tools.setup(_game_state, mansion_world, hand)
+	big_tools.setup(_game_state, mansion_world)
 
 	tool_message_label = Label.new()
 	tool_message_label.name = "ToolMessage"
@@ -783,23 +802,12 @@ func _on_hairs_plucked(
 		if new_rare_ids.has(rare_id):
 			rare_line += " (図鑑に載った)"
 		lines.append(rare_line)
-	_show_popup("\n".join(lines))
-
-
-## 手で引いている進み具合が変わった時に、照準の下のゲージを合わせる。引き始めたら前の抜けなかった理由を消す
-func _on_pull_progress_changed(progress: float, pulling: bool) -> void:
-	play_guide.show_pull_progress(progress, pulling)
-	if pulling:
-		tool_message_label.text = ""
-
-
-## 手で毛を抜けなかった時に、理由を照準の下 (道具の結果と同じ所) に出す
-func _on_pull_failed(reason: StringName) -> void:
-	tool_message_label.text = HandController.failure_message(reason)
+	_show_popup("\n".join(lines), true)
 
 
 ## 画面中央に短い知らせ (「+N 本」・入ったお金) を PLUCK_POPUP_SECONDS 秒出す
-func _show_popup(text: String) -> void:
+func _show_popup(text: String, is_plucked_hair: bool = false) -> void:
+	_popup_is_plucked_hair = is_plucked_hair
 	pluck_popup_label.text = text
 	pluck_popup_label.visible = true
 	_pluck_popup_remaining = PLUCK_POPUP_SECONDS

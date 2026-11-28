@@ -443,11 +443,11 @@ func _check_buys_at_exact_price() -> void:
 	)
 
 
-## 1 手にかける秒は手の種類で決まる: 手は狙う秒 + 引く秒、手に持つ道具は狙う秒 + かける秒、部屋ごとの道具・買う・
+## 1 手にかける秒は手の種類で決まる: 手は狙って押す秒、手に持つ道具は狙う秒 + かける秒、部屋ごとの道具・買う・
 ## 売る・ブラシ・待つはそれぞれの見積もり (所要時間はこの秒の合計なので、取り違えると所要時間が変わる)
 func _check_action_seconds() -> void:
 	for pair: Array in [
-		[{"kind": PolicyScript.ACTION_CLEAN, "tool_id": ToolCatalogScript.TOOL_HAND}, 1.0 + 2.0],
+		[{"kind": PolicyScript.ACTION_CLEAN, "tool_id": ToolCatalogScript.TOOL_HAND}, 1.0],
 		[{"kind": PolicyScript.ACTION_CLEAN, "tool_id": ToolCatalogScript.TOOL_TWEEZERS}, 1.0 + 0.5],
 		[{"kind": PolicyScript.ACTION_CLEAN, "tool_id": ToolCatalogScript.TOOL_SUCTION_TRUCK}, 3.0],
 		[{"kind": PolicyScript.ACTION_CLEAN, "tool_id": ToolCatalogScript.TOOL_ADHESIVE_SHEET}, 3.0],
@@ -458,10 +458,10 @@ func _check_action_seconds() -> void:
 		[{"kind": PolicyScript.ACTION_BRUSH}, 4.0],
 		[{"kind": PolicyScript.ACTION_WAIT}, 1.0],
 	]:
-		var seconds: float = PolicyScript.action_seconds(pair[0], 2.0)
+		var seconds: float = PolicyScript.action_seconds(pair[0])
 		_checker._check(
 			is_equal_approx(seconds, float(pair[1])),
-			"1 手 %s の秒は %.1f 秒 (引く秒 2 秒。実際: %.2f 秒)" % [str(pair[0]), float(pair[1]), seconds]
+			"1 手 %s の秒は %.1f 秒 (実際: %.2f 秒)" % [str(pair[0]), float(pair[1]), seconds]
 		)
 
 

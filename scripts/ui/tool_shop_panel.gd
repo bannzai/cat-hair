@@ -46,7 +46,7 @@ const SURFACE_NAMES: Dictionary = {
 }
 ## 手の強化の表示名 (並び順が画面の並び)
 const HAND_UPGRADE_NAMES: Dictionary = {
-	HandRulesScript.UPGRADE_DEXTERITY: "手の強化: 指先の器用さ (引く時間が短くなる)",
+	HandRulesScript.UPGRADE_DEXTERITY: "手の強化: 指先の器用さ (狙える範囲が広がる)",
 	HandRulesScript.UPGRADE_GRAB_COUNT: "手の強化: 一度につまめる本数",
 }
 

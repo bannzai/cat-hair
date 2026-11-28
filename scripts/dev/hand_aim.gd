@@ -3,6 +3,8 @@ extends RefCounted
 
 ## 屋敷レイアウト型スクリプト (表面の種類の定数を使う)
 const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
+## 表面と強化に合う、手でつまめる半径。
+const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
 ## 毛から立つ位置までの水平距離 (m。手の届く距離より十分短く、足元の毛より少し先)
 const STAND_DISTANCE_M: float = 0.9
 ## 狙いを試す毛の本数の上限 (家具に遮られる毛を飛ばして次を試す)
@@ -12,13 +14,15 @@ const MAX_CANDIDATES: int = 40
 ## 床の毛を順に試し、プレイヤーをその毛から部屋の中心の向きへ STAND_DISTANCE_M 離れた所に立たせて目線を向ける。
 ## 画面中央の狙い (hand.aim_target) がその毛の表面に当たり、その毛をつまめる時、その毛の ID を返す。見つからなければ -1
 static func aim_at_floor_hair(tree: SceneTree, main: Node3D) -> int:
-	return await _aim(tree, main, MansionLayout.SURFACE_FLOOR, HandController.GRAB_RADIUS_M, 0, false)
+	return await _aim(tree, main, MansionLayout.SURFACE_FLOOR,
+		HandRulesScript.grab_radius(MansionLayout.SURFACE_FLOOR, 0), 0, false)
 
 
 ## 床面から 8 cm 以上積もった毛の山で、表面にある 1 本に照準を合わせる。
 static func aim_at_floor_pile(tree: SceneTree, main: Node3D) -> int:
 	return await _aim(
-		tree, main, MansionLayout.SURFACE_FLOOR, HandController.GRAB_RADIUS_M, 0, true, 0.08)
+		tree, main, MansionLayout.SURFACE_FLOOR,
+		HandRulesScript.grab_radius(MansionLayout.SURFACE_FLOOR, 0), 0, true, 0.08)
 
 
 ## aim_at_floor_hair と同じ順に床の毛を試し、狙いの点から radius の中に毛が min_hairs 本以上ある所で止める
@@ -29,7 +33,7 @@ static func aim_at_floor_hairs(tree: SceneTree, main: Node3D, radius: float, min
 
 ## 最初の部屋の指定面で実際につまめる毛を照準に入れ、その ID を返す。床では最も急な見下ろし角に近づける
 static func aim_at_first_room_hair(tree: SceneTree, main: Node3D, surface_type: StringName) -> int:
-	return await _aim(tree, main, surface_type, HandController.GRAB_RADIUS_M, 0, true)
+	return await _aim(tree, main, surface_type, HandRulesScript.grab_radius(surface_type, 0), 0, true)
 
 
 ## 毛を順に試して目線を向ける。min_hairs が 0 の時は試した毛そのものをつまめる所、
@@ -93,3 +97,18 @@ static func _stand_position(
 	if direction.length_squared() < 0.0001:
 		direction = Vector3.RIGHT
 	return Vector3(hair.x, 0.0, hair.z) + direction.normalized() * distance
+
+
+## 照準だけが遮られるように、カメラと対象の中間に置く検証用の衝突体。呼び出し側が回収する。
+static func block_view(
+	main: Node3D, camera_position: Vector3, target_point: Vector3
+) -> StaticBody3D:
+	var blocker: StaticBody3D = StaticBody3D.new()
+	var shape: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.3, 0.3, 0.05)
+	shape.shape = box
+	blocker.add_child(shape)
+	main.add_child(blocker)
+	blocker.global_position = camera_position.lerp(target_point, 0.5)
+	return blocker

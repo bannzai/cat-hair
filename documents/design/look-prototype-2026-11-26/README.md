@@ -47,5 +47,5 @@ issue #19 で作った見た目の試作を、PR #30 の CI (`make screenshot`�
 ## 作り方の範囲
 
 - 3D の形は Godot の基本の形 (箱・円柱・カプセル) だけで作り、外部の素材を使っていない。床・壁・布の模様は GDScript で画素を埋めて作った
-- 毛の描き方 (`scripts/hair_field.gd`・`scripts/mansion/mansion_world.gd`) と画面の手 (`scripts/player/hand_view.gd`) は手で抜く (#9) の物をそのまま使い、変えていない。試作は毛も手も描き足さない (同じ毛を 2 か所に描くと、つまめない毛ができるため)
+- 毛の描き方 (`scripts/hair_field.gd`・`scripts/mansion/mansion_world.gd`) と当時の画面の手は手で抜く (#9) の物をそのまま使い、変えていない。試作は毛も手も描き足さない (同じ毛を 2 か所に描くと、つまめない毛ができるため)
 - 実装は `scripts/look/` にある

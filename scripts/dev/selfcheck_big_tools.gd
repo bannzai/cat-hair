@@ -623,7 +623,7 @@ func _check_last_hair_kept(world: MansionWorld, rng: RandomNumberGenerator) -> v
 ## 持っていなければ何も変えないか
 func _check_android_timing(state: Node, world: MansionWorld) -> void:
 	var site: BigToolSite = BigToolSite.new()
-	site.setup(state, world, null)
+	site.setup(state, world)
 	site.set_rng_seed(7)
 	var owned: OwnedTool = state.find_owned_tool(ToolCatalogScript.TOOL_ANDROID)
 	var progress: BuildingProgress = state.save_data.building_progress
@@ -698,7 +698,7 @@ func _check_sweep_rejects_partly_unknown_surfaces(state: Node) -> void:
 ## 表面ごとに 1 本ずつしか残っていない部屋は毛の合計が多くても選ばず、どの部屋も取れなければ選ばないか
 func _check_android_room_choice(state: Node, world: MansionWorld) -> void:
 	var site: BigToolSite = BigToolSite.new()
-	site.setup(state, world, null)
+	site.setup(state, world)
 	var hair_field: Node3D = world.get_hair_field()
 	var rooms: Array = state.current_layout.rooms
 	var expected_room: StringName = rooms[rooms.size() - 1].room_id

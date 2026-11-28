@@ -4,7 +4,7 @@ extends RefCounted
 ## その屋敷で手で 1 本抜くと残り本数が 9,999,998 本になり、描いている毛の本数は埋もれた毛から描き足されて変わらないこと、
 ## 粘着ローラーを床にかけると取れた本数だけ残り本数が減ることを確かめる (issue #65)。
 
-## 手の強化と、引く時間の下限。
+## 一度につまめる本数の強化。
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
 ## 目線を床の毛へ向ける手順
 const HandAim := preload("res://scripts/dev/hand_aim.gd")
@@ -34,9 +34,9 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await checker.process_frame
 	suite._verify_fresh_counts(main, game_state)
 	await suite._verify_hand_pluck(main, game_state)
-	await suite._verify_sofa_resistance(main)
+	await suite._verify_fabric_tap(main)
 	await suite._verify_roller_sweep(main, game_state)
-	await suite._verify_simultaneous_removal(main, game_state)
+	await suite._verify_grab_upgrade(main, game_state)
 	main.hand.allow_uncaptured_pluck = false
 	main.tools.allow_uncaptured_use = false
 	Input.action_release(HandController.ACTION_PLUCK)
@@ -84,22 +84,15 @@ func _verify_fresh_counts(main: Node3D, game_state: Node) -> void:
 
 ## 手で 1 本抜くと残り本数が 9,999,998 本になり、描いている毛の本数は変わらないか
 func _verify_hand_pluck(main: Node3D, game_state: Node) -> void:
-	var hand: HandController = main.hand
 	var hair_field: Node3D = main.mansion_world.get_hair_field()
 	var aimed: int = await HandAim.aim_at_floor_pile(_checker, main)
 	if aimed < 0:
 		_check(false, "既定の屋敷で床の毛の山に照準を合わせて 1 本抜ける")
 		return
 	var drawn_before: int = HairFieldScript.count_drawn_hairs(hair_field)
-	await _checker.process_frame
-	Input.action_press(HandController.ACTION_PLUCK)
-	await _checker.process_frame
-	var plucked: int = hand.advance_pull(hand.get_pull_duration())
-	Input.action_release(HandController.ACTION_PLUCK)
-	await _checker.process_frame
+	await _checker._press_physical_key(KEY_E)
 	_check(
-		plucked == 1
-		and game_state.get_total_remaining_hairs() == 9999998
+		game_state.get_total_remaining_hairs() == 9999998
 		and hair_field.get_remaining_count() == 9999998
 		and not hair_field.has_hair(aimed)
 		and HairFieldScript.count_drawn_hairs(hair_field) == drawn_before,
@@ -112,35 +105,15 @@ func _verify_hand_pluck(main: Node3D, game_state: Node) -> void:
 	)
 
 
-## 同じ手で床とソファの毛を照準からつまみ、抜けるまでの時間を同じ刻みで比べる。
-func _verify_sofa_resistance(main: Node3D) -> void:
-	var hand: HandController = main.hand
-	var floor_steps: int = 0
-	for kind: StringName in [MansionLayout.SURFACE_FLOOR, MansionLayout.SURFACE_SOFA]:
-		var aimed: int = await HandAim.aim_at_first_room_hair(_checker, main, kind)
-		await _checker.process_frame
-		Input.action_press(HandController.ACTION_PLUCK)
-		await _checker.process_frame
-		var ids: PackedInt32Array = hand.get_pulling_ids()
-		var steps: int = 0
-		var plucked: int = 0
-		# 1/120 秒刻みで 2 秒まで。描画フレームの所要時間に依存せず、実際に 1 本減るまでを測る。
-		while hand.is_pulling() and steps < 240:
-			plucked = hand.advance_pull(1.0 / 120.0)
-			steps += 1
-		Input.action_release(HandController.ACTION_PLUCK)
-		await _checker.process_frame
-		_check(
-			aimed >= 0 and ids == PackedInt32Array([aimed]) and plucked == 1,
-			"%s の照準で選んだ毛が 1 本抜ける" % kind,
-		)
-		if kind == MansionLayout.SURFACE_FLOOR:
-			floor_steps = steps
-		else:
-			_check(
-				floor_steps > 0 and steps > floor_steps,
-				"同じ手でソファの毛を抜き終えるまでが床より長い (床 %d 刻み・ソファ %d 刻み)" % [floor_steps, steps],
-			)
+## 壁掛けの上着とソファの毛は、根元に照準を合わせて 1 回押すと取れる。
+func _verify_fabric_tap(main: Node3D) -> void:
+	for kind: StringName in [MansionLayout.SURFACE_SUIT, MansionLayout.SURFACE_SOFA]:
+		var hair: int = await HandAim.aim_at_first_room_hair(_checker, main, kind)
+		var total: int = main.get_game_state().get_total_remaining_hairs()
+		await _checker._press_physical_key(KEY_E)
+		_check(hair >= 0 and not main.mansion_world.get_hair_field().has_hair(hair)
+			and main.get_game_state().get_total_remaining_hairs() == total - 1,
+			"%s の毛の根元を狙って押すと 1 本取れる" % kind)
 
 
 ## 粘着ローラーを買って床にかけると、取れた本数だけ残り本数が減るか
@@ -183,38 +156,18 @@ func _verify_roller_sweep(main: Node3D, game_state: Node) -> void:
 	)
 
 
-## 複数本をつまんでから他の掃除が先に取った時は、手元に残った本数だけを抜く。
-func _verify_simultaneous_removal(main: Node3D, game_state: Node) -> void:
-	var hand: HandController = main.hand
-	var field: Node3D = main.mansion_world.get_hair_field()
+## 一度につまめる本数を強化した時は、1 回押すと 2 本が取れる。
+func _verify_grab_upgrade(main: Node3D, game_state: Node) -> void:
 	game_state.set_hand_upgrade_level(HandRulesScript.UPGRADE_GRAB_COUNT, 1)
-	# 引く時間が下限に達するまで器用さを上げ、速い手でも前半で毛先を挟むことを確かめる。
-	game_state.set_hand_upgrade_level(HandRulesScript.UPGRADE_DEXTERITY, 20)
-	for remaining: int in [1, 0]:
-		if await HandAim.aim_at_floor_hairs(_checker, main, HandController.GRAB_RADIUS_M, 2) < 0:
-			_check(false, "同時につまめる床の毛が 2 本ある")
-			break
-		var target: Dictionary = hand.aim_target()
-		hand.begin_pull_at(target)
-		var ids: PackedInt32Array = hand.get_pulling_ids()
-		if ids.size() != 2:
-			_check(false, "同時に 2 本をつまみ、そのうち何本が残るかを試せる")
-			break
-		var surface: MansionLayout.SurfaceDef = main.mansion_world.get_surface_def(target.surface_index)
-		for i: int in range(ids.size() - remaining):
-			game_state.pluck_hair(surface.surface_id, main.mansion_world.get_hair_color_id(ids[i]), &"")
-			field.remove_hair(ids[i])
-		hand.advance_pull(hand.get_pull_duration() * 0.5)
-		if remaining == 1:
-			var tip: Vector3 = field.get_hair_transform(ids[1]) * HairFieldScript.HAIR_TIP
-			_check(is_equal_approx(hand.get_pull_duration(), HandRulesScript.MIN_PULL_SECONDS)
-				and hand.get_hand_view().get_pinch_position().is_equal_approx(tip),
-				"最短の引く時間の半分で、残った毛の先に両指がそろう")
-		var before: int = game_state.get_total_remaining_hairs()
-		_check(hand.advance_pull(hand.get_pull_duration()) == remaining
-			and game_state.get_total_remaining_hairs() == before - remaining,
-			"他の掃除の後、手は残った %d 本だけを取る" % remaining)
-		_check(hand.get_hand_view().get_node("PluckedHair").visible == (remaining > 0),
-			"手が空の時には抜いた毛のメッシュを表示しない")
-	game_state.set_hand_upgrade_level(HandRulesScript.UPGRADE_DEXTERITY, 0)
+	main.tools.select_tool(ToolCatalogScript.TOOL_HAND)
+	var radius: float = HandRulesScript.grab_radius(MansionLayout.SURFACE_FLOOR, 0)
+	var aimed: int = await HandAim.aim_at_floor_hairs(_checker, main, radius, 2)
+	var before: int = game_state.get_total_remaining_hairs()
+	var field: Node3D = main.mansion_world.get_hair_field()
+	var drawn_before: int = HairFieldScript.count_drawn_hairs(field)
+	await _checker._press_physical_key(KEY_E)
+	_check(aimed >= 0 and game_state.get_total_remaining_hairs() == before - 2
+		and field.get_remaining_count() == before - 2
+		and HairFieldScript.count_drawn_hairs(field) == drawn_before,
+		"つまめる本数を 1 段強化すると 1 回の押下で 2 本取れる")
 	game_state.set_hand_upgrade_level(HandRulesScript.UPGRADE_GRAB_COUNT, 0)

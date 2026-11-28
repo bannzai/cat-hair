@@ -156,8 +156,6 @@ func select_tool(tool_id: StringName) -> bool:
 		return false
 	_selected_tool_id = tool_id
 	_last_message = ""
-	if _hand != null and tool_id != ToolCatalogScript.TOOL_HAND:
-		_hand.release_pull()
 	_sync_cockpit()
 	tool_selected.emit(_selected_tool_id)
 	return true
@@ -176,14 +174,11 @@ func is_in_driver_seat() -> bool:
 	return _cockpit != null and _cockpit.visible
 
 
-## 運転席を、吸引車を選んでいて操作を受け付けている時だけ見せる。運転席に座っている間は画面の手を隠す
-## (手が運転席の計器盤の上に重なって見えるため)
+## 運転席を、吸引車を選んでいて操作を受け付けている時だけ見せる
 func _sync_cockpit() -> void:
 	if _cockpit == null:
 		return
 	_cockpit.visible = enabled and _selected_tool_id == ToolCatalogScript.TOOL_SUCTION_TRUCK
-	if _hand != null and _hand.get_hand_view() != null:
-		_hand.get_hand_view().visible = not _cockpit.visible
 
 
 ## 道具を使える状態で持っているか (手は最初から持っている)

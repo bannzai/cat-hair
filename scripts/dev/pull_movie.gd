@@ -1,5 +1,5 @@
 extends SceneTree
-## 最初の部屋で床・壁の上着・ソファへ歩き、各面で同じ毛を途中で離してから抜く入力を録画する。
+## 最初の部屋で床・壁の上着・ソファへ歩き、各面で 1 本をクリックして取る操作を録画する。
 
 ## 撮影対象を、実際に届く距離から狙う。
 const HandAim := preload("res://scripts/dev/hand_aim.gd")
@@ -56,7 +56,7 @@ func _run() -> void:
 	quit(0 if ok else 1)
 
 
-## 本物の照準・クリックで中断と完遂を撮り、録画から対応するコマを抜き出すための番号を残す
+## 本物の照準とクリックで毛が取れた前後を撮り、対応するコマの番号を残す
 func _record_surface(main: Node3D, surface: StringName) -> bool:
 	var hair: int = await HandAim.aim_at_first_room_hair(self, main, surface)
 	if hair < 0:
@@ -67,48 +67,18 @@ func _record_surface(main: Node3D, surface: StringName) -> bool:
 	var player: FirstPersonPlayer = main.player
 	if not await _walk_and_aim(player, target):
 		return false
-	for finish: bool in [false, true]:
-		if not await _pull(main, surface, hair, finish):
-			return false
-	return true
-
-
-## 同じ毛を押し、途中で戻した場合か抜いた場合のいずれかを記録する
-func _pull(main: Node3D, surface: StringName, hair: int, finish: bool) -> bool:
 	var before: int = main.get_game_state().get_total_remaining_hairs()
-	var hand: HandController = main.hand
 	await process_frame
-	_mark(surface, "before" if finish else "cancel-before")
+	_mark(surface, "before")
 	_mouse_button(true)
-	await process_frame
-	if not hand.get_pulling_ids().has(hair):
-		push_error("押した毛と照準に合わせた毛が一致しない")
-		return false
-	var contact: float = HandController.REACH_SECONDS / hand.get_pull_duration()
-	while hand.is_pulling() and hand.get_pull_progress() < contact:
-		await process_frame
-	_mark(surface, "pinch" if finish else "cancel-pinch")
-	while hand.is_pulling() and hand.get_pull_progress() < 0.6:
-		await process_frame
-	if not hand.is_pulling():
-		return false
-	_mark(surface, "stretch" if finish else "cancel-stretch")
-	if finish:
-		while hand.is_pulling():
-			await process_frame
-		_mark(surface, "detached")
 	_mouse_button(false)
 	await process_frame
-	if hand.is_pulling() or main.mansion_world.get_hair_field().has_hair(hair) == finish:
-		return false
-	if main.get_game_state().get_total_remaining_hairs() != before - int(finish):
-		return false
-	if not finish:
-		_mark(surface, "cancel-released")
-	await create_timer(0.6).timeout
 	await process_frame
-	_mark(surface, "returned" if finish else "cancel-returned")
-	await create_timer(0.5).timeout
+	_mark(surface, "after")
+	if field.has_hair(hair) or main.get_game_state().get_total_remaining_hairs() != before - 1:
+		push_error("クリック 1 回で狙った毛が 1 本取れない")
+		return false
+	await create_timer(0.7).timeout
 	return true
 
 
