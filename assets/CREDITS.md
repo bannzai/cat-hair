@@ -57,3 +57,7 @@
 - 入手 URL: https://opengameart.org/content/interface-sounds
 - ライセンス: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)。クレジット表記は不要
 - 改変: `kenney_interfaceSounds.zip` から取り出し、ファイル名変更のみ
+
+## 床の毛
+
+`textures/floor_fur.png` は本作のために Python と Pillow で描いた画像。色と曲がり方が異なる短い毛を重ね、端をまたぐ毛は反対側にも描いている。

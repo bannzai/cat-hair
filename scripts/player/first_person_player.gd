@@ -221,13 +221,15 @@ func _build_body() -> Node3D:
 	pants.albedo_color = Color(0.14, 0.16, 0.2)
 	var skin := StandardMaterial3D.new()
 	skin.albedo_color = HandViewScript.SKIN_COLOR
-	HumanParts.add_sphere(body, "Torso", Vector3(0, 1.14, 0.23), 0.5,
-		Vector3(0.39, 0.62, 0.24), shirt, false)
+	# 腰を目線より後ろに置き、肩を前に出す。真下を向いた時も胸の手前に床が見える。
+	var torso: MeshInstance3D = HumanParts.add_sphere(body, "Torso", Vector3(0, 1.14, 0.32),
+		0.5, Vector3(0.39, 0.62, 0.24), shirt, false)
+	torso.rotation.x = -0.36
 	for side: int in [-1, 1]:
 		var prefix: String = "Left" if side == -1 else "Right"
-		HumanParts.add_limb(body, prefix + "Leg", Vector3(side * 0.10, 0.12, 0.24),
-			Vector3(side * 0.10, 0.88, 0.23), 0.072, pants, false)
-		HumanParts.add_sphere(body, prefix + "Shoe", Vector3(side * 0.10, 0.07, 0.18), 0.5,
+		HumanParts.add_limb(body, prefix + "Leg", Vector3(side * 0.10, 0.12, 0.40),
+			Vector3(side * 0.10, 0.88, 0.41), 0.072, pants, false)
+		HumanParts.add_sphere(body, prefix + "Shoe", Vector3(side * 0.10, 0.07, 0.34), 0.5,
 			Vector3(0.14, 0.14, 0.26), pants, false)
 	var elbow := Vector3(-0.24, 1.04, 0.21)
 	HumanParts.add_limb(body, "LeftSleeve", Vector3(-0.19, 1.35, 0.22), elbow, 0.053, shirt, false)

@@ -273,9 +273,13 @@ func _build_cat(route: Dictionary) -> Node3D:
 	var tail: CapsuleMesh = CapsuleMesh.new()
 	tail.radius = 0.022
 	tail.height = 0.3
+	# 丸い尻に付け根を少し埋め、そこから背後に伸ばす。カプセルの原点は長さの中央にある。
+	var tail_base := Vector3(0.0, torso_height + 0.035, CAT_BODY_LENGTH_M * 0.5 - tail.radius)
+	var tail_tilt: float = 50.0
+	var tail_axis: Vector3 = Vector3.UP.rotated(Vector3.RIGHT, deg_to_rad(tail_tilt))
 	_add_part(
-		body, tail, Vector3(0.0, torso_height + 0.1, CAT_BODY_LENGTH_M * 0.5 + 0.05),
-		Vector3(-35.0, 0.0, 0.0), body_color
+		body, tail, tail_base + tail_axis * tail.height * 0.5,
+		Vector3(tail_tilt, 0.0, 0.0), body_color
 	)
 	if route["color"] == SurfaceHairScript.COLOR_CALICO:
 		var patch_spots: Array[Vector3] = [

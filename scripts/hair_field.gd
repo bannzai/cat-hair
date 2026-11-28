@@ -17,6 +17,8 @@ enum HairColorGroup {
 	CALICO,
 }
 
+const SurfaceHit := preload("res://scripts/hair_surface_hit.gd")
+
 ## 再現性のある配置に使う既定シード (試作決定日 2026-11-26 を採用し実行ごとにぶれない配置にする)
 const DEFAULT_SEED: int = 20261126
 ## 表面との Z ファイトを防ぐ浮き量 (m。床・ソファのメッシュ面から 1.2 mm 浮かせる)
@@ -344,6 +346,7 @@ func add_oriented_surface(
 	size: Vector2,
 	weight: float,
 	exclusions: Array[Dictionary] = [],
+	floor_fur: bool = false,
 ) -> void:
 	_surfaces.append({
 		"name": surface_name,
@@ -352,6 +355,7 @@ func add_oriented_surface(
 		"rect_max": size * 0.5,
 		"weight": weight,
 		"exclusions": exclusions,
+		"floor_fur": floor_fur,
 	})
 
 
@@ -530,6 +534,7 @@ func _draw_buried_hair(surface_index: int, plucked_point: Vector3) -> void:
 	buried[group] -= 1
 	bucket["buried"] = buried
 	_place_hair(surface_index, xform, pick_hair_color_in_group(_refill_rng, group))
+	_update_floor_fur(surface_index)
 
 
 ## 表面 surface_index の埋もれた毛から系統 group の毛を最大 count 本消し、消した本数を返す (remove_buried_hairs の本体)
@@ -545,6 +550,7 @@ func _remove_buried(surface_index: int, group: int, count: int) -> int:
 	buried[group] -= removed
 	bucket["buried"] = buried
 	_remaining_count -= removed
+	_update_floor_fur(surface_index)
 	return removed
 
 
@@ -603,9 +609,17 @@ func _add_hair(
 		xform = surface_transform * local_xform
 		if not _is_excluded(xform.origin, spec["exclusions"]):
 			break
+	xform = FloorFur.drape(xform, spec.get("fur"))
 	var hair_id: int = _place_hair(surface_index, xform, pick_hair_color_in_group(rng, group))
+	_update_floor_fur(surface_index)
 	_remaining_count += 1
 	return hair_id
+
+
+func _update_floor_fur(surface_index: int) -> void:
+	var fur: FloorFur = _surfaces[surface_index].get("fur")
+	if fur != null:
+		fur.update_buried(_sum(_buried_counts(surface_index)), _buckets[surface_index])
 
 
 ## 表面 surface_index の描いている毛の末尾に、xform と color の毛を 1 本描き、新しい毛 ID を返す (残り本数は変えない)。
@@ -681,6 +695,8 @@ func _grow_bucket(bucket: Dictionary, capacity: int) -> void:
 
 ## すべての毛と生成済み MultiMeshInstance3D を解放する
 func clear() -> void:
+	for spec: Dictionary in _surfaces:
+		spec.erase("fur")
 	for bucket: Dictionary in _buckets:
 		var instance: MultiMeshInstance3D = bucket["instance"]
 		if is_instance_valid(instance):
@@ -779,34 +795,9 @@ func get_hair_color(hair_id: int) -> Color:
 	]
 
 
-## from から direction 向きの半直線が表から当たる表面のうち、max_distance 以内で最も近いものを返す。
-## 当たれば {"surface_index", "point", "distance"}、どこにも当たらなければ空の辞書
+## 光線が最初に当たる毛の表面と距離を返す。
 func intersect_surfaces(from: Vector3, direction: Vector3, max_distance: float) -> Dictionary:
-	var best: Dictionary = {}
-	var dir: Vector3 = direction.normalized()
-	for surface_idx: int in range(_surfaces.size()):
-		var spec: Dictionary = _surfaces[surface_idx]
-		var surface_transform: Transform3D = spec["transform"]
-		var normal: Vector3 = surface_transform.basis.y.normalized()
-		var facing: float = dir.dot(normal)
-		if facing >= -0.0001:
-			continue
-		var distance: float = (surface_transform.origin - from).dot(normal) / facing
-		if distance < 0.0 or distance > max_distance:
-			continue
-		if not best.is_empty() and distance >= float(best["distance"]):
-			continue
-		var point: Vector3 = from + dir * distance
-		var local: Vector3 = surface_transform.affine_inverse() * point
-		var rect_min: Vector2 = spec["rect_min"]
-		var rect_max: Vector2 = spec["rect_max"]
-		if (
-			local.x < rect_min.x or local.x > rect_max.x
-			or local.z < rect_min.y or local.z > rect_max.y
-		):
-			continue
-		best = {"surface_index": surface_idx, "point": point, "distance": distance}
-	return best
+	return SurfaceHit.nearest(_surfaces, from, direction, max_distance)
 
 
 ## 指定した表面で、根元が point から radius 以内にある毛 ID を近い順に最大 max_count 本返す
@@ -923,7 +914,7 @@ static func _random_hair_transform(
 		local_xform.origin.z = rng.randf_range(rect_min.y, rect_max.y)
 		xform = surface_transform * local_xform
 		retries += 1
-	return xform
+	return FloorFur.drape(xform, spec.get("fur"))
 
 
 ## 表面の局所 XZ 上の点がワールド座標で除外範囲のどれかに入るか
@@ -950,6 +941,11 @@ func _create_surface_bucket(
 	groups: PackedInt32Array,
 	buried: PackedInt32Array,
 ) -> Dictionary:
+	var fur: FloorFur = null
+	if spec.get("floor_fur", false) and _sum(buried) > 0:
+		fur = FloorFur.new()
+		fur.build(spec, _sum(buried))
+		spec["fur"] = fur
 	var multimesh: MultiMesh = MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
 	multimesh.use_colors = true
@@ -987,6 +983,8 @@ func _create_surface_bucket(
 	multimesh_instance.material_override = _hair_material
 	multimesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(multimesh_instance)
+	if fur != null:
+		multimesh_instance.add_child(fur)
 
 	return {
 		"instance": multimesh_instance,

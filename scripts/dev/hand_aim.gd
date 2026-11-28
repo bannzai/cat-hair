@@ -36,7 +36,7 @@ static func aim_at_first_room_hair(tree: SceneTree, main: Node3D, surface_type: 
 ## 1 以上の時は radius の中に毛が min_hairs 本以上ある所で止め、試した毛の ID を返す (見つからなければ -1)
 static func _aim(
 	tree: SceneTree, main: Node3D, surface_type: StringName, radius: float,
-	min_hairs: int, first_room: bool, min_height: float = 0.0,
+	min_hairs: int, first_room: bool, min_height: float = -INF,
 ) -> int:
 	var world: MansionWorld = main.get_node("MansionWorld")
 	var player: FirstPersonPlayer = main.get_node("Player")

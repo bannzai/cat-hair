@@ -395,6 +395,9 @@ func _process(delta: float) -> void:
 		if auto_advance_time:
 			_advance_play_time(delta)
 		_refresh_room_gauge()
+		var can_pluck: bool = hand.can_begin_pull()
+		look_hud.set_pluck_guide_visible(can_pluck)
+		crosshair.visible = can_pluck or (tools.enabled and not hand.enabled)
 	if _pluck_popup_remaining <= 0.0:
 		return
 	_pluck_popup_remaining -= delta
@@ -588,6 +591,7 @@ func _build_hand_ui() -> void:
 
 	crosshair = Control.new()
 	crosshair.name = "Crosshair"
+	crosshair.visible = false
 	crosshair.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(crosshair)
