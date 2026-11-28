@@ -15,8 +15,9 @@ const REST_ROTATION: Vector3 = Vector3(-1.2, 0.15, 0.0)
 const PINCH_ROTATION: Vector3 = Vector3(-0.64, 0.65, -0.78)
 ## 一人称の腕が壁際で途切れないよう、腕と持った毛だけの描画深度を手前に寄せる。
 const ARM_Z_CLIP_SCALE: float = 0.8
-## 肩から肘、肘から手首までの長さ (m)。
+## 肩から肘までの上腕の長さ (m)。
 const UPPER_ARM_M: float = 0.32
+## 肘から手首までの前腕の長さ (m)。
 const FOREARM_M: float = 0.27
 ## つまんだ時にも肘の曲がりを残す、肩から手首までの距離 (m)。
 const BENT_REACH_M: float = 0.53
@@ -70,9 +71,11 @@ var _shoulder: Node3D
 var _sleeve: MeshInstance3D
 ## 肘から手首までの前腕。
 var _forearm: MeshInstance3D
-## 肘の出っ張りと、袖の端の折り返し。
+## 袖の上下をつなぐ肘の丸み。
 var _elbow: MeshInstance3D
+## 肘から袖口までを覆う布。
 var _lower_sleeve: MeshInstance3D
+## 袖口に付く折り返し。
 var _cuff: MeshInstance3D
 ## 抜いた直後だけ指先に残す毛。
 var _plucked: MeshInstance3D

@@ -498,8 +498,18 @@ func _verify_edge_inputs(main: Node3D, game_state: Node) -> void:
 		and tools.get_last_message().contains("表面が無い"),
 		"天井を狙って道具を使うと、紙も毛も変わらず「表面が無い」と出る (%s)" % tools.get_last_message(),
 	)
+	_check(
+		main.crosshair.is_visible_in_tree()
+		and not main.look_hud.get_node("GuideLabel").is_visible_in_tree(),
+		"粘着ローラーで毛の無い天井を狙うと照準だけが見える",
+	)
 	main.open_tool_shop()
 	await _checker._press_physical_key(_select_key(ToolCatalogScript.TOOL_VACUUM))
+	_check(
+		not main.crosshair.is_visible_in_tree()
+		and not main.look_hud.get_node("GuideLabel").is_visible_in_tree(),
+		"粘着ローラーを持って道具を買う画面を開くと照準と手の案内が消える",
+	)
 	_check(
 		tools.get_selected_tool_id() == roller,
 		"道具を買う画面を開いている間は数字キーで道具を持ち替えない",

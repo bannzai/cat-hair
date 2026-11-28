@@ -23,6 +23,10 @@ const ScenebenchScript := preload("res://scripts/dev/scenebench.gd")
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 ## 検証で使う小さな描く本数の上限 (100 本の面で、描く毛と埋もれた毛の両方を 1 本ずつ追って数えられる本数)
 const SMALL_BUDGET: int = 10
+## 厚みの境界を検査する床面の幅と奥行き (m)。
+const FUR_FLOOR_SIZE := Vector2(2.0, 2.0)
+## この床で毛の層が最も厚くなる本数。
+const SATURATED_COUNT := ceili(FUR_FLOOR_SIZE.x * FUR_FLOOR_SIZE.y * FloorFur.FULL_DENSITY)
 ## 屋敷を組む検証で使う描く本数の上限。既定の屋敷 (4 部屋・数十の面) の全部の面に数本ずつ配られて描く毛が残り、
 ## 吸引車が 1 面で触れる本数 (max_hairs) より描いている毛が少ない面ができて埋もれた毛の経路を通る本数
 const WORLD_BUDGET: int = 100
@@ -67,17 +71,18 @@ static func _counts(rows: Array) -> Array[PackedInt32Array]:
 static func _make_floor_with_buried(buried: int) -> Node3D:
 	var field := HairFieldScript.new()
 	field.draw_budget = 256
-	field.add_oriented_surface("floor", Transform3D.IDENTITY, Vector2(2, 2), 1.0, [], true)
+	field.add_oriented_surface("floor", Transform3D.IDENTITY, FUR_FLOOR_SIZE, 1.0, [], true)
 	field.populate_with_group_counts(_counts([PackedInt32Array([field.draw_budget + buried, 0, 0])]))
 	return field
 
 
 ## 山の一部が床面より下がったとき、床に移った毛もまだ山に乗る毛も、同じ残り本数で置き直した形に一致するか。
 func _check_floor_fur_after_cleaning() -> void:
-	var field: Node3D = _make_floor_with_buried(56000)
-	var reloaded: Node3D = _make_floor_with_buried(28000)
+	var field: Node3D = _make_floor_with_buried(SATURATED_COUNT)
+	var removed := floori(SATURATED_COUNT * 0.5)
+	var reloaded: Node3D = _make_floor_with_buried(SATURATED_COUNT - removed)
 	var bare: Node3D = _make_floor_with_buried(0)
-	HairFieldScript.remove_buried_hairs(field, 0, HairFieldScript.HairColorGroup.WHITE, 28000)
+	HairFieldScript.remove_buried_hairs(field, 0, HairFieldScript.HairColorGroup.WHITE, removed)
 	var flat_count: int = 0
 	var slope_count: int = 0
 	var flat_ok: bool = true
@@ -110,12 +115,13 @@ func _check_floor_fur_density_limits() -> void:
 		"埋もれた毛が 1 本の層は床の下に隠れ、各根元と照準の交点は裸の床と一致する")
 	one.free()
 	bare.free()
-	var full: Node3D = _make_floor_with_buried(56000)
+	var full: Node3D = _make_floor_with_buried(SATURATED_COUNT)
 	# 1 本だけ超えた場合と、厚みの丸め幅を十分に超えた場合の両方で飽和を確かめる。
-	for buried: int in [56001, 112000]:
+	for buried: int in [SATURATED_COUNT + 1, SATURATED_COUNT * 2]:
 		var extra: Node3D = _make_floor_with_buried(buried)
 		_check(_same_floor_roots_and_hits(extra, full),
-			"埋もれた毛が %d 本の床は、飽和する 56,000 本の床と各根元・照準の交点が一致する" % buried)
+			"埋もれた毛が %d 本の床は、飽和する %d 本の床と各根元・照準の交点が一致する"
+			% [buried, SATURATED_COUNT])
 		extra.free()
 	full.free()
 

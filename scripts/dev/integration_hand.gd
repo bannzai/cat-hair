@@ -79,6 +79,11 @@ func _verify_hair_book_blocks_and_shows(main: Node3D, game_state: Node) -> void:
 		main.hair_book_panel.visible and not hand.enabled and not main.player.controls_enabled,
 		"B キーで図鑑が開き、歩く操作とつまむ操作が止まる",
 	)
+	_check(
+		not hand.can_begin_pull() and not main.crosshair.is_visible_in_tree()
+		and not main.look_hud.get_node("GuideLabel").is_visible_in_tree(),
+		"届く毛を狙っていても、図鑑を開くと手の案内と照準が消える",
+	)
 	var before_total: int = game_state.get_total_remaining_hairs()
 	await _hold_pluck(3)
 	_check(
@@ -713,7 +718,17 @@ func _verify_hold_plucks_and_capture_gate(main: Node3D, game_state: Node) -> voi
 	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
 
+	if await HandAim.aim_at_floor_hair(_checker, main) < 0:
+		_check(false, "マウス未捕捉の検査で届く床の毛を狙える")
+		return
 	hand.allow_uncaptured_pluck = false
+	await _checker.process_frame
+	await _checker.process_frame
+	_check(
+		not hand.can_begin_pull() and not guide.is_visible_in_tree()
+		and not main.crosshair.is_visible_in_tree(),
+		"届く毛を狙っていても、マウスの捕捉前は手の案内と照準が出ない",
+	)
 	await _press_pluck()
 	_check(
 		not hand.is_pulling() and game_state.get_total_remaining_hairs() == before_total - 2,
