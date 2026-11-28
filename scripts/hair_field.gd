@@ -616,6 +616,7 @@ func _add_hair(
 	return hair_id
 
 
+## 床から毛を取ったり猫が毛を落としたりしたとき、山の厚みを埋もれた本数と合わせる。
 func _update_floor_fur(surface_index: int) -> void:
 	var fur: FloorFur = _surfaces[surface_index].get("fur")
 	if fur != null:
@@ -800,9 +801,9 @@ func intersect_surfaces(from: Vector3, direction: Vector3, max_distance: float) 
 	return SurfaceHit.nearest(_surfaces, from, direction, max_distance)
 
 
-## 指定した表面で、根元が point から radius 以内にある毛 ID を近い順に最大 max_count 本返す
+## 根元が半径内にある毛を近い順に返す。順番が不要な時は、指定本数が見つかったところで探索を終える。
 func find_hairs_near(
-	surface_index: int, point: Vector3, radius: float, max_count: int
+	surface_index: int, point: Vector3, radius: float, max_count: int, nearest_first: bool = true
 ) -> PackedInt32Array:
 	var result: PackedInt32Array = PackedInt32Array()
 	if surface_index < 0 or surface_index >= _buckets.size() or max_count <= 0:
@@ -816,11 +817,12 @@ func find_hairs_near(
 		var dist_sq: float = transforms[slot].origin.distance_squared_to(point)
 		if dist_sq <= radius_sq:
 			candidates.append(Vector2(dist_sq, float(hair_ids[slot])))
-	candidates.sort()
-	for candidate: Vector2 in candidates:
-		if result.size() >= max_count:
-			break
-		result.append(int(candidate.y))
+			if not nearest_first and max_count > 1 and candidates.size() == max_count:
+				break
+	if nearest_first or max_count == 1:
+		candidates.sort()
+	for index: int in range(mini(max_count, candidates.size())):
+		result.append(int(candidates[index].y))
 	return result
 
 

@@ -795,7 +795,8 @@ func _on_pull_progress_changed(progress: float, pulling: bool) -> void:
 
 ## 手で毛を抜けなかった時に、理由を照準の下 (道具の結果と同じ所) に出す
 func _on_pull_failed(reason: StringName) -> void:
-	tool_message_label.text = HandController.failure_message(reason)
+	if reason != HandController.REASON_OUT_OF_REACH:
+		tool_message_label.text = HandController.failure_message(reason)
 
 
 ## 画面中央に短い知らせ (「+N 本」・入ったお金) を PLUCK_POPUP_SECONDS 秒出す

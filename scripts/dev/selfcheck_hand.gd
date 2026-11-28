@@ -339,6 +339,15 @@ func _check_oriented_surface_and_queries() -> void:
 	var target_root: Vector3 = field.get_hair_transform(target_id).origin
 	var nearest: PackedInt32Array = field.find_hairs_near(0, target_root, 0.05, 1)
 	var many: PackedInt32Array = field.find_hairs_near(0, Vector3(0, 1, 0), 10.0, 100)
+	var next_id: int = field.get_hair_id_at_slot(0, 1)
+	var next_root: Vector3 = field.get_hair_transform(next_id).origin
+	_check(
+		field.find_hairs_near(0, next_root, 10.0, 1, false) == PackedInt32Array([target_id])
+		and field.find_hairs_near(0, next_root, 10.0, 1) == PackedInt32Array([next_id])
+		and field.find_hairs_near(0, next_root, 0.0, 1, false) == PackedInt32Array([next_id])
+		and field.find_hairs_near(0, Vector3(5, 5, 5), 0.05, 1, false).is_empty(),
+		"案内は範囲内で最初の毛を見つけ、同じ範囲でつまむ時は最寄りの毛を選ぶ",
+	)
 	_check(
 		nearest.size() == 1 and nearest[0] == target_id,
 		"毛の根元を狙うと、つまめる 1 本はその毛になる",

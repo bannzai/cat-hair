@@ -181,16 +181,17 @@ func _can_use_mouse() -> bool:
 func can_begin_pull() -> bool:
 	return (
 		enabled and _can_use_mouse() and not is_pulling()
-		and not _hairs_at(aim_target(), 1).is_empty()
+		and not Input.is_action_pressed(ACTION_PLUCK)
+		and not _hairs_at(aim_target(), 1, false).is_empty()
 	)
 
 
 ## 狙いが表面に当たった点の周りで指が挟める毛。案内と引き始めの両方に同じ候補を使う。
-func _hairs_at(target: Dictionary, count: int) -> PackedInt32Array:
+func _hairs_at(target: Dictionary, count: int, nearest_first: bool = true) -> PackedInt32Array:
 	if target.is_empty():
 		return PackedInt32Array()
 	return _world.get_hair_field().find_hairs_near(
-		target["surface_index"], target["point"], GRAB_RADIUS_M, count
+		target["surface_index"], target["point"], GRAB_RADIUS_M, count, nearest_first
 	)
 
 
