@@ -5,29 +5,43 @@ extends Node
 ## 一度の操作で取った本数と、含まれていた珍しい毛を知らせる。
 signal hairs_plucked(count: int, rare_ids: Array[StringName], new_rare_ids: Array[StringName])
 
+## 手の強化と珍しい毛の抽選。
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
+## 拾った毛にも屋敷と同じ形と材質を使う。
 const HairFieldScript := preload("res://scripts/hair_field.gd")
+## 毛が取れた時と空振りした時の効果音。
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
+## 屋敷で鳴る効果音の再生先。
 const AudioManagerScript := preload("res://scripts/audio/audio_manager.gd")
 
+## 手で毛を取る入力。買取業者に照準が合う時は会話に使う。
 const ACTION_PLUCK: StringName = &"pluck_hair"
 ## 目線から床や家具に手が届く距離。
 const REACH_M: float = 2.6
 ## 表面そのものの衝突体を遮蔽物として数えないための余裕。
 const OCCLUSION_TOLERANCE_M: float = 0.06
 
+## プレイ中に手を選んでいるか。
 var enabled: bool = false:
 	set(value):
 		enabled = value
 		if not enabled and _plucked != null:
 			_plucked.hide()
+## マウスを捕捉できない入力統合テストでも操作を通すための設定。
 var allow_uncaptured_pluck: bool = false
+## プレイヤーの照準と拾った毛の表示を共有するカメラ。
 var _camera: Camera3D
+## 狙った表面と毛を持つ屋敷。
 var _world: MansionWorld
+## 取得した毛と強化の進行を保つ状態。
 var _game_state: Node
+## 照準を遮る物から除くプレイヤーの衝突体。
 var _excluded_rids: Array[RID] = []
+## 珍しい毛の抽選に使う乱数。
 var _rng := RandomNumberGenerator.new()
+## 手前に見せる直近の毛。連続して取った時も 1 本だけを使う。
 var _plucked: MeshInstance3D
+## 次の毛を取った時に打ち切る、手前への移動と表示時間。
 var _lift: Tween
 
 
@@ -121,15 +135,18 @@ func _show_plucked(color: Color) -> void:
 	if _lift != null:
 		_lift.kill()
 	(_plucked.material_override as StandardMaterial3D).albedo_color = color
+	# 床に寝た毛の広い面をカメラへ向け、傾けて照準と輪郭を区別できるようにする。
 	_plucked.rotation = Vector3(deg_to_rad(-90.0), 0.0, deg_to_rad(-35.0))
 	_plucked.position = Vector3(0.0, 0.0, -0.44)
 	_plucked.show()
+	# 根元を次に狙う位置から少し右上に退ける。移動より長く静止させて色を読めるようにする。
 	_lift = create_tween()
 	_lift.tween_property(_plucked, "position", Vector3(0.035, 0.038, -0.28), 0.16)
 	_lift.tween_interval(0.32)
 	_lift.tween_callback(_plucked.hide)
 
 
+## プレイ中の効果音を再生する。音を持たない検証シーンでも操作できる。
 func _play_sfx(event_name: String) -> void:
 	var audio: AudioManagerScript = AudioManagerScript.resolve(get_tree()) as AudioManagerScript
 	if audio != null:

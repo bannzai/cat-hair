@@ -122,6 +122,8 @@ var _owned_game_state: Node = null
 var _is_playing: bool = false
 ## 「+N 本」の表示を消すまでの残り秒数
 var _pluck_popup_remaining: float = 0.0
+## 空振りで前の取得表示だけを消し、同じ場所に出る掃除代などの通知は残す。
+var _popup_is_plucked_hair: bool = false
 
 ## 屋敷 1 階の 3D 構築ノード
 @onready var mansion_world: MansionWorld = $MansionWorld
@@ -219,8 +221,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			open_tool_shop()
 			get_viewport().set_input_as_handled()
 		elif hand != null and hand.enabled and hand.can_use_mouse():
-			if not hand.pluck_aimed():
+			if not hand.pluck_aimed() and _popup_is_plucked_hair:
 				pluck_popup_label.hide()
+				_pluck_popup_remaining = 0.0
 	elif _is_key_press(event, TOGGLE_PERF_KEY):
 		if _is_playing:
 			perf_overlay.toggle()
@@ -799,11 +802,12 @@ func _on_hairs_plucked(
 		if new_rare_ids.has(rare_id):
 			rare_line += " (図鑑に載った)"
 		lines.append(rare_line)
-	_show_popup("\n".join(lines))
+	_show_popup("\n".join(lines), true)
 
 
 ## 画面中央に短い知らせ (「+N 本」・入ったお金) を PLUCK_POPUP_SECONDS 秒出す
-func _show_popup(text: String) -> void:
+func _show_popup(text: String, is_plucked_hair: bool = false) -> void:
+	_popup_is_plucked_hair = is_plucked_hair
 	pluck_popup_label.text = text
 	pluck_popup_label.visible = true
 	_pluck_popup_remaining = PLUCK_POPUP_SECONDS

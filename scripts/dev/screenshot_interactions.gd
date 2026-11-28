@@ -1,6 +1,7 @@
 extends RefCounted
 ## 同じ屋敷・立ち位置で、床、上着、ソファに落ちた毛と買取業者を実際に操作した前後を撮る。
 
+## 同じ毛を狙って、操作の前後を同じ構図で撮るための手順。
 const HandAim := preload("res://scripts/dev/hand_aim.gd")
 
 

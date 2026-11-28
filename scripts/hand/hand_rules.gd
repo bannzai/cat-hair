@@ -50,7 +50,8 @@ const RARE_HAIRS: Array[Dictionary] = [
 ]
 
 
-## 平らな面は根元から 8 cm、布では繊維に絡んだ毛を狙って 4 cm。器用さ 1 段につき半径を 1 cm 広げる。
+## 平面では少しずれた根元にも届き、布ではより正確に狙うよう、初期半径に倍の差をつける。
+## 器用さは布と床の違いを保ちながら少しずつ狙いやすくする (DIRECTION.md「手で毛を取る」)。
 static func grab_radius(surface_type: StringName, dexterity_level: int) -> float:
 	var flat: bool = surface_type in [
 		MansionLayoutScript.SURFACE_FLOOR, MansionLayoutScript.SURFACE_FURNITURE]

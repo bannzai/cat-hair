@@ -74,7 +74,7 @@ func _record_surface(main: Node3D, surface: StringName) -> bool:
 	_mouse_button(false)
 	await process_frame
 	await process_frame
-	_mark(surface, "detached")
+	_mark(surface, "after")
 	if field.has_hair(hair) or main.get_game_state().get_total_remaining_hairs() != before - 1:
 		push_error("クリック 1 回で狙った毛が 1 本取れない")
 		return false

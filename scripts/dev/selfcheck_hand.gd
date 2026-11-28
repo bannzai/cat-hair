@@ -1,5 +1,5 @@
 extends RefCounted
-## 手で毛を取るルール (引く時間・手の強化・珍しい毛・図鑑)・GameState の 1 本取り・HairField の照会と向きの付いた表面・
+## 手で毛を取るルール (つまむ半径・手の強化・珍しい毛・図鑑)・GameState の 1 本取り・HairField の照会と向きの付いた表面・
 ## 物の毛が乗る面の検証スイート (scripts/dev/selfcheck.gd から呼ぶ)。
 
 ## 手で毛を取る時のルールの計算

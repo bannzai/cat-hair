@@ -114,8 +114,14 @@ func _verify_hair_book_blocks_and_shows(main: Node3D, game_state: Node) -> void:
 ## 同じフレーム内に押して離す E と、押し続けてキーリピートが届く E を実際の入力経路に通す。
 func _verify_tap(main: Node3D, game_state: Node) -> void:
 	var audio: AudioManagerScript = AudioManagerScript.resolve(_checker) as AudioManagerScript
-	_check(main.player.find_child("Body", true, false) == null
-		and main.player.find_child("HandView", true, false) == null, "自分の体と手を描くノードがない")
+	var picked: Node = main.player.get_camera().get_node("PluckedHair")
+	var visible_body: bool = false
+	for mesh: MeshInstance3D in main.player.find_children("*", "MeshInstance3D", true, false):
+		if mesh != picked and mesh.is_visible_in_tree():
+			visible_body = true
+	_check(not visible_body and main.player.find_child("HandView", true, false) == null
+		and main.player.find_child("Body", true, false) == null,
+		"手を選んだ時、拾った毛以外に体や腕を描くメッシュがない")
 	for hold: bool in [false, true]:
 		var hair: int = await HandAim.aim_at_floor_hair(_checker, main)
 		if hair < 0:
@@ -202,7 +208,7 @@ func _verify_bare_floor(main: Node3D, game_state: Node) -> void:
 		"届く床面の毛がない所で押すと本数が変わらず、理由の文字が出ず、空振り音が 1 回鳴る")
 
 
-## 狙いを床の毛に向けた後、その周りの床を順に狙い、狙った所の つまめる範囲内に毛が無い所で止める。止めたら true
+## 狙いを床の毛に向けた後、その周りの床を順に狙い、狙った所のつまめる範囲内に毛が無い所で止める。止めたら true
 func _aim_at_bare_floor(main: Node3D) -> bool:
 	if await HandAim.aim_at_floor_hair(_checker, main) < 0:
 		return false
@@ -310,14 +316,7 @@ func _verify_occluded_aim(main: Node3D, game_state: Node) -> void:
 		return
 	var camera: Camera3D = main.player.get_camera()
 	var target_point: Vector3 = hand.aim_target()["point"]
-	var blocker: StaticBody3D = StaticBody3D.new()
-	var shape: CollisionShape3D = CollisionShape3D.new()
-	var box: BoxShape3D = BoxShape3D.new()
-	box.size = Vector3(0.3, 0.3, 0.05)
-	shape.shape = box
-	blocker.add_child(shape)
-	main.add_child(blocker)
-	blocker.global_position = camera.global_position.lerp(target_point, 0.5)
+	var blocker := HandAim.block_view(main, camera.global_position, target_point)
 	await _checker.physics_frame
 	await _checker.physics_frame
 	var before_total: int = game_state.get_total_remaining_hairs()

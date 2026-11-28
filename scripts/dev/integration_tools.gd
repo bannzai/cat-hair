@@ -421,14 +421,17 @@ func _verify_cleaning_fee(main: Node3D, game_state: Node) -> void:
 	var progress: BuildingProgress = game_state.save_data.building_progress
 	progress.elapsed_seconds = EconomyRulesScript.PAYMENT_INTERVAL_SECONDS - 0.001
 	var money_before: int = game_state.get_money()
+	await _checker._press_physical_key(_select_key(ToolCatalogScript.TOOL_HAND))
+	main.player.look_at_point(main.player.get_camera().global_position + Vector3.UP)
 	main.auto_advance_time = true
 	await _checker.create_timer(0.2).timeout
 	main.auto_advance_time = false
+	await _checker._press_physical_key(KEY_E)
 	_check(
 		game_state.get_money() > money_before
 		and progress.elapsed_seconds > EconomyRulesScript.PAYMENT_INTERVAL_SECONDS
 		and main.get_pluck_popup_text().contains("掃除代"),
-		"プレイ中に 60 秒の区切りをまたぐと掃除代が所持金に入り、「掃除代 +N 円」と出る (%d → %d 円)"
+		"プレイ中に 60 秒の区切りをまたぐと掃除代が所持金に入り、空振りしても「掃除代 +N 円」が残る (%d → %d 円)"
 		% [money_before, game_state.get_money()],
 	)
 
@@ -460,6 +463,20 @@ func _verify_talk_to_trader(main: Node3D) -> void:
 	_check(not guide.is_visible_in_tree() and not main.tool_shop_panel.visible,
 		"マウスを解放した状態では買取業者の案内が消え、E で販売画面が開かない")
 	main.hand.allow_uncaptured_pluck = true
+	main.player.controls_enabled = false
+	await _checker._press_physical_key(KEY_E)
+	_check(not guide.is_visible_in_tree() and not main.tool_shop_panel.visible,
+		"操作を止めている間は買取業者を狙っても案内と販売画面が出ない")
+	main.player.controls_enabled = true
+	var blocker := HandAim.block_view(main, main.player.get_camera().global_position, chest)
+	await _checker.physics_frame
+	await _checker.physics_frame
+	await _checker._press_physical_key(KEY_E)
+	_check(not (guide.is_visible_in_tree() and guide.text.contains("毛を売る"))
+		and not main.tool_shop_panel.visible, "間に壁があると買取業者の案内と販売画面が出ない")
+	blocker.queue_free()
+	await _checker.physics_frame
+	await _checker.physics_frame
 	await _checker.process_frame
 	await _checker.process_frame
 	_check(
