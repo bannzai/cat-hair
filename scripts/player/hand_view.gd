@@ -12,7 +12,9 @@ const REST_POSITION: Vector3 = Vector3(0.30, -0.55, 0.0)
 ## 下ろした手が体の脇で下を向く角度。
 const REST_ROTATION: Vector3 = Vector3(-1.2, 0.15, 0.0)
 ## 照準を右手で覆わず、毛先の左右に指が見える向き。
-const PINCH_ROTATION: Vector3 = Vector3(-0.16, 0.83, -0.57)
+const PINCH_ROTATION: Vector3 = Vector3(-0.64, 0.65, -0.78)
+## 一人称の腕が壁際で途切れないよう、腕と持った毛だけの描画深度を手前に寄せる。
+const ARM_Z_CLIP_SCALE: float = 0.8
 ## 肩から肘、肘から手首までの長さ (m)。
 const UPPER_ARM_M: float = 0.32
 const FOREARM_M: float = 0.27
@@ -70,6 +72,7 @@ var _sleeve: MeshInstance3D
 var _forearm: MeshInstance3D
 ## 肘の出っ張りと、袖の端の折り返し。
 var _elbow: MeshInstance3D
+var _lower_sleeve: MeshInstance3D
 var _cuff: MeshInstance3D
 ## 抜いた直後だけ指先に残す毛。
 var _plucked: MeshInstance3D
@@ -107,7 +110,9 @@ func attach_to_shoulder(shoulder: Node3D) -> void:
 	_plucked = MeshInstance3D.new()
 	_plucked.name = "PluckedHair"
 	_plucked.mesh = HairFieldScript.build_hair_mesh()
-	_plucked.material_override = HairFieldScript.build_hair_material()
+	var held_material: StandardMaterial3D = HairFieldScript.build_hair_material()
+	_set_arm_depth(held_material)
+	_plucked.material_override = held_material
 	_plucked.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_plucked.hide()
 	add_child(_plucked)
@@ -237,8 +242,10 @@ func _pose_arm() -> void:
 	var offset: float = sqrt(maxf(0.0, UPPER_ARM_M * UPPER_ARM_M - along * along))
 	elbow += bend.slide(axis).normalized() * offset
 	_fit_arm_section(_sleeve, shoulder, elbow)
-	_fit_arm_section(_forearm, elbow, WRIST)
-	_fit_arm_section(_cuff, shoulder.lerp(elbow, 0.90), elbow)
+	var sleeve_end: Vector3 = elbow.lerp(WRIST, 0.48)
+	_fit_arm_section(_lower_sleeve, elbow, sleeve_end)
+	_fit_arm_section(_cuff, elbow.lerp(sleeve_end, 0.80), sleeve_end)
+	_fit_arm_section(_forearm, sleeve_end, WRIST)
 	_elbow.position = elbow
 
 
@@ -271,6 +278,13 @@ func get_pull_progress() -> float:
 	return _pull_progress
 
 
+## 深度だけを変えるので、指先は画面で毛先に重なり、指や袖同士の前後関係も保たれる。
+## 出典: https://github.com/godotengine/godot/blob/4.7-stable/doc/classes/BaseMaterial3D.xml#L489
+static func _set_arm_depth(material: StandardMaterial3D) -> void:
+	material.use_z_clip_scale = true
+	material.z_clip_scale = ARM_Z_CLIP_SCALE
+
+
 ## 袖・前腕・手のひら・指を組み立てる (影は落とさない。カメラの近くで画面を暗くしないため)
 func _build() -> void:
 	position = REST_POSITION
@@ -287,10 +301,13 @@ func _build() -> void:
 
 	var cuff: StandardMaterial3D = sleeve.duplicate()
 	cuff.albedo_color = SLEEVE_COLOR.lightened(0.13)
+	for material: StandardMaterial3D in [skin, nail, sleeve, cuff]:
+		_set_arm_depth(material)
 	_sleeve = _arm_section("Sleeve", 0.071, 0.053, sleeve)
-	_cuff = _arm_section("Cuff", 0.056, 0.054, cuff)
-	_forearm = _arm_section("Forearm", 0.043, 0.027, skin)
-	_elbow = HumanParts.add_sphere(self, "Elbow", Vector3.ZERO, 0.044, Vector3.ONE, skin, false)
+	_lower_sleeve = _arm_section("LowerSleeve", 0.053, 0.042, sleeve)
+	_cuff = _arm_section("Cuff", 0.045, 0.043, cuff)
+	_forearm = _arm_section("Forearm", 0.035, 0.027, skin)
+	_elbow = HumanParts.add_sphere(self, "Elbow", Vector3.ZERO, 0.053, Vector3.ONE, sleeve, false)
 	# 手のひらは平たく潰した球で、指の付け根の関節の並び (拳の山) を横に渡したカプセルで足す
 	HumanParts.add_sphere(
 		self, "Palm", Vector3(0.0, 0.0, 0.04), 0.5, Vector3(0.084, 0.042, 0.113), skin, false
