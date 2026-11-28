@@ -473,12 +473,8 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 	for part: MeshInstance3D in hand_view.find_children("*", "MeshInstance3D", true, false):
 		if not part.visible:
 			continue
-		var to_player: Transform3D = main.player.global_transform.affine_inverse() * part.global_transform
-		# 骨で動く手のモデルは、骨の姿勢を当てた後の頂点で測る (メッシュの頂点は glb の結び付けの
-		# 姿勢の座標で、表示される位置と違う)。出典:
-		# https://github.com/godotengine/godot/blob/4.7-stable/doc/classes/MeshInstance3D.xml#L24
-		var mesh: Mesh = part.bake_mesh_from_current_skeleton_pose() if part.skin != null else part.mesh
-		for vertex: Vector3 in mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+		var to_player: Transform3D = main.player.global_transform.affine_inverse()
+		for vertex: Vector3 in _displayed_vertices(part):
 			var point: Vector3 = to_player * vertex
 			var radius: float = Vector2(point.x, point.z).length()
 			if radius > arm_radius:
@@ -961,3 +957,38 @@ func _hold_pluck(frame_count: int) -> void:
 		await _checker.process_frame
 	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
+
+
+## 部品の頂点を、表示される位置 (ワールド座標) で返す。骨で動く手のモデルは骨の姿勢を当てる
+## (メッシュの頂点は glb の結び付けの姿勢の座標で、部品の位置を掛けても表示の位置にならない。
+## dcc9acb の CI で、GPU から読み戻す bake_mesh_from_current_skeleton_pose は headless では null を返した)。
+## 当て方は Godot の骨の変形と同じ、骨のワールドの姿勢 × 結び付けの逆行列の重み付きの和。
+static func _displayed_vertices(part: MeshInstance3D) -> PackedVector3Array:
+	var arrays: Array = part.mesh.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var displayed := PackedVector3Array()
+	if part.skin == null:
+		for vertex: Vector3 in vertices:
+			displayed.append(part.global_transform * vertex)
+		return displayed
+	var skeleton: Skeleton3D = part.get_node(part.skeleton) as Skeleton3D
+	var bind_transforms: Array[Transform3D] = []
+	for bind: int in range(part.skin.get_bind_count()):
+		var bone: int = part.skin.get_bind_bone(bind)
+		if bone < 0:
+			bone = skeleton.find_bone(part.skin.get_bind_name(bind))
+		bind_transforms.append(
+			skeleton.global_transform * skeleton.get_bone_global_pose(bone)
+			* part.skin.get_bind_pose(bind)
+		)
+	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+	var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+	var per_vertex: int = roundi(float(bones.size()) / vertices.size())
+	for index: int in range(vertices.size()):
+		var point := Vector3.ZERO
+		for slot: int in range(per_vertex):
+			var weight: float = weights[index * per_vertex + slot]
+			if weight > 0.0:
+				point += bind_transforms[bones[index * per_vertex + slot]] * vertices[index] * weight
+		displayed.append(point)
+	return displayed
