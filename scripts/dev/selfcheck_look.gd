@@ -178,9 +178,7 @@ func _check_apply_to_all_rooms() -> void:
 	_check(
 		expected_rooms.size() >= 2
 		and overridden_rooms.keys().size() == expected_rooms.size()
-		and expected_rooms.keys().all(
-			func(room_id: StringName) -> bool: return overridden_rooms.has(room_id)
-		)
+		and overridden_rooms.has_all(expected_rooms.keys())
 		and model_meshes > 0 and model_overridden == 0,
 		(
 			"試作の材質は、基本の形の物を置いた全部の部屋 (%d / %d 部屋) に付き、既製のモデルのメッシュ %d 個は"
@@ -523,17 +521,14 @@ func _check_added_parts(
 			var jacket_half_width: float = (
 				MansionBuilderScript.SUIT_JACKET_SIZE_RATIO.x * obj.size.x * 0.5
 			)
-			suit_ok = (
-				hanger.material_override == look_room.get_material_for_kind(&"metal")
-				and sleeves.all(
-					func(sleeve: MeshInstance3D) -> bool:
-						return (
-							sleeve.material_override == look_room.get_material_for_kind(&"suit")
-							and absf(sleeve.position.x) - (sleeve.mesh as BoxMesh).size.x * 0.5
-							>= jacket_half_width - 0.001
-						)
-				)
-			)
+			suit_ok = hanger.material_override == look_room.get_material_for_kind(&"metal")
+			for sleeve: MeshInstance3D in sleeves:
+				if (
+					sleeve.material_override != look_room.get_material_for_kind(&"suit")
+					or absf(sleeve.position.x) - (sleeve.mesh as BoxMesh).size.x * 0.5
+					< jacket_half_width - 0.001
+				):
+					suit_ok = false
 		elif obj.object_kind == MansionLayoutScript.OBJECT_KNIT_CHAIR:
 			var drape: MeshInstance3D = object_node.get_node_or_null("KnitDrape") as MeshInstance3D
 			knit_ok = (
