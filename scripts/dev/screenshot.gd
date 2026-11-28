@@ -325,11 +325,37 @@ func _capture_tool_scenes(main: Node3D) -> String:
 	return await ScreenshotBigTools.capture_all(self, main)
 
 
-## 実在する床の毛を、遮蔽物のない、手の届かない位置から狙って撮る。
+## 通常プレイと同じくマウスを捕捉して、同じ床の毛を届く位置と届かない位置から撮る。
 func _capture_distant_hair(main: Node3D) -> String:
+	var player: FirstPersonPlayer = main.player
+	var position_before: Vector3 = player.global_position
+	var yaw_before: float = player.rotation.y
+	var pitch_before: float = player.get_pitch()
+	var velocity_before: Vector3 = player.velocity
+	var mouse_before: Input.MouseMode = Input.get_mouse_mode()
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	await process_frame
+	var result: String = await _capture_hair_reach(main)
+	Input.set_mouse_mode(mouse_before)
+	player.set_spawn(position_before, yaw_before)
+	set_pitch(player, pitch_before)
+	player.velocity = velocity_before
+	return result
+
+
+## 撮影した各フレームで、実際のつまみ判定・照準・操作案内を照合する。
+func _capture_hair_reach(main: Node3D) -> String:
 	var id: int = await HandAim.aim_at_first_room_hair(self, main, MansionLayout.SURFACE_FLOOR)
 	if id < 0:
-		return "遠くから狙う床の毛が見つからない"
+		return "近くと遠くから狙う床の毛が見つからない"
+	var guide: Label = main.look_hud.get_node("GuideLabel")
+	var hand: HandController = main.hand
+	if not await _capture("tmp/screenshot-reachable-hair.png"):
+		return "届く毛を狙った画面を保存できない"
+	if not (
+		hand.can_begin_pull() and main.crosshair.is_visible_in_tree() and guide.is_visible_in_tree()
+	):
+		return "届く毛を狙った画面に照準と操作案内が出ていない"
 	var target: Vector3 = main.mansion_world.get_hair_field().get_hair_transform(id).origin
 	var player: FirstPersonPlayer = main.player
 	for side: int in range(8):
@@ -338,24 +364,30 @@ func _capture_distant_hair(main: Node3D) -> String:
 		await physics_frame
 		await physics_frame
 		player.look_at_point(target)
-		if main.hand.is_view_blocked(target) or not main.hand.aim_target().is_empty():
+		if hand.is_view_blocked(target) or not hand.aim_target().is_empty():
 			continue
-		if not await _capture("tmp/screenshot-distant-hair.png"):
-			return "届かない毛を狙った画面を保存できない"
-		var hand: HandController = main.hand
-		var previous: bool = hand.allow_uncaptured_pluck
-		hand.allow_uncaptured_pluck = true
-		await process_frame
-		await process_frame
-		Input.action_press(HandController.ACTION_PLUCK)
-		await process_frame
-		await process_frame
-		Input.action_release(HandController.ACTION_PLUCK)
-		hand.allow_uncaptured_pluck = previous
-		if hand.is_pulling():
-			return "遠くの毛を抜ける位置で撮影した"
-		return "" if await _capture("tmp/screenshot-distant-click.png") else "押した直後を保存できない"
+		return await _capture_out_of_reach(main, guide)
 	return "遠くの床の毛が見通せる撮影位置が見つからない"
+
+
+## 手の届かない毛を押す前と押した後に撮り、どちらのフレームにも操作案内が出ていないことを確かめる。
+func _capture_out_of_reach(main: Node3D, guide: Label) -> String:
+	var hand: HandController = main.hand
+	if not await _capture("tmp/screenshot-distant-hair.png"):
+		return "届かない毛を狙った画面を保存できない"
+	if hand.can_begin_pull() or main.crosshair.is_visible_in_tree() or guide.is_visible_in_tree():
+		return "届かない毛を狙った画面に照準または操作案内が出ている"
+	Input.action_press(HandController.ACTION_PLUCK)
+	await process_frame
+	await process_frame
+	Input.action_release(HandController.ACTION_PLUCK)
+	if not await _capture("tmp/screenshot-distant-click.png"):
+		return "届かない毛を押した直後の画面を保存できない"
+	if hand.is_pulling() or hand.can_begin_pull() or not main.tool_message_label.text.is_empty():
+		return "届かない毛をつまんだか、届かない位置で押した後にメッセージが残った"
+	if main.crosshair.is_visible_in_tree() or guide.is_visible_in_tree():
+		return "届かない位置で押した後に照準または操作案内が出ている"
+	return ""
 
 
 ## 床の毛を狙って引いている途中 (伸びた毛と閉じかけた手) と、抜いた直後 (「+1 本」) を撮る。

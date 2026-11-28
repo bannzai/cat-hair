@@ -197,6 +197,12 @@ func _verify_out_of_reach_reason(main: Node3D, game_state: Node) -> void:
 		and guide.text.contains("押したまま") and not _shows_hair_distance(main),
 		"実際につまめる床の毛に狙いを合わせると照準と操作案内が現れ、距離の数字は出ない",
 	)
+	await _hold_pluck(2)
+	var released: String = HandController.failure_message(HandController.REASON_RELEASED)
+	_check(
+		not released.is_empty() and main.tool_message_label.text == released,
+		"届く毛を途中で離すと直前の失敗理由が出る",
+	)
 	# 手の届く距離の 2 倍 (5.2 m) は、届く距離を少し超えた所での判定の揺れ (根元と狙いの点の差) に左右されない遠さ
 	await _move_to_root_distance(
 		player,
@@ -205,7 +211,7 @@ func _verify_out_of_reach_reason(main: Node3D, game_state: Node) -> void:
 	)
 	await _checker.physics_frame
 	var before_total: int = game_state.get_total_remaining_hairs()
-	main.tool_message_label.text = ""
+	_check(main.tool_message_label.text == released, "届かない位置に移るだけでは直前の失敗理由が残る")
 	await _hold_pluck(3)
 	_check(
 		not hand.is_pulling()
@@ -219,7 +225,6 @@ func _verify_out_of_reach_reason(main: Node3D, game_state: Node) -> void:
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	await _checker.physics_frame
 	await _checker.physics_frame
-	main.tool_message_label.text = ""
 	await _hold_pluck(3)
 	print(
 		"integration: 遊び始めの立ち位置と目線でつまむと: pulling=%s reason=%s message=%s"
