@@ -2,7 +2,7 @@ extends Node3D
 ## 画面に映る自分の右手と腕。体の右肩から袖で腕を結び、つまんだ毛の先端に親指と人差し指を合わせる。
 ## 手は既製の 3D モデル (OpenGameArt の CC0 の腕の模型。指の骨付き。変換は scripts/assets/convert_models.py、
 ## 出典は assets/CREDITS.md) の右手で、肩から肘の袖と肘から手首の前腕は基本の形で結ぶ (モデルの前腕は手と一緒に
-## 動く硬い棒で、毛へ伸ばした手を肩からの視線の上で覆ったため。PR #69 の撮影)。モデルの腕と左手は骨を縮めて隠す。
+## 動く硬い棒で、毛へ伸ばした手を肩からの視線の上で覆ったため。PR #69 の撮影)。モデルは変換で右手の頂点だけにしてある。
 ## 局所座標では手のひらを下 (-Y)・指先を奥 (-Z)・親指を左 (-X) に向け、指の付け根 (人差し指と小指の付け根の中点) を
 ## 原点に置き、手首から肘の側を手前 (+Z) に伸ばす。
 ## 腕の寸法・角度は、床と縦面の撮影で根元と指先を同時に追えるよう調整した値。
@@ -47,15 +47,6 @@ const PINKY_ROOT_BONE: String = "f_pinky.01.R"
 const THUMB_ROOT_BONE: String = "thumb.01.R"
 ## 右手の親指の先の骨の名前
 const THUMB_TIP_BONE: String = "thumb.03.R"
-## 隠す骨。左右の腕の骨と左手 (腕の骨とは別の操作用の骨の下にある)。右手も操作用の骨の下にあり、隠しても残る。
-## どれも根の骨へ付け替え、右の手首の 1 点に縮める。縮める先を骨ごとの付け根にすると、2 つの骨にまたがる肌 (肘・手首) が
-## 遠く離れた 2 点の間に引き伸ばされ、手から細い棘が伸びて見えた (PR #69 の df6437b の撮影 pull-suit-pinch)
-const HIDDEN_BONES: Array[String] = [
-	"clavicle.R", "deltoid.R", "upper_arm.R", "forearm.R",
-	"clavicle.L", "deltoid.L", "upper_arm.L", "forearm.L", "hand.L.control",
-]
-## 隠す骨の縮め方。0 にすると骨の行列が逆にできず警告が出る場合があるため、見えないほど小さい値にする
-const HIDDEN_BONE_SCALE: float = 0.0001
 
 ## 引いている進み具合 (0 = 開いた手、1 = つまんで引き終えた手)
 var _pull_progress: float = 0.0
@@ -265,14 +256,6 @@ func _build() -> void:
 	_skeleton = model.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
 	for mesh_node: Node in model.find_children("*", "MeshInstance3D", true, false):
 		(mesh_node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	for bone_name: String in HIDDEN_BONES:
-		var hidden: int = _skeleton.find_bone(bone_name)
-		_skeleton.set_bone_parent(hidden, -1)
-		_skeleton.set_bone_pose(
-			hidden,
-			Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * HIDDEN_BONE_SCALE), _bone_head(WRIST_BONE)),
-		)
-
 	# 手の局所の向きを骨の空間で作る: 指先の向き (手首から指の付け根) を -Z、小指から人差し指の向きを -X にする
 	var index_root: Vector3 = _bone_head(INDEX_ROOT_BONE)
 	var pinky_root: Vector3 = _bone_head(PINKY_ROOT_BONE)
