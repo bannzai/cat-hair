@@ -161,8 +161,9 @@ func get_trader_position() -> Vector3:
 func intersect_trader(from: Vector3, direction: Vector3) -> Variant:
 	if _trader == null:
 		return null
+	# 帽子のてっぺんは頭より 5 mm 高いので、上に 1 cm の余裕を取る。
 	var bounds: AABB = AABB(
-		_trader.global_position + Vector3(-0.28, 0.0, -0.16), Vector3(0.56, TRADER_HEIGHT_M, 0.32)
+		_trader.global_position + Vector3(-0.28, 0.0, -0.16), Vector3(0.56, TRADER_HEIGHT_M + 0.01, 0.32)
 	)
 	return bounds.intersects_ray(from, direction)
 

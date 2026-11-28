@@ -124,6 +124,12 @@ func _verify_tap(main: Node3D, game_state: Node) -> void:
 		var total: int = game_state.get_total_remaining_hairs()
 		var sounds: int = audio.get_sfx_play_count()
 		var stock: int = game_state.get_raw_hair_stock_count()
+		var surface: MansionLayout.SurfaceDef = main.mansion_world.get_surface_def(
+			main.hand.aim_target()["surface_index"])
+		var surface_hair: SurfaceHair = game_state.save_data.building_progress.find_surface_hair(
+			surface.surface_id)
+		var color: StringName = main.mansion_world.get_hair_color_id(hair)
+		var color_count: int = surface_hair.count_for_color(color)
 		await _checker.process_frame
 		await _checker.process_frame
 		_check(main.crosshair.is_visible_in_tree() and main.look_hud.get_node("GuideLabel").visible,
@@ -141,10 +147,13 @@ func _verify_tap(main: Node3D, game_state: Node) -> void:
 		await _checker.process_frame
 		_check(not main.mansion_world.get_hair_field().has_hair(hair)
 			and game_state.get_total_remaining_hairs() == total - 1
+			and surface_hair.count_for_color(color) == color_count - 1
 			and game_state.get_raw_hair_stock_count() == stock + 1
 			and audio.get_sfx_play_count() == sounds + 1
 			and audio.get_last_sfx_event_name() == AudioCatalog.SFX_PLUCK_HAIR,
 			"E の短押し・長押しのどちらも狙った 1 本だけが取れて成功音が 1 回鳴る (長押し=%s)" % hold)
+		if not hold:
+			_verify_pluck_display_and_save(main, game_state, total - 1, stock + 1)
 	main.player.look_at_point(main.player.get_camera().global_position + Vector3.UP * 4.0)
 	await _checker.physics_frame
 	var before: int = game_state.get_total_remaining_hairs()
@@ -158,6 +167,23 @@ func _verify_tap(main: Node3D, game_state: Node) -> void:
 		and audio.get_sfx_play_count() == sounds_before + 1
 		and audio.get_last_sfx_event_name() == AudioCatalog.SFX_BUTTON,
 		"空振りでは本数と照準の文字が変わらず、成功音と異なる音が 1 回鳴る")
+
+
+## 入力で変わった本数と在庫が、画面と保存したデータに反映されるか。
+func _verify_pluck_display_and_save(main: Node3D, game_state: Node, total: int, stock: int) -> void:
+	_check(main.get_pluck_popup_text().begins_with("+1 本")
+		and main.remaining_hair_label.text.contains(MainScript.format_hair_count(total))
+		and main.stock_label.text.contains(MainScript.format_hair_count(stock)),
+		"短押しで +1 本と更新後の残り・在庫が表示される")
+	game_state.save_current_state()
+	var saved: SaveData = SaveStorage.load_from_path(game_state.save_path)
+	var saved_stock: int = 0
+	if saved != null:
+		for item: HairStock in saved.building_progress.hair_stocks:
+			if item.form == HairStock.FORM_RAW:
+				saved_stock += item.count
+	_check(saved != null and saved.building_progress.total_remaining_hairs() == total
+		and saved_stock == stock, "短押しで変わった残りと在庫がセーブにも残る")
 
 
 ## 毛が付く床面まで照準が届いても、根元が近くにないときは短い音で空振りを伝える。
