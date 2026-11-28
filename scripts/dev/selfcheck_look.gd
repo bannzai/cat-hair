@@ -185,7 +185,7 @@ func _check_apply_to_all_rooms() -> void:
 			+ "材質を上書きしない (上書き %d)"
 		) % [overridden_rooms.size(), expected_rooms.size(), model_meshes, model_overridden],
 	)
-	_check_added_parts(layout, world, look_room)
+	_check_added_parts()
 	_check(
 		look_room.get_material_for_kind(&"unknown_kind") == null,
 		"NODE_MATERIAL_KINDS に無い種類の材質は null を返す",
@@ -500,10 +500,19 @@ func _floor_mesh(world: MansionWorld, room_id: StringName) -> MeshInstance3D:
 
 
 ## 見た目を重ねた後、この PR で足した部品 (スーツのラックのハンガーの横棒・左右の袖、椅子に掛けたニットの垂れた端) が
-## あり、狙った材質が付き、袖がスーツの前身頃 (毛の面) の左右の外にあるか
-func _check_added_parts(
-	layout: MansionLayout, world: MansionWorld, look_room: LookPrototypeRoom
-) -> void:
+## あり、狙った材質が付き、袖がスーツの前身頃 (毛の面) の左右の外にあるか。物の種類は部屋と並びの番号で決まるため、
+## 6 種類が 1 つずつ並ぶ 1 部屋・物 6 個の屋敷で確かめる
+func _check_added_parts() -> void:
+	var tuning: MansionTuning = MansionTuningScript.new()
+	tuning.room_count = 1
+	tuning.object_count = MansionBuilderScript.OBJECT_PRESETS.size()
+	# 毛は部品の有無と材質に関わらないため、少ない本数にする
+	tuning.hair_count = 1000
+	var layout: MansionLayout = MansionBuilderScript.build_layout(tuning)
+	var world: MansionWorld = MansionWorldScript.new()
+	world.rebuild(layout, MansionBuilderScript.build_initial_progress(layout, tuning))
+	var look_room: LookPrototypeRoom = LookPrototypeRoomScript.new()
+	look_room.apply(layout, world)
 	var suit_ok: bool = false
 	var knit_ok: bool = false
 	for obj: MansionLayout.ObjectDef in layout.objects:
@@ -539,6 +548,8 @@ func _check_added_parts(
 		"スーツのラックにハンガーの横棒 (金属) と左右の袖 (スーツの生地) があり、袖は前身頃の左右の外にある",
 	)
 	_check(knit_ok, "椅子に掛けたニットに、座面の前に垂れた端 (ニットの素材) がある")
+	look_room.free()
+	world.free()
 
 
 
