@@ -27,6 +27,11 @@ const TRADER_SCENE: PackedScene = preload("res://assets/models/buyer.glb")
 const TRADER_PHOTO_MATERIAL_NAMES: Array[String] = [
 	"headHDmale.000", "ear", "mouth2.000", "eye.000"
 ]
+## 腕のモデル (肌の材質を確かめる)
+const ARMS_SCENE: PackedScene = preload("res://assets/models/first_person_arms.glb")
+## 腕の肌の粗さ。scripts/assets/convert_models.py の SKIN_ROUGHNESS と同じ値を、変換の定数を読まずにここに書く
+## (Godot は Python の定数を読めず、glb の値と比べるため)
+const ARM_SKIN_ROUGHNESS: float = 0.65
 ## 隠した骨とみなす縮めの上限。hand_view.gd の HIDDEN_BONE_SCALE より大きく、見える大きさ (1) より十分小さい
 const HIDDEN_SCALE_MAX: float = 0.01
 
@@ -41,6 +46,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_hand_view_shape_and_pinch()
 	suite._check_trader_body()
 	suite._check_trader_face_is_not_photo()
+	suite._check_arm_skin_material()
 	suite._check_furniture_models_fit_box()
 	suite._check_robot_bumper_faces_forward()
 
@@ -173,6 +179,32 @@ func _rest_bone_tip(skeleton: Skeleton3D, bone: int) -> Vector3:
 	if children.size() > 0:
 		return skeleton.get_bone_global_rest(children[0]).origin
 	return rest.origin + rest.basis.y.normalized() * skeleton.get_bone_rest(bone).origin.length()
+
+
+## 腕のモデル (commit した first_person_arms.glb) の材質が、肌の写真を貼った金属でない肌か (変換で FBX の金属の値を
+## 消した。消し忘れると肌が銅のように光る)
+func _check_arm_skin_material() -> void:
+	var model: Node3D = ARMS_SCENE.instantiate() as Node3D
+	var skin_ok: bool = true
+	var surfaces: int = 0
+	for mesh_node: Node in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (mesh_node as MeshInstance3D).mesh
+		for surface: int in range(mesh.get_surface_count()):
+			var material: StandardMaterial3D = mesh.surface_get_material(surface) as StandardMaterial3D
+			surfaces += 1
+			if (
+				material == null
+				or material.albedo_texture == null
+				or not is_zero_approx(material.metallic)
+				or absf(material.roughness - ARM_SKIN_ROUGHNESS) > 0.01
+			):
+				skin_ok = false
+	_check(
+		surfaces > 0 and skin_ok,
+		"腕のモデルの材質は肌の写真を貼り、金属でなく (metallic 0)、粗さ %.2f の肌 (面 %d 個)"
+		% [ARM_SKIN_ROUGHNESS, surfaces],
+	)
+	model.free()
 
 
 ## 買取業者のモデルの顔・頭・耳・口・目の材質に、写真のテクスチャが残っていないか (Steam で売る物に実在の人の顔を

@@ -292,7 +292,7 @@ func _build() -> void:
 	sleeve.albedo_color = SLEEVE_COLOR
 	# 布の袖で、光沢の無い粗さ
 	sleeve.roughness = 0.9
-	# 袖は肩につなぐまで、肘から手前 (+Z) へ伸ばしておく
+	# 袖は肩につなぐまで、肘から手前 (+Z) へ大人の上腕の長さ (肩から肘まで 25〜30 cm) の見当の 0.25 m 伸ばしておく
 	_sleeve = HumanParts.add_limb(
 		self, "Sleeve", _elbow, _elbow + Vector3(0.0, 0.0, 0.25), SLEEVE_RADIUS_M, sleeve, false
 	)

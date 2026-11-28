@@ -96,8 +96,29 @@ func _check_apply_to_all_rooms() -> void:
 	world.rebuild(layout, MansionBuilderScript.build_initial_progress(layout, tuning))
 	var look_room: LookPrototypeRoom = LookPrototypeRoomScript.new()
 	var world_hairs_before: int = world.get_hair_field().get_remaining_count()
+	# 既製のモデル (Model) の下に、材質の表にある名前 (Base) のメッシュを置き、モデルの中を飛ばしているかを確かめる
+	var probe_in_model: MeshInstance3D = MeshInstance3D.new()
+	probe_in_model.name = "Base"
+	probe_in_model.mesh = BoxMesh.new()
+	for obj: MansionLayout.ObjectDef in layout.objects:
+		var probe_parent: Node = world.get_node_or_null(
+			"ObjectsRoot/%s/Model" % String(obj.object_id)
+		)
+		if probe_parent != null:
+			probe_parent.add_child(probe_in_model)
+			break
 	look_room.apply(layout, world)
 	look_room.apply(layout, world)
+	_check(
+		probe_in_model.get_parent() != null,
+		"材質の検証のため、既製のモデルの下にメッシュを置けた",
+	)
+	_check(
+		probe_in_model.material_override == null,
+		"既製のモデル (Model) の下は、材質の表にある名前のメッシュでも試作の材質を上書きしない",
+	)
+	if probe_in_model.get_parent() == null:
+		probe_in_model.free()
 	# 写真の布の素材: 色と凹凸の写真を貼り、3 方向から投影し、写真の実寸 (カーペット 0.6 m・ニットとスーツ 0.27 m) で繰り返す
 	var photo_ok: bool = true
 	for pair: Array in [[&"carpet", 0.6], [&"knit", 0.27], [&"suit", 0.27]]:
@@ -123,7 +144,7 @@ func _check_apply_to_all_rooms() -> void:
 		):
 			floors_ok = false
 	_check(
-		look_room.get_target_room_id() == first_room_id and floors_ok,
+		look_room.get_robot_room_id() == first_room_id and floors_ok,
 		"試作の床の材質は全部の部屋の床に付く",
 	)
 	# 置いた物: 基本の形で描く物 (カーペット・ニット・スーツ) のメッシュには試作の材質が付き、既製のモデル (Model) の中の
@@ -145,11 +166,28 @@ func _check_apply_to_all_rooms() -> void:
 				model_meshes += 1
 				if mesh.material_override != null:
 					model_overridden += 1
+	# 試作の材質を付ける部品 (カーペット・ニット・スーツ) を持つ物がある部屋は、どの部屋も上書きされている
+	var expected_rooms: Dictionary = {}
+	for obj: MansionLayout.ObjectDef in layout.objects:
+		if [
+			MansionLayoutScript.OBJECT_CARPET,
+			MansionLayoutScript.OBJECT_KNIT_CHAIR,
+			MansionLayoutScript.OBJECT_SUIT_RACK,
+		].has(obj.object_kind):
+			expected_rooms[obj.room_id] = true
 	_check(
-		overridden_rooms.size() > 0 and model_meshes > 0 and model_overridden == 0,
-		"試作の材質は基本の形の物に付き (%d 部屋)、既製のモデルのメッシュ %d 個は材質を上書きしない (上書き %d)"
-		% [overridden_rooms.size(), model_meshes, model_overridden],
+		expected_rooms.size() >= 2
+		and overridden_rooms.keys().size() == expected_rooms.size()
+		and expected_rooms.keys().all(
+			func(room_id: StringName) -> bool: return overridden_rooms.has(room_id)
+		)
+		and model_meshes > 0 and model_overridden == 0,
+		(
+			"試作の材質は、基本の形の物を置いた全部の部屋 (%d / %d 部屋) に付き、既製のモデルのメッシュ %d 個は"
+			+ "材質を上書きしない (上書き %d)"
+		) % [overridden_rooms.size(), expected_rooms.size(), model_meshes, model_overridden],
 	)
+	_check_added_parts(layout, world, look_room)
 	_check(
 		look_room.get_material_for_kind(&"unknown_kind") == null,
 		"NODE_MATERIAL_KINDS に無い種類の材質は null を返す",
@@ -185,7 +223,7 @@ func _check_apply_to_all_rooms() -> void:
 
 	look_room.apply(null, world)
 	_check(
-		look_room.get_target_room_id() == &"" and look_room.get_child_count() == 0,
+		look_room.get_robot_room_id() == &"" and look_room.get_child_count() == 0,
 		"レイアウトが無い時は何も重ねない",
 	)
 	look_room.free()
@@ -366,7 +404,7 @@ func _check_apply_edges() -> void:
 
 	look_room.apply(layout, null)
 	_check(
-		look_room.get_target_room_id() == room.room_id and look_room.get_window_node() != null,
+		look_room.get_robot_room_id() == room.room_id and look_room.get_window_node() != null,
 		"屋敷 (MansionWorld) が無い時も、部屋の窓と光は重ねる",
 	)
 	_check(
@@ -384,7 +422,7 @@ func _check_apply_edges() -> void:
 
 	look_room.apply(MansionLayoutScript.new(), null)
 	_check(
-		look_room.get_target_room_id() == &"" and look_room.get_child_count() == 0,
+		look_room.get_robot_room_id() == &"" and look_room.get_child_count() == 0,
 		"部屋の無いレイアウトには何も重ねない",
 	)
 	look_room.free()
@@ -461,6 +499,52 @@ func _floor_mesh(world: MansionWorld, room_id: StringName) -> MeshInstance3D:
 		if child is MeshInstance3D:
 			return child
 	return null
+
+
+## 見た目を重ねた後、この PR で足した部品 (スーツのラックのハンガーの横棒・左右の袖、椅子に掛けたニットの垂れた端) が
+## あり、狙った材質が付き、袖がスーツの前身頃 (毛の面) の左右の外にあるか
+func _check_added_parts(
+	layout: MansionLayout, world: MansionWorld, look_room: LookPrototypeRoom
+) -> void:
+	var suit_ok: bool = false
+	var knit_ok: bool = false
+	for obj: MansionLayout.ObjectDef in layout.objects:
+		var object_node: Node = world.get_node("ObjectsRoot/%s" % String(obj.object_id))
+		if obj.object_kind == MansionLayoutScript.OBJECT_SUIT_RACK:
+			var hanger: MeshInstance3D = object_node.get_node_or_null("Hanger") as MeshInstance3D
+			var sleeves: Array[MeshInstance3D] = []
+			for sleeve_name: String in ["SleeveLeft", "SleeveRight"]:
+				var sleeve: MeshInstance3D = object_node.get_node_or_null(sleeve_name) as MeshInstance3D
+				if sleeve != null:
+					sleeves.append(sleeve)
+			if hanger == null or sleeves.size() != 2:
+				continue
+			# 前身頃 (毛の面) の幅は MansionBuilder の面の決め方と同じ比率から求める
+			var jacket_half_width: float = (
+				MansionBuilderScript.SUIT_JACKET_SIZE_RATIO.x * obj.size.x * 0.5
+			)
+			suit_ok = (
+				hanger.material_override == look_room.get_material_for_kind(&"metal")
+				and sleeves.all(
+					func(sleeve: MeshInstance3D) -> bool:
+						return (
+							sleeve.material_override == look_room.get_material_for_kind(&"suit")
+							and absf(sleeve.position.x) - (sleeve.mesh as BoxMesh).size.x * 0.5
+							>= jacket_half_width - 0.001
+						)
+				)
+			)
+		elif obj.object_kind == MansionLayoutScript.OBJECT_KNIT_CHAIR:
+			var drape: MeshInstance3D = object_node.get_node_or_null("KnitDrape") as MeshInstance3D
+			knit_ok = (
+				drape != null and drape.material_override == look_room.get_material_for_kind(&"knit")
+			)
+	_check(
+		suit_ok,
+		"スーツのラックにハンガーの横棒 (金属) と左右の袖 (スーツの生地) があり、袖は前身頃の左右の外にある",
+	)
+	_check(knit_ok, "椅子に掛けたニットに、座面の前に垂れた端 (ニットの素材) がある")
+
 
 
 ## node の下の MeshInstance3D をすべて返す

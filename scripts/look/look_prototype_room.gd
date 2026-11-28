@@ -11,7 +11,7 @@ const MansionWorldScript := preload("res://scripts/mansion/mansion_world.gd")
 
 ## 掃除ロボットの置き物を置く部屋の番号。0 はプレイヤーが最初に立つ部屋 (MansionBuilder の初期位置) で、
 ## 撮影の初期位置から見えるため
-const TARGET_ROOM_INDEX: int = 0
+const ROBOT_ROOM_INDEX: int = 0
 ## 布の写実の素材 (Poly Haven の CC0。出典は assets/CREDITS.md)。どれも色 (Diffuse) と凹凸 (OpenGL の向きの法線) の 1k の写真
 ## カーペットの色の写真
 const CARPET_ALBEDO: Texture2D = preload(
@@ -124,8 +124,8 @@ const NODE_MATERIAL_KINDS: Dictionary = {
 	"WallHook": &"metal",
 }
 
-## 掃除ロボットの置き物を置く部屋 (レイアウトの TARGET_ROOM_INDEX の部屋。無い時は null)
-var _room: MansionLayout.RoomDef = null
+## 掃除ロボットの置き物を置く部屋 (レイアウトの ROBOT_ROOM_INDEX の部屋。無い時は null)
+var _robot_room: MansionLayout.RoomDef = null
 ## 見た目を重ねたレイアウト (環境を切り替える部屋の範囲。無い時は null)
 var _layout: MansionLayout = null
 ## 部屋の中にいるかを見るプレイヤー
@@ -174,13 +174,13 @@ func set_playing(playing: bool) -> void:
 ## layout が null か部屋が無い時は何も重ねない
 func apply(layout: MansionLayout, world: MansionWorld) -> void:
 	_clear_content()
-	_room = null
+	_robot_room = null
 	_layout = null
-	if layout == null or layout.rooms.size() <= TARGET_ROOM_INDEX:
+	if layout == null or layout.rooms.size() <= ROBOT_ROOM_INDEX:
 		_refresh_active()
 		return
 	_layout = layout
-	_room = layout.rooms[TARGET_ROOM_INDEX]
+	_robot_room = layout.rooms[ROBOT_ROOM_INDEX]
 	_content_root = Node3D.new()
 	_content_root.name = "PrototypeContent"
 	add_child(_content_root)
@@ -200,7 +200,7 @@ func apply(layout: MansionLayout, world: MansionWorld) -> void:
 ## hair_field (MansionWorld の毛) から帯の床とカーペットの毛を消し、消した本数を返す。消した毛は保存データの本数に
 ## 数えないため、撮影 (scripts/dev/screenshot.gd) の最後の絵にだけ使う。apply の前に呼んだ時は 0
 func show_automation_props(hair_field: Node3D) -> int:
-	if _room == null or _content_root == null:
+	if _robot_room == null or _content_root == null:
 		return 0
 	if _robots_root != null:
 		_content_root.remove_child(_robots_root)
@@ -209,12 +209,14 @@ func show_automation_props(hair_field: Node3D) -> int:
 	_robots_root.name = "Robots"
 	_content_root.add_child(_robots_root)
 
-	var lane_start_x: float = _room.center.x - _room.size.x * 0.5 + ROBOT_LANE_START_MARGIN_M
+	var lane_start_x: float = (
+		_robot_room.center.x - _robot_room.size.x * 0.5 + ROBOT_LANE_START_MARGIN_M
+	)
 	var removed: int = 0
 	for lane_index: int in range(ROBOT_LANES.size()):
 		var lane: Dictionary = ROBOT_LANES[lane_index]
-		var lane_z: float = _room.center.z + float(lane["z_ratio"]) * _room.size.z
-		var robot_x: float = _room.center.x + float(lane["end_x_ratio"]) * _room.size.x
+		var lane_z: float = _robot_room.center.z + float(lane["z_ratio"]) * _robot_room.size.z
+		var robot_x: float = _robot_room.center.x + float(lane["end_x_ratio"]) * _robot_room.size.x
 		_add_robot(_robots_root, "Robot%d" % lane_index, Vector3(robot_x, 0.0, lane_z))
 		removed += _remove_hairs_in_lane(hair_field, lane_start_x, robot_x, lane_z)
 	_add_dock(_robots_root)
@@ -222,8 +224,8 @@ func show_automation_props(hair_field: Node3D) -> int:
 
 
 ## 掃除ロボットの置き物を置く部屋の id (見た目を重ねていない時は空)
-func get_target_room_id() -> StringName:
-	return _room.room_id if _room != null else &""
+func get_robot_room_id() -> StringName:
+	return _robot_room.room_id if _robot_room != null else &""
 
 
 ## 部屋 room_id の窓のノード (窓を付けなかった時は null)。room_id を省くと掃除ロボットを置く部屋
@@ -238,10 +240,10 @@ func get_daylight(room_id: StringName = &"") -> SpotLight3D:
 
 ## 部屋 room_id (空なら掃除ロボットを置く部屋) に重ねた物のうち、名前が child_name の物 (無い時は null)
 func _room_content_child(room_id: StringName, child_name: String) -> Node:
-	if _content_root == null or _room == null:
+	if _content_root == null or _robot_room == null:
 		return null
 	return _content_root.get_node_or_null(
-		"%s/%s" % [String(_room.room_id if room_id.is_empty() else room_id), child_name]
+		"%s/%s" % [String(_robot_room.room_id if room_id.is_empty() else room_id), child_name]
 	)
 
 
@@ -544,9 +546,9 @@ func _add_dock(parent_node: Node3D) -> void:
 		parent_node,
 		"Dock",
 		Vector3(
-			_room.center.x - _room.size.x * 0.5 + MansionWorldScript.WALL_THICKNESS_M + 0.07,
+			_robot_room.center.x - _robot_room.size.x * 0.5 + MansionWorldScript.WALL_THICKNESS_M + 0.07,
 			0.06,
-			_room.center.z + float(ROBOT_LANES[1]["z_ratio"]) * _room.size.z,
+			_robot_room.center.z + float(ROBOT_LANES[1]["z_ratio"]) * _robot_room.size.z,
 		),
 		Vector3(0.14, 0.12, 0.32),
 		# 色はロボットの本体と同じ系統の濃い灰色で、本体より 1 段明るくして形の境目を見せる。粗さは本体と同じ艶消し

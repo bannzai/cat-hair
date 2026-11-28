@@ -36,6 +36,8 @@ static func aim_at_surface_hair(tree: SceneTree, main: Node3D, surface_indices: 
 			continue
 		var outward: Vector3 = Vector3(surface.basis.y.x, 0.0, surface.basis.y.z)
 		var directions: Array[Vector3] = [Vector3.RIGHT, Vector3.BACK, Vector3.LEFT, Vector3.FORWARD]
+		# 面の法線の水平成分が 0.5 (水平から 30 度より立った面) を超えたら縦の面として外向きから先に試す。
+		# 床・座面・天面 (水平成分 0) とスーツの前面 (1) を分ける中ほどの値
 		if outward.length() > 0.5:
 			directions.push_front(outward.normalized())
 		for slot: int in range(hair_field.get_surface_visible_instance_count(surface_idx)):
