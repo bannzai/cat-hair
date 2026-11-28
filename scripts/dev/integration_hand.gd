@@ -1,5 +1,6 @@
 extends RefCounted
 ## 手で毛を取る操作の入力統合テスト (scripts/dev/integration.gd から呼ぶ)。
+
 ## 手で毛を取る時のルールの計算
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
 ## 目線を床の毛へ向ける手順

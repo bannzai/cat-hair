@@ -140,6 +140,7 @@ func _show_plucked(color: Color) -> void:
 	_plucked.position = Vector3(0.0, 0.0, -0.44)
 	_plucked.show()
 	# 根元を次に狙う位置から少し右上に退ける。移動より長く静止させて色を読めるようにする。
+	# 床・上着・ソファの取得直後を同じカメラで撮影し、画面中央に毛全体が収まる距離にした。
 	_lift = create_tween()
 	_lift.tween_property(_plucked, "position", Vector3(0.035, 0.038, -0.28), 0.16)
 	_lift.tween_interval(0.32)
