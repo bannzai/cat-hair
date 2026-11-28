@@ -4,14 +4,12 @@ extends Control
 ## 屋敷全体の毛の残り本数は main.tscn の RemainingHairPanel (右上) がそのまま出す。
 ## 3D の絵を隠さないよう、文字は影付きの文字だけで出し、枠は細い線の四角にして画面の下の端に寄せる。
 ## 所持金と道具の枠は、main が GameState の本物の値 (set_money_digits・set_tools) を渡す。
-## 渡すまでの道具の枠と、今やることの案内 (まだ実装していない) は見本の値を出す。
+## 毛を手で抜く案内は、main が照準と入力の状態に合わせて表示する。
 
 ## 見本の手持ちの道具の名前 (documents/DIRECTION.md「用語」と PROJECT.md「道具」の名前。安い順)
 const SAMPLE_TOOL_NAMES: Array[String] = ["手", "ピンセット", "ガムテープ", "粘着ローラー"]
 ## 見本で手に持っている道具の位置 (SAMPLE_TOOL_NAMES の番号)。手で取る段階の始まりは手だけを使うため 0
 const SAMPLE_SELECTED_TOOL_INDEX: int = 0
-## 見本の今やることの短い案内
-const SAMPLE_GUIDE_TEXT: String = "玄関ホールの床の毛を、手で 1 本ずつ抜く"
 ## 画面の端からの余白 (px)。1280x720 で既存の残り本数の枠 (右上 18 px) と揃える値
 const SCREEN_MARGIN_PX: float = 18.0
 ## 道具の枠 1 つの大きさ (px)。幅は 16 px の字で 7 文字が 1 行に収まり、8 つの枠と間隔 (938 px) が 1280 px の画面に
@@ -71,7 +69,8 @@ func _init() -> void:
 	add_child(_money_label)
 
 	_guide_label = make_label("GuideLabel", 18, HORIZONTAL_ALIGNMENT_LEFT)
-	_guide_label.text = SAMPLE_GUIDE_TEXT
+	_guide_label.text = "左クリックか E を押したまま毛を抜く"
+	_guide_label.visible = false
 	# 大きさは 18 px の文字で 30 文字の案内が 1 行に収まる幅 (所持金の左端に届かない幅) と、1 行の高さ。
 	# 道具 8 つの枠は画面の幅の大半を使うため、案内は枠の行ではなく所持金と同じ高さの左に置く
 	_guide_label.anchor_top = 1.0
@@ -95,9 +94,9 @@ func get_money_text() -> String:
 	return _money_label.text
 
 
-## 今やることの案内の文字列
-func get_guide_text() -> String:
-	return _guide_label.text
+## 手で抜ける毛を狙った時だけ、毛を抜く操作を案内する。
+func set_pluck_guide_visible(shown: bool) -> void:
+	_guide_label.visible = shown
 
 
 ## 道具の枠の数

@@ -104,9 +104,7 @@ func setup(
 ## 毎フレーム、つまむ操作の押下に合わせて引き始め・引き続け・離すを行い、抜けなかった時は理由を知らせる。
 ## 操作を止めた (画面を開いた) 時とマウスの捕捉が外れた時に離すのは、遊ぶ人が離したのではないので理由を知らせない
 func _process(delta: float) -> void:
-	var captured: bool = (
-		Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED or allow_uncaptured_pluck
-	)
+	var captured: bool = _can_use_mouse()
 	var pressed: bool = enabled and captured and Input.is_action_pressed(ACTION_PLUCK)
 	if is_pulling():
 		if pressed and is_pull_in_reach():
@@ -162,18 +160,39 @@ func _has_pulled_hair() -> bool:
 	return false
 
 
-## 抜けなかった理由 (REASON_*) を画面に出す文言を返す (知らない理由は空文字)
+## 抜けなかった時に画面へ出す結果。手が届かない時と知らない理由は空文字。
 static func failure_message(reason: StringName) -> String:
 	match reason:
 		REASON_RELEASED:
-			return "途中で離したので毛が戻った (抜けるまで押したままにする)"
+			return "途中で離したので毛が戻った"
 		REASON_NO_HAIR:
-			return "狙った所に毛が無い (照準の + を手の届く毛に重ねる)"
-		REASON_OUT_OF_REACH:
-			return "毛まで手が届かない (%.1f m 以内の毛を狙う。足元を見下ろす)" % REACH_M
+			return "狙った所に毛が無い"
 		REASON_BLOCKED:
 			return "手前に物があって、毛に手が届かない"
 	return ""
+
+
+## マウスの捕捉中、または入力検証中か。
+func _can_use_mouse() -> bool:
+	return Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED or allow_uncaptured_pluck
+
+
+## 今の入力と照準で手が実際に毛をつまみ始められるか。
+func can_begin_pull() -> bool:
+	return (
+		enabled and _can_use_mouse() and not is_pulling()
+		and not Input.is_action_pressed(ACTION_PLUCK)
+		and not _hairs_at(aim_target(), 1, false).is_empty()
+	)
+
+
+## 狙いが表面に当たった点の周りで指が挟める毛。案内と引き始めの両方に同じ候補を使う。
+func _hairs_at(target: Dictionary, count: int, nearest_first: bool = true) -> PackedInt32Array:
+	if target.is_empty():
+		return PackedInt32Array()
+	return _world.get_hair_field().find_hairs_near(
+		target["surface_index"], target["point"], GRAB_RADIUS_M, count, nearest_first
+	)
 
 
 ## 画面中央の狙いの先にある毛をつまんで引き始める。つまめたら true
@@ -192,10 +211,8 @@ func begin_pull_at(target: Dictionary) -> bool:
 	var surface_def: MansionLayout.SurfaceDef = _world.get_surface_def(surface_index)
 	if surface_def == null:
 		return false
-	var hair_ids: PackedInt32Array = _world.get_hair_field().find_hairs_near(
-		surface_index,
-		target["point"],
-		GRAB_RADIUS_M,
+	var hair_ids: PackedInt32Array = _hairs_at(
+		target,
 		HandRulesScript.grab_count(
 			_game_state.get_hand_upgrade_level(HandRulesScript.UPGRADE_GRAB_COUNT)
 		),

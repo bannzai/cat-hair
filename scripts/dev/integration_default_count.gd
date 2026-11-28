@@ -86,9 +86,9 @@ func _verify_fresh_counts(main: Node3D, game_state: Node) -> void:
 func _verify_hand_pluck(main: Node3D, game_state: Node) -> void:
 	var hand: HandController = main.hand
 	var hair_field: Node3D = main.mansion_world.get_hair_field()
-	var aimed: int = await HandAim.aim_at_floor_hair(_checker, main)
+	var aimed: int = await HandAim.aim_at_floor_pile(_checker, main)
 	if aimed < 0:
-		_check(false, "既定の本数の屋敷で床の毛を狙える")
+		_check(false, "既定の屋敷で床の毛の山に照準を合わせて 1 本抜ける")
 		return
 	var drawn_before: int = HairFieldScript.count_drawn_hairs(hair_field)
 	await _checker.process_frame

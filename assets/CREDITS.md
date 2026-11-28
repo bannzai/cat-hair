@@ -90,7 +90,7 @@
 - 素材名・作者: fps arms (rigged only) / para (OpenGameArt)。作者の記載では MakeHuman の出力を元にしている
 - 入手 URL: https://opengameart.org/content/fps-arms-rigged-only (`fps arms.7z` の `FPS ARMS RIG 1.fbx` と `new_diff.png`)
 - ライセンス: CC0 1.0 (配布ページの License(s) 欄)。クレジット表記は不要
-- 改変: Blender で FBX を読み、肌のテクスチャを貼って glb に書き出した (`scripts/assets/convert_models.py`。`.github/workflows/convert-models.yml` が GitHub Actions で実行する)。ゲームは右腕だけを見せ、左腕の骨を縮めて隠す
+- 改変: Blender で FBX を読み、肌のテクスチャを貼り、右手の骨に結び付いた頂点だけを残して glb に書き出した (`scripts/assets/convert_models.py`。`.github/workflows/convert-models.yml` が GitHub Actions で実行する)
 
 - ファイル: `models/buyer.glb`
 - 素材名・作者: NPC male Steve / supersteve (OpenGameArt)
@@ -119,3 +119,7 @@
 - 入手 URL: https://polyhaven.com/a/poly_wool_herringbone (1k の jpg)
 - ライセンス: CC0 1.0。クレジット表記は不要
 - 改変: なし
+
+## 床の毛
+
+`textures/floor_fur.png` は本作のために Python と Pillow で描いた画像。色と曲がり方が異なる短い毛を重ね、端をまたぐ毛は反対側にも描いている。

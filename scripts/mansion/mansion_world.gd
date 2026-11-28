@@ -702,6 +702,7 @@ func _build_hairs(layout: MansionLayout, progress: BuildingProgress) -> void:
 			surface.extents,
 			surface.hair_weight,
 			exclusions,
+			surface.surface_type == MansionLayoutScript.SURFACE_FLOOR,
 		)
 		var group_counts: PackedInt32Array = PackedInt32Array()
 		var surface_hair: SurfaceHair = (
