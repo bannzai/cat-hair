@@ -199,13 +199,16 @@ func _verify_bare_floor(main: Node3D, game_state: Node) -> void:
 		return
 	var audio: AudioManagerScript = AudioManagerScript.resolve(_checker) as AudioManagerScript
 	var total: int = game_state.get_total_remaining_hairs()
+	await _checker._press_physical_key(KEY_2)
+	_check(main.tool_message_label.text.contains("持っていない"),
+		"空振りの前に、未購入の道具を選んだ通知が出ている")
 	var sounds: int = audio.get_sfx_play_count()
 	await _checker._press_physical_key(KEY_E)
 	_check(not main.hand.can_pluck() and game_state.get_total_remaining_hairs() == total
 		and audio.get_sfx_play_count() == sounds + 1
 		and audio.get_last_sfx_event_name() == AudioCatalog.SFX_BUTTON
 		and main.tool_message_label.text.is_empty(),
-		"届く床面の毛がない所で押すと本数が変わらず、理由の文字が出ず、空振り音が 1 回鳴る")
+		"届く床面の毛がない所で押すと本数が変わらず、前の道具の通知が消え、空振り音が 1 回鳴る")
 
 
 ## 狙いを床の毛に向けた後、その周りの床を順に狙い、狙った所のつまめる範囲内に毛が無い所で止める。止めたら true

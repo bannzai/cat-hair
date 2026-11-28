@@ -34,7 +34,7 @@ const MOUSE_HINT_BOTTOM_PX: float = (
 ## マウスの案内の文字の大きさ (px)。道具の枠の名前 (LookPrototypeHud の ToolName) と同じ 16 にし、すぐ下の今やることの
 ## 案内 (18) より小さくして、今やることの方を先に読ませる
 const HINT_FONT_SIZE_PX: int = 16
-## 操作の一覧の文字の大きさ (px)。11 行を、1280x720 の画面で住人の様子の枠 (左上) と今やることの案内 (左下) の間に
+## 操作の一覧の文字の大きさ (px)。操作一覧を、1280x720 の画面で住人の様子の枠 (左上) と今やることの案内 (左下) の間に
 ## 収めるため、マウスの案内より 1 小さい 15 にする
 const CONTROLS_FONT_SIZE_PX: int = 15
 ## マウスの案内の行の高さ (px)。16 px の文字 1 行に上下の余白を足した高さ
@@ -42,10 +42,10 @@ const MOUSE_HINT_HEIGHT_PX: float = 26.0
 ## マウスの案内の行と操作の一覧の枠の幅 (px)。1280 px の幅で、右下の道具の様子の行 (main.gd の ToolDetail。
 ## 右端から 918 px までの右寄せ) の箱の左端 (画面の左から 362 px) に届かない幅
 const LEFT_COLUMN_WIDTH_PX: float = 340.0
-## 操作の一覧の枠の高さ (px)。15 px の文字 11 行と上下の余白が収まる高さ (収まらない時は上へ伸びる)
+## 操作の一覧の枠の高さ (px)。15 px の文字と上下の余白が収まる高さ (収まらない時は上へ伸びる)
 const CONTROLS_PANEL_HEIGHT_PX: float = 270.0
 ## 操作の一覧の枠の内側の余白 (px)。枠の外の左端の余白 (LookPrototypeHud.SCREEN_MARGIN_PX = 18) の半分弱にし、
-## 文字を枠の縁から離しつつ、11 行を枠の高さに収める
+## 文字を枠の縁から離しつつ、操作一覧を枠の高さに収める
 const PANEL_PADDING_PX: float = 8.0
 ## 操作の一覧の枠の背景の色。LookPrototypeHud の道具の枠と同じく、3D の絵を透かして文字を読める濃さ
 const PANEL_BACKGROUND_COLOR: Color = Color(0.0, 0.0, 0.0, 0.45)

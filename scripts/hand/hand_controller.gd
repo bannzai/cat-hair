@@ -86,7 +86,7 @@ func can_use_mouse() -> bool:
 	return Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED or allow_uncaptured_pluck
 
 
-## 面の材質と器用さから、照準が毛の根元からずれてよい距離を決める。
+## 面の材質と器用さに応じて、照準からつまめる範囲にある毛の ID を返す。
 func _hairs_at(target: Dictionary, count: int, nearest_first: bool) -> PackedInt32Array:
 	if target.is_empty():
 		return PackedInt32Array()

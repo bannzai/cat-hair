@@ -70,7 +70,7 @@ const ACTION_WAIT: StringName = &"wait"
 ## 買う物の種類 (bot だけが使う): 掃除ロボット。GameState.purchase ではなく automation.buy_robot で買う
 const PURCHASE_ROBOT: StringName = &"robot"
 
-## 速さで割る時の下限 (本 / 秒)。速さが 0 の時に 0 で割らないための値で、手 1 本の速さ (約 0.5 本 / 秒) より十分小さい
+## 速さで割る時の下限 (本 / 秒)。速さが 0 の時に 0 で割らないための値で、手 1 本の速さ より十分小さい
 const MIN_RATE: float = 0.001
 ## 部屋ごとにかける道具 (アンドロイドを含む)。部屋の様子に、これらがかかる表面の毛の本数を持たせる
 const ROOM_TOOL_IDS: Array[StringName] = [

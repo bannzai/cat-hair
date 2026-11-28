@@ -26,8 +26,7 @@ const SETTINGS_BUTTON_PATH: String = "UILayer/UI/TitleOverlay/Layout/SettingsBut
 const SETTINGS_PANEL_PATH: String = "UILayer/UI/AudioSettingsPanel"
 ## 手で毛を取る時のルールの計算 (珍しい毛の名前)
 const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
-## 毛を抜いた時に画面中央に出す「+N 本」の表示を残す秒数。床の毛を 1 本抜く時間 (0.45 秒) より長く、
-## 続けて抜いた時に次の表示で上書きされるまで読める長さにした仮の値
+## 毛を抜いた時に画面中央に出す「+N 本」の表示を残す秒数。続けて取る時も、次の表示までに本数を読める長さ。
 const PLUCK_POPUP_SECONDS: float = 1.5
 ## 画面中央の照準の線の長さと太さ (px)。線の交点が画面のちょうど中央 (狙いの光線の向き) に来る
 const CROSSHAIR_LINE_SIZE: Vector2 = Vector2(16.0, 2.0)
@@ -41,7 +40,7 @@ const TOGGLE_SHOP_KEY: Key = KEY_T
 const TOGGLE_ROBOT_KEY: Key = KEY_R
 ## 操作の案内の一覧を閉じる・開くキー (Help の H)
 const TOGGLE_GUIDE_KEY: Key = KEY_H
-## 操作の案内・マウスの捕捉の案内・手で引いている進み具合の表示のスクリプト
+## 操作の案内・マウスの捕捉の案内のスクリプト
 const PlayGuideHudScript := preload("res://scripts/ui/play_guide_hud.gd")
 ## 猫と掃除ロボットを描いて時計を進めるノードのスクリプト
 const AutomationControllerScript := preload("res://scripts/automation/automation_controller.gd")
@@ -68,7 +67,7 @@ var perf_overlay: PerfOverlay = null
 var look_room: LookPrototypeRoom = null
 ## 見た目の試作の画面の表示 (_ready で HUD の子に作る)
 var look_hud: LookPrototypeHud = null
-## 操作の案内・マウスの捕捉の案内・手で引いている進み具合の表示 (_ready で HUD の子に作る)
+## 操作の案内・マウスの捕捉の案内 (_ready で HUD の子に作る)
 var play_guide: PlayGuideHud = null
 
 ## 狙った毛を手でつまんで抜く操作
@@ -221,6 +220,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			open_tool_shop()
 			get_viewport().set_input_as_handled()
 		elif hand != null and hand.enabled and hand.can_use_mouse():
+			tool_message_label.text = ""
 			if not hand.pluck_aimed() and _popup_is_plucked_hair:
 				pluck_popup_label.hide()
 				_pluck_popup_remaining = 0.0
@@ -600,7 +600,7 @@ func _release_mouse() -> void:
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
 
-## 手・照準・在庫・「+N 本」・図鑑の部品を作り、手を一人称カメラに付ける
+## 一人称カメラから毛を取る操作と、照準・在庫・「+N 本」・図鑑を結ぶ
 func _build_hand_ui() -> void:
 	hand = HandController.new()
 	hand.name = "Hand"

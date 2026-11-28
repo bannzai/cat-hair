@@ -25,7 +25,7 @@ const DEFAULT_SEED: int = 20261126
 const SURFACE_LIFT_M: float = 0.0012
 ## 1 本の毛の基準長 (m。猫の一般的な抜け毛 4〜5 cm を写実寄りスケールで再現)
 const HAIR_LENGTH_M: float = 0.048
-## 描画する毛の先端。つまんだ指先もこの頂点に合わせる
+## 描画する毛の先端のローカル座標
 const HAIR_TIP: Vector3 = Vector3(0.0042, 0.0018, HAIR_LENGTH_M)
 ## 1 本の毛の根元幅 (m。1280x720 でカメラから約 1 m の距離で 2〜3 px になり視認できる太さ)
 const HAIR_BASE_WIDTH_M: float = 0.0028
@@ -56,8 +56,8 @@ const DEFAULT_DRAW_BUDGET: int = 240000
 ## 描き足しの乱数のシードを、配置の乱数のシードからずらす幅。同じシードだと描き足す毛が配置の最初の毛と同じ位置・色の
 ## 列をたどるため、別の列にする。populate の同じシードで描き足しも同じになればよく、1 で足りる
 const REFILL_SEED_OFFSET: int = 1
-## 消した毛の ID を使い直すまでに、後から消す毛の本数。手が引いている途中の毛 (つまめる本数は数本) や、検証が
-## 消した直後に「その ID の毛が無い」ことを確かめる間に、同じ ID が別の毛に付かないよう、その間に消える本数より十分多くする。
+## 消した毛の ID を使い直すまでに、後から消す毛の本数。束を処理する時や、検証が消した直後に
+## 「その ID の毛が無い」ことを確かめる間に、同じ ID が別の毛に付かないよう、その間に消える本数より十分多くする。
 ## 逆引き配列は描く本数とこの本数の合計ほどで頭打ちになる
 const ID_REUSE_DELAY: int = 10000
 
@@ -525,7 +525,7 @@ func _draw_buried_hair(surface_index: int, plucked_point: Vector3) -> void:
 		return
 	var spec: Dictionary = _surfaces[surface_index]
 	var xform: Transform3D = _random_hair_transform(spec, _hair_aabb, _refill_rng)
-	# 引いた直後の跡に別の根元を出さない。極小の検証用の面でも上限回数で描き足す。
+	# 取った直後の跡に別の根元を出さない。極小の検証用の面でも上限回数で描き足す。
 	for _attempt: int in range(EXCLUSION_RETRY_LIMIT):
 		if xform.origin.distance_squared_to(plucked_point) >= HAIR_LENGTH_M * HAIR_LENGTH_M:
 			break
