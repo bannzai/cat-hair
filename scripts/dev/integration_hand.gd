@@ -173,15 +173,15 @@ func _verify_bare_floor_reason(main: Node3D, game_state: Node) -> void:
 	_check(
 		not main.hand.is_pulling()
 		and game_state.get_total_remaining_hairs() == before_total
+		and not main.crosshair.is_visible_in_tree()
+		and not main.look_hud.get_node("GuideLabel").is_visible_in_tree()
 		and main.tool_message_label.text
 		== HandController.failure_message(HandController.REASON_NO_HAIR),
 		"毛の付く床の、近くに毛が無い所を狙ってつまむと、毛をつまめず照準の下に「狙った所に毛が無い」理由が出る",
 	)
 
 
-## 届かない所: 床の毛から手の届く距離より遠く離れて、その毛を狙ってつまむと、理由が出るか。
-## 遊び始めの立ち位置と目線 (水平に近く、照準が手の届く距離より遠い隣の部屋の奥を指す) でつまむと、
-## 「届かない」が出るかも確かめ、理由をログに残す
+## 同じ床の毛を届く位置と届かない位置から狙い、実際の操作に合わせて案内が切り替わるか。
 func _verify_out_of_reach_reason(main: Node3D, game_state: Node) -> void:
 	var hand: HandController = main.hand
 	var player: FirstPersonPlayer = main.player
@@ -189,6 +189,14 @@ func _verify_out_of_reach_reason(main: Node3D, game_state: Node) -> void:
 	if aimed_id < 0:
 		_check(false, "届かない所の検証で床の毛を狙える")
 		return
+	await _checker.process_frame
+	await _checker.process_frame
+	var guide: Label = main.look_hud.get_node("GuideLabel")
+	_check(
+		main.crosshair.is_visible_in_tree() and guide.is_visible_in_tree()
+		and guide.text.contains("押したまま") and not _shows_hair_distance(main),
+		"実際につまめる床の毛に狙いを合わせると照準と操作案内が現れ、距離の数字は出ない",
+	)
 	# 手の届く距離の 2 倍 (5.2 m) は、届く距離を少し超えた所での判定の揺れ (根元と狙いの点の差) に左右されない遠さ
 	await _move_to_root_distance(
 		player,
@@ -202,9 +210,9 @@ func _verify_out_of_reach_reason(main: Node3D, game_state: Node) -> void:
 	_check(
 		not hand.is_pulling()
 		and game_state.get_total_remaining_hairs() == before_total
-		and main.tool_message_label.text
-		== HandController.failure_message(HandController.REASON_OUT_OF_REACH),
-		"床の毛から 5.2 m 離れてその毛を狙ってつまむと、毛をつまめず照準の下に「毛まで手が届かない」理由が出る",
+		and not main.crosshair.is_visible_in_tree() and not guide.is_visible_in_tree()
+		and main.tool_message_label.text.is_empty() and not _shows_hair_distance(main),
+		"同じ床の毛が届かない位置では、押しても本数が変わらず照準・操作案内・距離の数字が出ない",
 	)
 
 	var layout: MansionLayout = game_state.current_layout
@@ -218,10 +226,20 @@ func _verify_out_of_reach_reason(main: Node3D, game_state: Node) -> void:
 		% [hand.is_pulling(), hand.pull_failure_reason(), main.tool_message_label.text]
 	)
 	_check(
-		main.tool_message_label.text
-		== HandController.failure_message(HandController.REASON_OUT_OF_REACH),
-		"遊び始めの立ち位置と目線のままつまむと、毛に手が届かず、照準の下に「毛まで手が届かない」理由が出る",
+		main.tool_message_label.text.is_empty(),
+		"遊び始めの立ち位置のまま押しても、届かない毛につまむ案内や距離の数字を出さない",
 	)
+
+
+## 見えている HUD のラベルにメートルで表した距離があるか。
+func _shows_hair_distance(main: Node3D) -> bool:
+	var meters: RegEx = RegEx.new()
+	meters.compile("[0-9]+(?:[.][0-9]+)?[ ]*m(?![a-zA-Z])")
+	for item: Node in main.hud.find_children("*", "Label", true, false):
+		var label := item as Label
+		if label.is_visible_in_tree() and meters.search(label.text) != null:
+			return true
+	return false
 
 
 ## 届かない・毛が無いの見分けのうち、光線が毛の付く表面に当たらず壁・家具の衝突体だけに当たる時:
@@ -540,9 +558,8 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		"毛の根元まで 2.68m より遠くへ下がると、毛は抜けずに引くのをやめ、残り本数も変わらない",
 	)
 	_check(
-		main.tool_message_label.text
-		== HandController.failure_message(HandController.REASON_OUT_OF_REACH),
-		"押したまま離れすぎて引くのをやめた時は、照準の下に「毛まで手が届かない」理由が出る",
+		main.tool_message_label.text.is_empty(),
+		"押したまま離れすぎて引くのをやめた時は、照準の下に毛を取る案内や距離の数字が出ない",
 	)
 	Input.action_release(HandController.ACTION_PLUCK)
 	if await HandAim.aim_at_floor_hair(_checker, main) != aimed_id:
@@ -705,6 +722,8 @@ func _verify_occluded_aim(main: Node3D, game_state: Node) -> void:
 	await _press_pluck()
 	_check(
 		hand.aim_target().is_empty() and not hand.is_pulling()
+		and not main.crosshair.is_visible_in_tree()
+		and not main.look_hud.get_node("GuideLabel").is_visible_in_tree()
 		and game_state.get_total_remaining_hairs() == before_total,
 		"毛の面より手前に衝突体があると、狙いが空になりつまむ入力で何も変わらない",
 	)

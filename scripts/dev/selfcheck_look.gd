@@ -391,8 +391,8 @@ func _check_hud_samples() -> void:
 	_check(
 		look_hud.get_money_text() == "所持金 1,280 円"
 		and look_hud.get_tool_slot_count() == LookPrototypeHudScript.SAMPLE_TOOL_NAMES.size()
-		and look_hud.get_guide_text() == LookPrototypeHudScript.SAMPLE_GUIDE_TEXT,
-		"画面の表示は所持金・道具の枠 %d 個・案内を出す" % look_hud.get_tool_slot_count(),
+		and not (look_hud.get_node("GuideLabel") as Label).visible,
+		"画面に所持金・道具の枠 %d 個が出て、毛を狙う前は操作案内を隠す" % look_hud.get_tool_slot_count(),
 	)
 	# 道具の枠は「手・ピンセット・ガムテープ・粘着ローラー」の順で、手を持っている印 (2 px の明るい線) は手の枠だけに付く
 	var names: Array = []

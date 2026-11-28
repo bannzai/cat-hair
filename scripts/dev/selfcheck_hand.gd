@@ -51,29 +51,15 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_failure_messages_and_guide_text()
 
 
-## 抜けなかった理由ごとに別の文言が出て、知らない理由は空文字か。マウスの案内は取られている間だけ Esc で放すことを書くか
+## 抜けなかった理由は、届かない時と知らない理由では空文字か。マウスの案内は取られている間だけ Esc で放すことを書くか
 func _check_failure_messages_and_guide_text() -> void:
-	var messages: Array[String] = []
-	for reason: StringName in [
-		HandController.REASON_RELEASED,
-		HandController.REASON_NO_HAIR,
-		HandController.REASON_OUT_OF_REACH,
-		HandController.REASON_BLOCKED,
-	]:
-		messages.append(HandController.failure_message(reason))
-	var distinct: bool = true
-	for index: int in range(messages.size()):
-		distinct = distinct and not messages[index].is_empty()
-		distinct = distinct and messages.find(messages[index]) == index
 	_check(
-		distinct and HandController.failure_message(&"no_such_reason").is_empty(),
-		"抜けなかった 4 つの理由 (途中で離した・毛が無い・届かない・手前に物) の文言がどれも空でなく互いに違い、知らない理由は空文字",
-	)
-	_check(
-		messages[0].contains("離した") and messages[1].contains("毛が無い")
-		and messages[2].contains("届かない")
-		and messages[2].contains("%.1f m" % HandController.REACH_M),
-		"途中で離した・毛が無い・届かない (手の届く距離 REACH_M を添える) の文言が、それぞれの理由の言葉を含む",
+		HandController.failure_message(HandController.REASON_RELEASED).contains("離した")
+		and HandController.failure_message(HandController.REASON_NO_HAIR).contains("毛が無い")
+		and HandController.failure_message(HandController.REASON_BLOCKED).contains("手前に物")
+		and HandController.failure_message(HandController.REASON_OUT_OF_REACH).is_empty()
+		and HandController.failure_message(&"no_such_reason").is_empty(),
+		"途中で離した・毛が無い・手前に物がある時はその理由を出し、届かない時と知らない理由では文言を出さない",
 	)
 	# 屋敷に置く前 (カメラ・屋敷を受け取る前) の手は、光線を調べられないので「狙った所に毛が無い」を返す
 	var unprepared_hand: HandController = HandController.new()

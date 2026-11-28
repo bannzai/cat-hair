@@ -26,6 +26,8 @@ const ScreenshotBigTools := preload("res://scripts/dev/screenshot_big_tools.gd")
 const ViewPointScript := preload("res://scripts/dev/view_point.gd")
 ## 掃除ロボットの部屋の探し方 (猫がいる部屋を引く)
 const RobotRulesScript := preload("res://scripts/automation/robot_rules.gd")
+## 撮影する猫の胴体の高さ
+const CatRulesScript := preload("res://scripts/automation/cat_rules.gd")
 ## 猫が今立ち止まっている所の添字
 const RouteClockScript := preload("res://scripts/automation/route_clock.gd")
 ## 道具をかけた跡を撮る時の取りこぼしの抽選の乱数のシード (撮る絵を毎回同じにする)
@@ -274,6 +276,8 @@ func _capture_mansion_scenes(main: Node3D) -> String:
 	if capture_error.is_empty():
 		capture_error = await _capture_guide_toggle(main)
 	if capture_error.is_empty():
+		capture_error = await _capture_distant_hair(main)
+	if capture_error.is_empty():
 		capture_error = await _capture_pluck(main)
 	if not capture_error.is_empty():
 		return capture_error
@@ -319,6 +323,39 @@ func _capture_tool_scenes(main: Node3D) -> String:
 	if not automation_error.is_empty():
 		return automation_error
 	return await ScreenshotBigTools.capture_all(self, main)
+
+
+## 実在する床の毛を、遮蔽物のない、手の届かない位置から狙って撮る。
+func _capture_distant_hair(main: Node3D) -> String:
+	var id: int = await HandAim.aim_at_first_room_hair(self, main, MansionLayout.SURFACE_FLOOR)
+	if id < 0:
+		return "遠くから狙う床の毛が見つからない"
+	var target: Vector3 = main.mansion_world.get_hair_field().get_hair_transform(id).origin
+	var player: FirstPersonPlayer = main.player
+	for side: int in range(8):
+		var offset: Vector3 = Vector3.BACK.rotated(Vector3.UP, TAU * side / 8.0)
+		player.set_spawn(target + offset * (HandController.REACH_M + 0.1), 0.0)
+		await physics_frame
+		await physics_frame
+		player.look_at_point(target)
+		if main.hand.is_view_blocked(target) or not main.hand.aim_target().is_empty():
+			continue
+		if not await _capture("tmp/screenshot-distant-hair.png"):
+			return "届かない毛を狙った画面を保存できない"
+		var hand: HandController = main.hand
+		var previous: bool = hand.allow_uncaptured_pluck
+		hand.allow_uncaptured_pluck = true
+		await process_frame
+		await process_frame
+		Input.action_press(HandController.ACTION_PLUCK)
+		await process_frame
+		await process_frame
+		Input.action_release(HandController.ACTION_PLUCK)
+		hand.allow_uncaptured_pluck = previous
+		if hand.is_pulling():
+			return "遠くの毛を抜ける位置で撮影した"
+		return "" if await _capture("tmp/screenshot-distant-click.png") else "押した直後を保存できない"
+	return "遠くの床の毛が見通せる撮影位置が見つからない"
 
 
 ## 床の毛を狙って引いている途中 (伸びた毛と閉じかけた手) と、抜いた直後 (「+1 本」) を撮る。
@@ -450,10 +487,26 @@ func _capture_automation(main: Node3D) -> String:
 	)
 	await physics_frame
 	main.player.look_at_point(cat.global_position)
-	return (
-		"" if await _capture_frozen(main, "tmp/screenshot-cat-room.png")
-		else "猫がいる部屋を保存できない"
-	)
+	if not await _capture_frozen(main, "tmp/screenshot-cat-room.png"):
+		return "猫がいる部屋を保存できない"
+	# 猫の目の高さに撮影用カメラを置き、足元の陰に隠れる尻尾の付け根も記録する。
+	var camera: Camera3D = Camera3D.new()
+	main.add_child(camera)
+	camera.make_current()
+	main.player.hide()
+	var center: Vector3 = cat.global_position + Vector3.UP * CatRulesScript.BODY_CENTER_HEIGHT_M
+	var views: Dictionary = {"side": Vector3.RIGHT, "front": Vector3.FORWARD, "back": Vector3.BACK}
+	var captured: bool = true
+	for view: String in views:
+		camera.global_position = center + cat.global_basis * views[view] * 0.85 + Vector3.UP * 0.22
+		camera.look_at(center)
+		if not await _capture_frozen(main, "tmp/screenshot-cat-%s.png" % view):
+			captured = false
+			break
+	camera.free()
+	main.player.show()
+	main.player.get_camera().make_current()
+	return "" if captured else "猫の向きを変えて撮影できない"
 
 
 ## メインシーンの処理を止めたまま現在の画面を path に保存する。保存できたら true
