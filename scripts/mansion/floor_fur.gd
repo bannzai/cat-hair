@@ -78,7 +78,7 @@ func build(spec: Dictionary, buried: int) -> void:
 	material_override = coat
 	_depth = _depth_for(buried)
 	position.y = -_depth
-	visible = _depth < MAX_HEIGHT
+	visible = true
 
 
 ## 埋もれた本数を厚みに換算し、目に見える厚みが変化した時だけ個々の毛の根元を追従させる。
@@ -128,7 +128,7 @@ func hit_distance(from: Vector3, dir: Vector3, limit: float, floor_distance: flo
 
 
 func _depth_for(buried: int) -> float:
-	var fullness: float = clampf(float(buried) / (_bounds.get_area() * FULL_DENSITY), 0.0, 1.0)
+	var fullness: float = float(buried) / (_bounds.get_area() * FULL_DENSITY)
 	return snappedf((1.0 - fullness) * MAX_HEIGHT, DEPTH_STEP)
 
 
