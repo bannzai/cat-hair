@@ -293,7 +293,7 @@ func _verify_capture_click(main: Node3D, game_state: Node, owned: OwnedTool) -> 
 	await _verify_switch_while_held(main, owned)
 
 
-## 手でつまむ入力を押したまま (毛を引いている途中に) 道具へ持ち替えると、引くのをやめ、押し直すまで道具を使わないか
+## 手でつまむ入力を押したまま道具へ持ち替えると、押し直すまで道具を使わないか
 func _verify_switch_while_held(main: Node3D, owned: OwnedTool) -> void:
 	var tools: ToolController = main.tools
 	await _checker._press_physical_key(_select_key(ToolCatalogScript.TOOL_HAND))
@@ -301,15 +301,13 @@ func _verify_switch_while_held(main: Node3D, owned: OwnedTool) -> void:
 	Input.action_press(HandController.ACTION_PLUCK)
 	await _checker.process_frame
 	await _checker.process_frame
-	var pulling: bool = main.hand.is_pulling()
 	await _checker._press_physical_key(_select_key(ToolCatalogScript.TOOL_LINT_ROLLER))
 	await _checker.process_frame
 	await _checker.process_frame
 	_check(
-		pulling and not main.hand.is_pulling()
-		and tools.get_selected_tool_id() == ToolCatalogScript.TOOL_LINT_ROLLER
+		tools.get_selected_tool_id() == ToolCatalogScript.TOOL_LINT_ROLLER
 		and owned.consumable_count == 19,
-		"手で引いている途中に粘着ローラーへ持ち替えると引くのをやめ、押したままでは道具を使わない",
+		"手の操作を押したまま粘着ローラーへ持ち替えても道具を使わない",
 	)
 	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
@@ -652,14 +650,12 @@ func _use_on_floor(main: Node3D, game_state: Node) -> Dictionary:
 	return result
 
 
-## 手で床の毛を 1 本つまんで抜く (引き終わるまで押し続ける)。抜けたら true
+## 手で床の毛を 1 本つまんで抜く。抜けたら true
 func _pluck_with_hand(main: Node3D, game_state: Node) -> bool:
 	var aimed: int = await HandAim.aim_at_floor_hair(_checker, main)
 	var before_total: int = game_state.get_total_remaining_hairs()
-	Input.action_press(HandController.ACTION_PLUCK)
-	await _checker.create_timer(main.hand.get_pull_duration() + 1.0).timeout
-	Input.action_release(HandController.ACTION_PLUCK)
+	await _checker._press_physical_key(KEY_E)
 	await _checker.process_frame
 	var plucked: bool = aimed >= 0 and game_state.get_total_remaining_hairs() < before_total
-	_check(plucked, "手を選んでつまむ入力を押し続けると床の毛が抜ける")
+	_check(plucked, "手を選んでつまむ入力を 1 回押すと床の毛が抜ける")
 	return plucked

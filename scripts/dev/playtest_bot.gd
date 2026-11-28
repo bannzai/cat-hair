@@ -203,7 +203,7 @@ func _execute(action: Dictionary) -> float:
 			if cat != null:
 				_face(_game_state.current_layout, cat.global_position, STAND_DISTANCE_M)
 			_main.tools.brush_cat(action["cat_id"])
-	return PolicyScript.action_seconds(action, 0.0)
+	return PolicyScript.action_seconds(action)
 
 
 ## 道具 tool_id で部屋 room_id の毛を 1 回取り、かかった秒を返す (前と別の部屋なら歩く秒を足す)
@@ -227,22 +227,18 @@ func _clean(tool_id: StringName, room_id: StringName) -> float:
 		_main.player.look_at_point(room.center)
 		_main.tools.select_tool(tool_id)
 		_record_tool_result(_main.tools.use_selected_tool())
-		return seconds + PolicyScript.action_seconds(action, 0.0)
+		return seconds + PolicyScript.action_seconds(action)
 	var target: Dictionary = _hair_target(room_id, tool_id)
 	if target.is_empty():
-		return seconds + PolicyScript.action_seconds({"kind": PolicyScript.ACTION_WAIT}, 0.0)
+		return seconds + PolicyScript.action_seconds({"kind": PolicyScript.ACTION_WAIT})
 	_face(_game_state.current_layout, target["point"], STAND_DISTANCE_M)
 	if tool_id == ToolCatalogScript.TOOL_HAND:
 		_main.tools.select_tool(ToolCatalogScript.TOOL_HAND)
-		var hand: HandController = _main.hand
-		if not hand.begin_pull_at(target):
-			return seconds + PolicyScript.action_seconds(action, 0.0)
-		var pull: float = hand.get_pull_duration()
-		hand.advance_pull(pull)
-		return seconds + PolicyScript.action_seconds(action, pull)
+		_main.hand.pluck_at(target)
+		return seconds + PolicyScript.action_seconds(action)
 	_main.tools.select_tool(tool_id)
 	_record_tool_result(_main.tools.use_selected_tool_at(target))
-	return seconds + PolicyScript.action_seconds(action, 0.0)
+	return seconds + PolicyScript.action_seconds(action)
 
 
 ## 道具を使った結果 result (ToolController.use_selected_tool_at の戻り値) を、取った本数と、
@@ -277,13 +273,16 @@ func _hair_target(room_id: StringName, tool_id: StringName) -> Dictionary:
 			best_index = surface_index
 	if best_index < 0:
 		return {}
-	return {"surface_index": best_index, "point": _densest_point(best_index, _reach_radius(tool_id))}
+	return {"surface_index": best_index,
+		"point": _densest_point(best_index, _reach_radius(tool_id, best_index))}
 
 
 ## 道具 tool_id が 1 回で毛に届く半径 (m。手はつまむ半径)
-static func _reach_radius(tool_id: StringName) -> float:
+static func _reach_radius(tool_id: StringName, surface_index: int) -> float:
 	if tool_id == ToolCatalogScript.TOOL_HAND:
-		return HandController.GRAB_RADIUS_M
+		return HandRulesScript.grab_radius(
+			_main.mansion_world.get_surface_def(surface_index).surface_type,
+			_game_state.get_hand_upgrade_level(HandRulesScript.UPGRADE_DEXTERITY))
 	return float(ToolCatalogScript.find_tool(tool_id)["radius_m"])
 
 

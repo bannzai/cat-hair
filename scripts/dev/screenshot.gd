@@ -6,6 +6,7 @@ extends SceneTree
 
 ## AudioManager / GameState 準備・後始末を借りる検証の土台
 const HeadlessCheck := preload("res://scripts/dev/headless_check.gd")
+## 床・布・買取業者に対する入力と撮影。
 const ScreenshotInteractions := preload("res://scripts/dev/screenshot_interactions.gd")
 ## 撮影するメインシーン
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
@@ -35,8 +36,6 @@ const RouteClockScript := preload("res://scripts/automation/route_clock.gd")
 const TOOL_TRACE_RNG_SEED: int = 20261126
 ## 道具をかけた跡を撮る所に要る、粘着ローラーの半径の中の毛の本数 (取りこぼした毛が跡の中に見える本数)
 const TOOL_TRACE_MIN_HAIRS: int = 6
-## 引いている途中を撮る時の進み具合 (毛が伸びて手が閉じかけた所)
-const PULL_SNAPSHOT_PROGRESS: float = 0.7
 ## 掃除ロボットが毛を取った跡を撮る前に時計を進める刻みの秒数 (掃除ロボットの位置に合わせて毛が消えるよう、
 ## 部屋の中の輪を 1 周する 9 秒より十分細かくする)
 const ROBOT_TRACE_STEP_SECONDS: float = 0.25
@@ -111,7 +110,7 @@ func _capture_scenes() -> bool:
 		_cleanup(main, game_state, created_state)
 		return false
 
-	# 屋敷の中の一人称プレイ画面・床の毛を引いている途中・抜いた直後・図鑑・開発者向け調整画面
+	# 屋敷の中の一人称プレイ画面・毛を取る前後・図鑑・開発者向け調整画面
 	var mansion_error: String = await _capture_mansion_scenes(main)
 	if not mansion_error.is_empty():
 		push_error("screenshot FAIL: " + mansion_error)
@@ -127,7 +126,7 @@ func _capture_scenes() -> bool:
 	return ok
 
 
-## 見た目の試作の部屋を、部屋に入った直後・毛をつまんで引いている途中・自動化が進んだ後の 3 つの状態で撮る。
+## 見た目の試作の部屋を、部屋に入った直後・床の毛を取った直後・自動化が進んだ後の 3 つの状態で撮る。
 ## 毛の本数を新しく始めた屋敷と同じ既定の本数 (MansionTuning の既定値) にして屋敷を作り直す (保存はしない)。撮れたら true
 func _capture_look_prototype(main: Node3D, game_state: Node) -> bool:
 	# マウスの検証が開いた開発者画面を閉じ、屋敷を歩いている時の画面にする
@@ -144,20 +143,12 @@ func _capture_look_prototype(main: Node3D, game_state: Node) -> bool:
 	if not await _capture("tmp/screenshot-look-enter.png"):
 		return false
 
-	# 手で毛を取る操作 (#9) の本物の引きで、試作の部屋の床の毛を引いている途中を撮る
-	var hand: HandController = main.hand
-	if await HandAim.aim_at_floor_hair(self, main) < 0 or not hand.begin_pull():
-		push_error("look prototype FAIL: 試作の部屋の床の毛をつまめない")
+	if await HandAim.aim_at_floor_hair(self, main) < 0 or not look_room.is_prototype_active():
+		push_error("look prototype FAIL: 試作の部屋の床の毛を狙えない")
 		return false
-	hand.advance_pull(hand.get_pull_duration() * PULL_SNAPSHOT_PROGRESS)
-	await process_frame
-	if not look_room.is_prototype_active():
-		push_error("look prototype FAIL: つまんだ毛が試作の部屋の外にある")
-		hand.cancel_pull()
+	if main.hand.pluck_at(main.hand.aim_target()) != 1:
 		return false
-	var pinch_ok: bool = await _capture_frozen(main, "tmp/screenshot-look-pinch.png")
-	hand.cancel_pull()
-	if not pinch_ok:
+	if not await _capture_frozen(main, "tmp/screenshot-look-picked.png"):
 		return false
 
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
@@ -250,7 +241,7 @@ func _capture_guide_toggle(main: Node3D) -> String:
 	return ""
 
 
-## 歩行中の目線と真下まで見た時の体の写り方を撮る
+## 歩行中の目線と真下まで見た時の床を撮る
 func _capture_player_views(main: Node3D) -> bool:
 	Input.action_press("move_forward")
 	await physics_frame
@@ -263,8 +254,8 @@ func _capture_player_views(main: Node3D) -> bool:
 	return walking_ok and down_ok
 
 
-## 屋敷に入った一人称プレイ画面 (部屋・家具・布・毛・画面の手・照準・残り本数と在庫・遊び始めの操作の案内の HUD)、
-## 操作の案内の開閉、毛を引く場面、図鑑、開発者向け調整画面を順に撮る。撮れたら空文字、失敗したら理由を返す
+## 屋敷に入った一人称プレイ画面 (部屋・家具・布・毛・照準・残り本数と在庫・遊び始めの操作の案内の HUD)、
+## 操作の案内の開閉、毛を取る場面、図鑑、開発者向け調整画面を順に撮る。撮れたら空文字、失敗したら理由を返す
 func _capture_mansion_scenes(main: Node3D) -> String:
 	main.enter_mansion()
 	if not await _capture("tmp/screenshot-mansion.png"):
@@ -281,8 +272,6 @@ func _capture_mansion_scenes(main: Node3D) -> String:
 	if capture_error.is_empty():
 		if not await ScreenshotInteractions.capture(self, main, _capture_frozen):
 			capture_error = "毛を取る操作と買取業者の操作を保存できない"
-	if capture_error.is_empty():
-		capture_error = await _capture_pluck(main)
 	if not capture_error.is_empty():
 		return capture_error
 	main.open_hair_book()
@@ -357,7 +346,7 @@ func _capture_hair_reach(main: Node3D) -> String:
 	if not await _capture("tmp/screenshot-reachable-hair.png"):
 		return "届く毛を狙った画面を保存できない"
 	if not (
-		hand.can_begin_pull() and main.crosshair.is_visible_in_tree() and guide.is_visible_in_tree()
+		hand.can_pluck() and main.crosshair.is_visible_in_tree() and guide.is_visible_in_tree()
 	):
 		return "届く毛を狙った画面に照準と操作案内が出ていない"
 	var target: Vector3 = main.mansion_world.get_hair_field().get_hair_transform(id).origin
@@ -379,42 +368,16 @@ func _capture_out_of_reach(main: Node3D, guide: Label) -> String:
 	var hand: HandController = main.hand
 	if not await _capture("tmp/screenshot-distant-hair.png"):
 		return "届かない毛を狙った画面を保存できない"
-	if hand.can_begin_pull() or main.crosshair.is_visible_in_tree() or guide.is_visible_in_tree():
+	if hand.can_pluck() or main.crosshair.is_visible_in_tree() or guide.is_visible_in_tree():
 		return "届かない毛を狙った画面に照準または操作案内が出ている"
-	Input.action_press(HandController.ACTION_PLUCK)
-	await process_frame
-	await process_frame
-	Input.action_release(HandController.ACTION_PLUCK)
+	await ScreenshotInteractions.tap(self, false)
 	if not await _capture("tmp/screenshot-distant-click.png"):
 		return "届かない毛を押した直後の画面を保存できない"
-	if hand.is_pulling() or hand.can_begin_pull() or not main.tool_message_label.text.is_empty():
+	if hand.can_pluck() or not main.tool_message_label.text.is_empty():
 		return "届かない毛をつまんだか、届かない位置で押した後にメッセージが残った"
 	if main.crosshair.is_visible_in_tree() or guide.is_visible_in_tree():
 		return "届かない位置で押した後に照準または操作案内が出ている"
 	return ""
-
-
-## 床の毛を狙って引いている途中 (伸びた毛と閉じかけた手) と、抜いた直後 (「+1 本」) を撮る。
-## 引いている途中と「+1 本」が撮る間に進んだり消えたりしないよう、撮る間はメインシーンの処理を止める。
-## 撮れたら空文字、失敗したら理由を返す
-func _capture_pluck(main: Node3D) -> String:
-	var hand: HandController = main.hand
-	if await HandAim.aim_at_floor_hair(self, main) < 0:
-		return "床の毛を狙える位置が見つからない"
-	if not hand.begin_pull():
-		return "狙った床の毛をつまめない"
-	hand.advance_pull(hand.get_pull_duration() * PULL_SNAPSHOT_PROGRESS)
-	if not await _capture_frozen(main, "tmp/screenshot-pluck.png"):
-		return "引いている途中を保存できない"
-	if hand.advance_pull(hand.get_pull_duration()) < 1:
-		return "引き終えても毛が抜けない"
-	if not await _capture_frozen(main, "tmp/screenshot-plucked.png"):
-		return "抜いた直後を保存できない"
-	# 途中で離して抜けなかった時の理由の表示 (照準の下)。押す入力の代わりに、離した時と同じ知らせを出す
-	hand.pull_failed.emit(HandController.REASON_RELEASED)
-	var failed_ok: bool = await _capture_frozen(main, "tmp/screenshot-pluck-failed.png")
-	main.tool_message_label.text = ""
-	return "" if failed_ok else "抜けなかった理由の表示を保存できない"
 
 
 ## 粘着ローラーを床の毛にかけた直後 (跡の円盤・取りこぼした毛・取りこぼしの割合・道具の並び・部屋のゲージ) と、

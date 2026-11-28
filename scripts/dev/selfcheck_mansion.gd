@@ -54,7 +54,6 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_player_mouse_predicates()
 	suite._check_save_and_load_roundtrip()
 	suite._check_save_missing_corrupted_and_clamping()
-	suite._check_legacy_mansion_starts_fresh()
 	suite._check_game_state_override_reconcile_and_notifications()
 	suite._check_game_state_and_builder_edge_cases()
 	suite._check_format_hair_count()
@@ -593,8 +592,8 @@ func _check_save_missing_corrupted_and_clamping() -> void:
 
 	var valid_dict: Dictionary = _create_rich_save_fixture().to_dict()
 
-	# 有効辞書で schema_version を 0 / 1.5 / 2 / 文字列 / 欠損に変更 (未対応・不正スキーマ判定を通す)
-	for bad_version: Variant in [0, 1.5, 2, "1"]:
+	# 未対応版、整数でない版、版の欠損を拒む。
+	for bad_version: Variant in [0, 1.5, SaveDataScript.SCHEMA_VERSION + 1, "1"]:
 		var bad_ver_dict: Dictionary = valid_dict.duplicate(true)
 		bad_ver_dict["schema_version"] = bad_version
 		_check(SaveDataScript.from_dict(bad_ver_dict) == null, "不正 schema_version で null")
@@ -711,31 +710,6 @@ func _check_save_missing_corrupted_and_clamping() -> void:
 		and clamped_save.building_records[0].returned_found_item_count == 0,
 		"負値・レベル 0・機嫌範囲外が安全範囲に丸められる",
 	)
-
-
-## 毛が 12 万本だった初版の保存ファイルを置き、実際の起動経路で既定の屋敷が新しく始まるか確かめる。
-func _check_legacy_mansion_starts_fresh() -> void:
-	var legacy: SaveData = SaveDataScript.new()
-	legacy.schema_version = 1
-	legacy.tuning = MansionTuningScript.new()
-	legacy.tuning.hair_count = 120000
-	legacy.building_progress = MansionBuilderScript.build_initial_progress(
-		MansionBuilderScript.build_layout(legacy.tuning), legacy.tuning,
-	)
-	var file: FileAccess = FileAccess.open(TEST_SAVE_PATH, FileAccess.WRITE)
-	_check(file != null, "旧版の保存ファイルを開ける")
-	if file == null:
-		return
-	_check(file.store_string(JSON.stringify(legacy.to_dict())), "12 万本の旧版データを書き込める")
-	file.close()
-	var state: Node = GameStateScript.new()
-	state.initialize_from_storage(TEST_SAVE_PATH)
-	_check(
-		not state.loaded_from_save and state.get_total_remaining_hairs() == 9999999,
-		"12 万本の旧版データから起動すると「はじめる」用の屋敷に 9,999,999 本の毛がある",
-	)
-	state.free()
-	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
 
 ## GameState の引数上書き・全 3 種 ID 照合 (_reconcile_progress_with_layout)・終了通知条件を検証する

@@ -40,8 +40,6 @@ const DUMP_TRUCK_OFFSET_M: Vector3 = Vector3(2.0, 0.0, 3.2)
 var _game_state: Node = null
 ## 毛を持つ屋敷
 var _world: MansionWorld = null
-## アンドロイドが手で引いている毛を取る前に、引くのをやめさせるための手
-var _hand: HandController = null
 ## アンドロイドの取りこぼしの抽選に使う乱数
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## アンドロイドの次の掃除までにたまった時間 (秒)
@@ -54,11 +52,10 @@ var _models_root: Node3D = null
 var _models_key: String = ""
 
 
-## GameState・屋敷・手を受け取る
-func setup(game_state: Node, world: MansionWorld, hand: HandController) -> void:
+## GameState と屋敷を受け取る
+func setup(game_state: Node, world: MansionWorld) -> void:
 	_game_state = game_state
 	_world = world
-	_hand = hand
 
 
 ## 遊んだ時間を delta_seconds 秒進め、アンドロイドの掃除の時期が来た回数だけ掃除する。戻り値は取った本数の合計
@@ -85,13 +82,6 @@ func step_android() -> Dictionary:
 	var plan: Dictionary = ToolController.plan_room_removal(
 		_world, room_id, ToolCatalogScript.TOOL_ANDROID, owned.level, _rng
 	)
-	var removed_ids: PackedInt32Array = plan["removed_ids"]
-	if _hand != null and _hand.is_pulling():
-		for hair_id: int in _hand.get_pulling_ids():
-			if removed_ids.has(hair_id):
-				# 毛はまだ消していないため、見た目を戻して離す (cancel_pull は作り直しの時だけ使う)
-				_hand.release_pull()
-				break
 	var removed: int = _game_state.apply_tool_sweep(
 		ToolCatalogScript.TOOL_ANDROID, plan["counts_by_surface"]
 	)

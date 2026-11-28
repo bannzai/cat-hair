@@ -157,6 +157,16 @@ func get_trader_position() -> Vector3:
 	return _trader.global_position if _trader != null else Vector3.ZERO
 
 
+## 買取業者を歩行の障害物にせず、肩幅と靴から帽子までを含む範囲で照準との交点を返す。外れたら null。
+func intersect_trader(from: Vector3, direction: Vector3) -> Variant:
+	if _trader == null:
+		return null
+	var bounds: AABB = AABB(
+		_trader.global_position + Vector3(-0.28, 0.0, -0.16), Vector3(0.56, TRADER_HEIGHT_M, 0.32)
+	)
+	return bounds.intersects_ray(from, direction)
+
+
 ## 最初の部屋の南西の隅 (裏口の側) に買取業者を立たせる
 func _build_trader(layout: MansionLayout) -> void:
 	if layout.rooms.is_empty():
@@ -198,7 +208,7 @@ func _build_trader_body(trader: Node3D) -> void:
 	var trousers_material: StandardMaterial3D = _make_material(Color(0.18, 0.18, 0.2), 0.85)
 	# 靴はほぼ黒の革で、ズボンより暗く足元の形が見分けられ、少し艶のある粗さ
 	var shoes_material: StandardMaterial3D = _make_material(Color(0.07, 0.06, 0.06), 0.5)
-	# 肌は画面の手 (scripts/player/hand_view.gd の SKIN_COLOR) より少し日焼けした色で、焦げ茶の作業着の上で顔と手が浮いて見える
+	# 肌は少し日焼けした色で、焦げ茶の作業着の上で顔と手が浮いて見える
 	var skin_material: StandardMaterial3D = _make_material(Color(0.86, 0.68, 0.55), 0.75)
 	# 目は黒に近い色で、肌の上の小さな点として正面から見える。濡れて見えるよう少し艶を残す粗さ
 	var eyes_material: StandardMaterial3D = _make_material(Color(0.05, 0.04, 0.04), 0.4)

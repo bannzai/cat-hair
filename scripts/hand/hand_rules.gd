@@ -1,5 +1,5 @@
 extends RefCounted
-## 手で毛を取る時のルールの計算 (表面ごとの引く時間・手の強化の効き方・珍しい毛の表と抽選・図鑑への登録)。
+## 手で毛を取る時のルールの計算 (表面ごとのつまむ範囲・手の強化の効き方・珍しい毛の表と抽選・図鑑への登録)。
 ## 状態を持たない純粋な計算だけを置き、selfcheck が入力と出力で検証する。
 ## 確率・秒数・倍率は、触れる版の感想を取るための仮の値。序盤の 10〜15 分 (DIRECTION.md「判定基準」) を手だけで
 ## 遊ぶ時に、珍しい毛が数分に 1 本見つかり (1 本 1 秒前後で抜くと 1/400 + 1/1500 で約 5 分に 1 本)、
@@ -10,31 +10,14 @@ const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
 ## 面ごとの毛データ型スクリプト (色の定数を使う)
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 
-## 手の強化の種類: 指先の器用さ (1 本を引く時間が短くなる)。保存データの hand_upgrade_levels のキー
+## 手の強化の種類: 指先の器用さ (照準の周りでつまめる範囲が広がる)。保存データの hand_upgrade_levels のキー
 const UPGRADE_DEXTERITY: StringName = &"dexterity"
 ## 手の強化の種類: 一度につまめる本数。保存データの hand_upgrade_levels のキー
 const UPGRADE_GRAB_COUNT: StringName = &"grab_count"
-## 器用さ 1 段ごとに引く時間に掛ける倍率 (1 段で 15% 短くなる)
-const DEXTERITY_TIME_FACTOR_PER_LEVEL: float = 0.85
-## どれだけ器用になっても、伸びて抜ける演出が見える最短の引く時間 (秒)
-const MIN_PULL_SECONDS: float = 0.12
 ## 強化していない手で一度につまめる本数
 const BASE_GRAB_COUNT: int = 1
 ## 一度につまめる本数の上限 (指でつまめる束として不自然にならない本数)
 const MAX_GRAB_COUNT: int = 10
-
-## 表面の種類ごとに、強化していない手で 1 本を引き抜くまでの時間 (秒)。
-## 平らで毛が乗っているだけの面ほど短く、毛が繊維に絡むニット・カーペットほど長い
-const PULL_SECONDS_BY_SURFACE: Dictionary = {
-	MansionLayoutScript.SURFACE_FLOOR: 0.45,
-	MansionLayoutScript.SURFACE_FURNITURE: 0.45,
-	MansionLayoutScript.SURFACE_SOFA: 0.65,
-	MansionLayoutScript.SURFACE_SUIT: 0.8,
-	MansionLayoutScript.SURFACE_CARPET: 1.0,
-	MansionLayoutScript.SURFACE_KNIT: 1.3,
-}
-## 表の無い表面の種類で使う引く時間 (秒。床と同じ)
-const DEFAULT_PULL_SECONDS: float = 0.45
 
 ## 珍しい毛の種類: 猫のヒゲ
 const RARE_WHISKER: StringName = &"whisker"
@@ -67,13 +50,11 @@ const RARE_HAIRS: Array[Dictionary] = [
 ]
 
 
-## 表面の種類と器用さの段から、1 本を引き抜くまでの時間 (秒) を返す
-static func pull_seconds(surface_type: StringName, dexterity_level: int) -> float:
-	var base_seconds: float = float(PULL_SECONDS_BY_SURFACE.get(surface_type, DEFAULT_PULL_SECONDS))
-	return maxf(
-		MIN_PULL_SECONDS,
-		base_seconds * pow(DEXTERITY_TIME_FACTOR_PER_LEVEL, float(maxi(0, dexterity_level))),
-	)
+## 平らな面は根元から 8 cm、布では繊維に絡んだ毛を狙って 4 cm。器用さ 1 段につき半径を 1 cm 広げる。
+static func grab_radius(surface_type: StringName, dexterity_level: int) -> float:
+	var flat: bool = surface_type in [
+		MansionLayoutScript.SURFACE_FLOOR, MansionLayoutScript.SURFACE_FURNITURE]
+	return (0.08 if flat else 0.04) + 0.01 * maxi(0, dexterity_level)
 
 
 ## 一度につまめる本数の段から、一度につまめる本数を返す

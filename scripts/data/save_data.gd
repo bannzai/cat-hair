@@ -9,8 +9,8 @@ const BuildingProgressScript := preload("res://scripts/data/building_progress.gd
 ## 開発者向け調整値データ型スクリプト
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 
-## 現在の保存スキーマ版 (初版 = 1)
-const SCHEMA_VERSION: int = 1
+## 保存版。版 2 からは初期本数を 12 万本に調整した屋敷も再開できる。
+const SCHEMA_VERSION: int = 2
 
 ## 保存スキーマのバージョン
 @export var schema_version: int = SCHEMA_VERSION
@@ -60,7 +60,7 @@ static func from_dict(raw_save_dict: Variant) -> SaveData:
 	var raw_version: Variant = save_dict.get("schema_version")
 	if not (raw_version is int or raw_version is float):
 		return null
-	if float(raw_version) != float(SCHEMA_VERSION):
+	if float(raw_version) not in [1.0, float(SCHEMA_VERSION)]:
 		return null
 	var parsed_progress: BuildingProgress = BuildingProgressScript.from_dict(
 		save_dict.get("building_progress")
@@ -69,6 +69,9 @@ static func from_dict(raw_save_dict: Variant) -> SaveData:
 		return null
 	var parsed_tuning: MansionTuning = MansionTuningScript.from_dict(save_dict.get("tuning"))
 	if parsed_tuning == null:
+		return null
+	# 少ない毛で始まった旧版の屋敷だけを作り直す。掃除で減った現在の本数は判定に使わない。
+	if float(raw_version) == 1.0 and parsed_tuning.hair_count == 120000:
 		return null
 	var save_data: SaveData = SaveData.new()
 	save_data.schema_version = SCHEMA_VERSION

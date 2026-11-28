@@ -5,7 +5,7 @@ extends MeshInstance3D
 ## 房の輪郭と家具の縁を表せる格子の間隔 (m)。1 辺 6 m の部屋で約 3,600 頂点。
 const SPACING: float = 0.1
 ## 厚い塊の高さの上限 (m)。床に入った毛は床の裏に隠れる。
-const MAX_HEIGHT: float = 0.26
+const MAX_HEIGHT: float = 0.14
 ## 1 m² にこの本数が埋もれているとき、毛が床全面を覆う。
 const FULL_DENSITY: float = 14000.0
 ## 毛を 1 本取るたびに全員の位置を更新せず、1 cm 分薄くなったときに山の形を更新する。
@@ -53,8 +53,8 @@ func build(spec: Dictionary, buried: int) -> void:
 	var surface: SurfaceTool = SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var noise: FastNoiseLite = FastNoiseLite.new()
-	noise.frequency = 1.35
-	noise.fractal_octaves = 3
+	noise.frequency = 0.85
+	noise.fractal_octaves = 2
 	_heights.resize(_grid.x * _grid.y)
 	for z: int in range(_grid.y):
 		for x: int in range(_grid.x):
@@ -72,7 +72,7 @@ func build(spec: Dictionary, buried: int) -> void:
 			var h: float = lerpf(-0.008, 0.023 + (MAX_HEIGHT - 0.023) * mound * mound, mask)
 			_heights[z * _grid.x + x] = h
 			# 束ごとに毛並みの向きと色が少しずつ違う。隣り合う頂点の UV はつながったままにする。
-			surface.set_uv(p * 1.85 + Vector2(relief, noise.get_noise_2dv(p + Vector2(7, 9))) * 0.13)
+			surface.set_uv(p * 1.5 + Vector2(relief, noise.get_noise_2dv(p + Vector2(7, 9))) * 0.06)
 			var shade: float = clampf(0.83 + relief * 0.32, 0.65, 1.0)
 			surface.set_color(Color(shade, shade, shade, 1))
 			surface.add_vertex(Vector3(p.x, h, p.y))

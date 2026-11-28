@@ -27,7 +27,7 @@ static func _capture_picking(tree: SceneTree, main: Node3D, snapshot: Callable) 
 		await tree.process_frame
 		if not await snapshot.call(main, "tmp/screenshot-%s-before.png" % surface):
 			return false
-		await _tap(tree, false)
+		await tap(tree, false)
 		if not await snapshot.call(main, "tmp/screenshot-%s-after.png" % surface):
 			return false
 	return true
@@ -40,7 +40,7 @@ static func _capture_trader(tree: SceneTree, main: Node3D, snapshot: Callable) -
 	await tree.physics_frame
 	await tree.physics_frame
 	main.player.look_at_point(main.player.get_camera().global_position + Vector3.UP)
-	await _tap(tree, false)
+	await tap(tree, false)
 	if not await snapshot.call(main, "tmp/screenshot-empty-after.png"):
 		return false
 	main.player.look_at_point(trader + Vector3.UP * 1.1)
@@ -48,7 +48,7 @@ static func _capture_trader(tree: SceneTree, main: Node3D, snapshot: Callable) -
 	await tree.process_frame
 	if not await snapshot.call(main, "tmp/screenshot-trader-before.png"):
 		return false
-	await _tap(tree, true)
+	await tap(tree, true)
 	var ok: bool = await snapshot.call(main, "tmp/screenshot-trader-after.png")
 	if main.tool_shop_panel.visible:
 		main.close_tool_shop()
@@ -56,7 +56,7 @@ static func _capture_trader(tree: SceneTree, main: Node3D, snapshot: Callable) -
 
 
 ## 実際の左クリックまたは E 入力を送り、ゲームが 1 フレームだけ押下を観測できるようにする。
-static func _tap(tree: SceneTree, talk: bool) -> void:
+static func tap(tree: SceneTree, talk: bool) -> void:
 	for pressed: bool in [true, false]:
 		var event: InputEvent
 		if talk:

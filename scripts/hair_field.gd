@@ -826,14 +826,6 @@ func find_hairs_near(
 	return result
 
 
-## 指定した毛の見た目だけを display_transform に変える (伸びる演出用。照会用の transform は変えない)
-func set_hair_display_transform(hair_id: int, display_transform: Transform3D) -> void:
-	if not has_hair(hair_id):
-		return
-	var multimesh: MultiMesh = _buckets[_id_to_surface[hair_id]]["multimesh"]
-	multimesh.set_instance_transform(_id_to_slot[hair_id], display_transform)
-
-
 ## 共有メッシュ・マテリアルを用意し、毛 ID の逆引き配列を total 本分確保する
 func _prepare_shared_resources(total: int) -> void:
 	if _hair_mesh == null:

@@ -103,9 +103,8 @@ func _verify_suction_truck(main: Node3D, game_state: Node) -> void:
 	await _checker._press_physical_key(KEY_9)
 	_check(
 		main.tools.get_selected_tool_id() == truck and main.tools.is_in_driver_seat()
-		and not main.hand.get_hand_view().visible
 		and main.look_hud.get_tool_slot_texts()[8] == "9 業務用の吸引車",
-		"9 キーで吸引車を選ぶと運転席からの眺めになって画面の手が隠れ、9 番目の枠に吸引車が出る",
+		"9 キーで吸引車を選ぶと運転席からの眺めになり、9 番目の枠に吸引車が出る",
 	)
 	var room_before: int = int(game_state.get_room_status(room.room_id)["hair_count"])
 	var field_before: int = main.mansion_world.get_hair_field().get_remaining_count()
@@ -142,9 +141,8 @@ func _verify_suction_truck(main: Node3D, game_state: Node) -> void:
 	await _checker._press_physical_key(KEY_1)
 	_check(
 		main.tools.get_selected_tool_id() == ToolCatalogScript.TOOL_HAND
-		and not main.tools.is_in_driver_seat()
-		and main.hand.get_hand_view().visible,
-		"手に持ち替えると運転席から降りて、画面の手がまた見える",
+		and not main.tools.is_in_driver_seat(),
+		"手に持ち替えると運転席から降りる",
 	)
 
 
@@ -207,7 +205,6 @@ func _verify_android(main: Node3D, game_state: Node) -> void:
 		"アンドロイドは %.0f 秒たつと毛のいちばん多い部屋を掃除し (%d 本)、描く毛も同じ本数になり、屋敷に姿が出る"
 		% [BigToolSite.ANDROID_INTERVAL_SECONDS, removed],
 	)
-	await _verify_android_releases_pull(main)
 	await _verify_android_exchanges_vacuum_pack(main, game_state)
 
 
@@ -306,41 +303,6 @@ func _verify_android_exchanges_vacuum_pack(main: Node3D, game_state: Node) -> vo
 	game_state.save_data.building_progress.money = money_saved
 	owned.consumable_count = ToolRulesScript.refilled_count(vacuum, 0)
 	await _checker._press_physical_key(KEY_1)
-
-
-## 手で引いている毛の一部をアンドロイドが取ると、手は引くのをやめ、取られずに残った毛は消えずに残るか。
-## どの毛が取られるかは抽選のため、掃除する部屋の毛をすべて引いている状態にして確かめる。
-## 残った毛の見た目が元に戻ることは、headless の検証では MultiMesh の見た目の transform を読めないため、ここでは確かめず
-## 描画付きの撮影 (scripts/dev/screenshot_big_tools.gd の _count_stretched_left) で確かめる
-## (仮説: headless の描画サーバーは instance の transform を保持しない。CI の run 45871183473 で、戻した後の見た目を読む確認が落ちた)
-func _verify_android_releases_pull(main: Node3D) -> void:
-	var hair_field: Node3D = main.mansion_world.get_hair_field()
-	var room_id: StringName = main.big_tools.dirtiest_room_id()
-	var pulling: PackedInt32Array = PackedInt32Array()
-	for surface_index: int in range(hair_field.get_surface_count()):
-		if main.mansion_world.get_surface_def(surface_index).room_id != room_id:
-			continue
-		for slot: int in range(hair_field.get_surface_visible_instance_count(surface_index)):
-			var hair_id: int = hair_field.get_hair_id_at_slot(surface_index, slot)
-			pulling.append(hair_id)
-	main.hand._pulling_ids = pulling
-	var field_before: int = hair_field.get_remaining_count()
-	var cleaned: Dictionary = main.big_tools.step_android()
-	var kept: int = 0
-	for hair_id: int in pulling:
-		if hair_field.has_hair(hair_id):
-			kept += 1
-	# アンドロイドは描いている毛 (引いている毛) に加えて埋もれた毛からも取るため、引いている毛から消えた本数は
-	# 取った本数以下になる。取った本数そのものは HairField の残りの減りと比べる
-	_check(
-		int(cleaned.get("removed", 0)) > 0
-		and kept < pulling.size()
-		and pulling.size() - kept <= int(cleaned.get("removed", 0))
-		and field_before - hair_field.get_remaining_count() == int(cleaned.get("removed", 0))
-		and not main.hand.is_pulling(),
-		"引いている毛の一部 (%d 本) をアンドロイドが取ると (取った本数 %d)、手は引くのをやめ、残りの %d 本は消えずに残る"
-		% [pulling.size() - kept, int(cleaned.get("removed", 0)), kept],
-	)
 
 
 ## 加工機を道具を買う画面で並べて買い、時間が進むと在庫が加工され、買取業者に売ると毛のまま売るより多く入るか
