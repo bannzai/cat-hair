@@ -1,11 +1,20 @@
 extends Node3D
-## 体の右肩から手首へ腕を結び、つまんだ毛の先端に親指と人差し指を合わせる。
-## つまむ指の腹、手首へ細くなる前腕、ひじで折れる袖を一続きに描く。
+## 画面に映る自分の右手と腕。体の右肩から袖で腕を結び、つまんだ毛の先端に親指と人差し指を合わせる。
+## 手は既製の 3D モデル (OpenGameArt の CC0 の腕の模型。指の骨付き。変換は scripts/assets/convert_models.py、
+## 出典は assets/CREDITS.md) の右手で、ひじで折れる袖と手首へ細くなる前腕は基本の形で結ぶ (モデルの前腕は手と一緒に
+## 動く硬い棒で、毛へ伸ばした手を肩からの視線の上で覆ったため。PR #69 の撮影)。モデルは変換で右手の頂点だけにしてある。
+## 局所座標では手のひらを下 (-Y)・指先を奥 (-Z)・親指を左 (-X) に向け、指の付け根 (人差し指と小指の付け根の中点) を
+## 原点に置き、手首から肘の側を手前 (+Z) に伸ばす。
+## 腕の寸法・角度は、床と縦面の撮影で根元と指先を同時に追えるよう調整した値。
 
 ## 指に持たせる毛も、面の毛と同じメッシュで描く。
 const HairFieldScript := preload("res://scripts/hair_field.gd")
-## 人の体の部品を作る関数
+## 人の体の部品を作る関数 (肩から肘の袖)
 const HumanParts := preload("res://scripts/human/human_parts.gd")
+## モデルの範囲と祖先への変換を測る関数
+const FurnitureModels := preload("res://scripts/mansion/furniture_models.gd")
+## 腕のモデル (glTF の骨の名前は Rigify の名前。右は末尾が .R)
+const ARMS_SCENE: PackedScene = preload("res://assets/models/first_person_arms.glb")
 
 ## 肩につなぐ前の手の初期位置
 const REST_POSITION: Vector3 = Vector3(0.30, -0.55, 0.0)
@@ -21,50 +30,51 @@ const UPPER_ARM_M: float = 0.32
 const FOREARM_M: float = 0.27
 ## つまんだ時にも肘の曲がりを残す、肩から手首までの距離 (m)。
 const BENT_REACH_M: float = 0.53
-## 腕が手のひらにつながる位置。
-const WRIST: Vector3 = Vector3(0.0, 0.0, 0.082)
 ## 腕を下ろす前に、閉じた指先で抜いた毛をひと目確かめられる間を置く。
 const SHOW_HAIR_SECONDS: float = 0.16
 ## 抜けた瞬間と腕を下ろす動きを別々に追える時間。
 const RETURN_SECONDS: float = 0.24
-## つまむ前の親指と人差し指の開き (rad)
+## つまむ前の親指と人差し指の開き (rad)。閉じた形から、人差し指を手の甲の側へ起こし親指を外へ開く角度
 const FINGER_OPEN_RAD: float = 0.55
-## 肌の色
+## 肌の色 (右の前腕と体の左腕。右手はモデルの写真の肌)
 const SKIN_COLOR: Color = Color(0.69, 0.45, 0.34)
 ## 袖の色
 const SLEEVE_COLOR: Color = Color(0.25, 0.32, 0.45)
-## 親指以外の 4 本の指のノード名 (人差し指・中指・薬指・小指の順。下の指ごとの表も同じ順)
-const FINGER_NAMES: Array[String] = ["IndexFinger", "MiddleFinger", "RingFinger", "LittleFinger"]
-## 親指以外の 4 本の指の、付け根の左右の位置 (m)
-const FINGER_BASE_X_M: Array[float] = [-0.027, -0.009, 0.009, 0.026]
-## 親指以外の 4 本の指の、付け根から指先への 3 節の長さ (m。
-## 大人の手の指の長さ 6〜8 cm を、中指を最も長く、小指を最も短くして割り振った見当)
-const FINGER_SEGMENT_M: Array[Vector3] = [
-	Vector3(0.038, 0.024, 0.02),
-	Vector3(0.042, 0.027, 0.021),
-	Vector3(0.039, 0.025, 0.02),
-	Vector3(0.031, 0.02, 0.017),
-]
-## 親指以外の 4 本の指の太さ (半径 m。大人の指の幅 1.5〜1.8 cm の見当で、
-## 中指を最も太く、小指を最も細くした。付け根の間隔 1.8 cm に対して指どうしの隙間がほとんど空かず、揃えた指に見える)
-const FINGER_RADIUS_M: Array[float] = [0.0085, 0.0088, 0.0082, 0.0072]
-## 指ごとの 3 関節の角度 (rad)。人差し指の先を親指に向け、残る指は手のひらの内側に畳む。
-const FINGER_CURL_RAD: Array[Vector3] = [
-	Vector3(0.07, 0.73, 0.65), Vector3(0.63, 1.04, 0.78),
-	Vector3(0.76, 1.06, 0.79), Vector3(0.85, 1.10, 0.78),
-]
+## 人差し指と小指の付け根の間の幅 (m)。大人の手の指の付け根の並び (人差し指から小指の中心まで) 5〜6 cm の見当で、
+## モデルをこの幅になるよう縦横の釣り合いを保って縮める
+const KNUCKLE_SPAN_M: float = 0.055
+## 右手の手首の骨の名前
+const WRIST_BONE: String = "hand.R"
+## 右手の人差し指の付け根の骨の名前 (つまむ時に回す)
+const INDEX_ROOT_BONE: String = "f_index.01.R"
+## 右手の人差し指の先の骨の名前
+const INDEX_TIP_BONE: String = "f_index.03.R"
+## 右手の小指の付け根の骨の名前 (指の付け根の並びの向きと幅を測る)
+const PINKY_ROOT_BONE: String = "f_pinky.01.R"
+## 右手の親指の付け根の骨の名前 (つまむ時に回す)
+const THUMB_ROOT_BONE: String = "thumb.01.R"
+## 右手の親指の先の骨の名前
+const THUMB_TIP_BONE: String = "thumb.03.R"
 
 ## 引いている進み具合 (0 = 開いた手、1 = つまんで引き終えた手)
 var _pull_progress: float = 0.0
-## 人差し指の付け根のノード (開き具合で回す)
-var _index_finger: Node3D = null
-## 親指の付け根のノード (開き具合で回す)
-var _thumb: Node3D = null
-
-## 人差し指の末節の先端。
+## 腕のモデルの骨
+var _skeleton: Skeleton3D = null
+## 骨の空間から手の局所座標への変換 (モデルの縮めと向きを含む)
+var _skeleton_to_hand: Transform3D = Transform3D.IDENTITY
+## 閉じた時に親指と人差し指の付け根の骨を回す回転 (骨の空間。休みの姿勢からの回転。骨の名前から引く)
+var _closed_turns: Dictionary = {}
+## 開く時に親指と人差し指を回す軸 (骨の空間。骨の名前から引く)。人差し指は手の +X (先を手の甲の側へ起こす)、
+## 親指は手の +Y (先を外の -X へ開く)
+var _open_axes: Dictionary = {}
+## 今、親指と人差し指の付け根の骨に掛けている回転 (骨の空間。休みの姿勢からの回転。骨の名前から引く)
+var _current_turns: Dictionary = {}
+## 人差し指の先の位置の目印 (手の局所座標。指を回すたびに置き直す)
 var _index_tip: Node3D
-## 親指の末節の先端。
+## 親指の先の位置の目印
 var _thumb_tip: Node3D
+## 手首の位置 (手の局所座標。手の骨の付け根)
+var _wrist: Vector3 = Vector3.ZERO
 ## 体に追従する腕の付け根。
 var _shoulder: Node3D
 ## 肩と肘の間を覆う袖。
@@ -83,7 +93,7 @@ var _plucked: MeshInstance3D
 var _retract: Tween
 
 
-## 作った時に手の形を組み立てる (ツリーに入る前から指の部品を辿れるようにするため、_ready ではなくここで組む)
+## 作った時に手を組み立てる (ツリーに入る前から骨と指先を辿れるようにするため、_ready ではなくここで組む)
 func _init() -> void:
 	_build()
 	set_pull_progress(_pull_progress)
@@ -97,12 +107,28 @@ func set_pull_progress(progress: float, reach_end: float = 1.0 / 3.0) -> float:
 	return reach
 
 
-## 開き具合を 0（閉）から 1（開）の範囲で両指に反映する。
+## 開き具合を 0 (閉) から 1 (開) の範囲で、親指と人差し指の付け根の骨に掛け、指先の目印を置き直す
 func _open_fingers(amount: float) -> void:
-	var open_rad: float = FINGER_OPEN_RAD * amount
-	# 開いている時は人差し指を手の甲の側 (+Y) へ起こし、親指を外 (-X) へ開く。閉じると 2 本の先が近づく
-	_index_finger.rotation = Vector3(open_rad * 0.5, 0.0, 0.0)
-	_thumb.rotation = Vector3(0.0, open_rad, 0.0)
+	for bone_name: String in [INDEX_ROOT_BONE, THUMB_ROOT_BONE]:
+		var turn: Quaternion = (
+			Quaternion(_open_axes[bone_name] as Vector3, FINGER_OPEN_RAD * amount)
+			* (_closed_turns[bone_name] as Quaternion)
+		)
+		_current_turns[bone_name] = turn
+		var bone: int = _skeleton.find_bone(bone_name)
+		_skeleton.set_bone_pose_rotation(
+			bone,
+			(
+				_skeleton.get_bone_global_rest(_skeleton.get_bone_parent(bone)).basis.inverse()
+				* Basis(turn)
+				* _skeleton.get_bone_global_rest(bone).basis
+			).get_rotation_quaternion()
+		)
+	# 指先の目印は骨の今の姿勢 (get_bone_global_pose) から読まない: ツリーの外で作った手では、set_bone_pose_rotation の
+	# 後も get_bone_global_pose から求めた指先の距離が 0.0695 m のまま変わらなかった
+	# (実測: PR #69 の CI の run 45949682800 の selfcheck)。付け根に掛けた回転で休みの姿勢の先を回して求める
+	_index_tip.position = _skeleton_to_hand * _turned_tip(INDEX_ROOT_BONE, INDEX_TIP_BONE)
+	_thumb_tip.position = _skeleton_to_hand * _turned_tip(THUMB_ROOT_BONE, THUMB_TIP_BONE)
 
 
 ## 右肩を起点にして腕を下ろす。手・袖ともカメラを回しても体に付いて歩く
@@ -122,9 +148,14 @@ func attach_to_shoulder(shoulder: Node3D) -> void:
 	_rest()
 
 
-## 描画した人差し指と親指の腹が触れる位置（ワールド座標）
+## 人差し指と親指の先が触れる位置 (ワールド座標)
 func get_pinch_position() -> Vector3:
 	return (_index_tip.global_position + _thumb_tip.global_position) * 0.5
+
+
+## 親指と人差し指の先の位置を、手の局所座標で返す
+func get_fingertips() -> Dictionary:
+	return {"index": _index_tip.position, "thumb": _thumb_tip.position}
 
 
 ## 肩から対象へ腕を伸ばし、指が閉じたら対象の毛と一緒に引く
@@ -149,7 +180,7 @@ func _reach_scale(tip: Vector3, pinch_basis: Basis) -> float:
 	var ray: Vector3 = eye.direction_to(tip)
 	if ray.is_zero_approx():
 		return 1.0
-	var wrist_offset: Vector3 = pinch_basis * (WRIST - to_local(get_pinch_position()))
+	var wrist_offset: Vector3 = pinch_basis * (_wrist - to_local(get_pinch_position()))
 	var offset: Vector3 = eye + wrist_offset - _shoulder.global_position
 	var chord: float = sqrt(maxf(
 		0.0, BENT_REACH_M * BENT_REACH_M - offset.slide(ray).length_squared()
@@ -233,7 +264,7 @@ func _pose_arm() -> void:
 	var shoulder: Vector3 = to_local(
 		eye + (_shoulder.global_position - eye) * global_basis.x.length()
 	)
-	var span: Vector3 = WRIST - shoulder
+	var span: Vector3 = _wrist - shoulder
 	var distance: float = maxf(span.length(), 0.001)
 	var axis: Vector3 = span / distance
 	var along: float = clampf(
@@ -245,10 +276,10 @@ func _pose_arm() -> void:
 	var offset: float = sqrt(maxf(0.0, UPPER_ARM_M * UPPER_ARM_M - along * along))
 	elbow += bend.slide(axis).normalized() * offset
 	_fit_arm_section(_sleeve, shoulder, elbow)
-	var sleeve_end: Vector3 = elbow.lerp(WRIST, 0.48)
+	var sleeve_end: Vector3 = elbow.lerp(_wrist, 0.48)
 	_fit_arm_section(_lower_sleeve, elbow, sleeve_end)
 	_fit_arm_section(_cuff, elbow.lerp(sleeve_end, 0.80), sleeve_end)
-	_fit_arm_section(_forearm, sleeve_end, WRIST)
+	_fit_arm_section(_forearm, sleeve_end, _wrist)
 	_elbow.position = elbow
 
 
@@ -288,91 +319,128 @@ static func _set_arm_depth(material: StandardMaterial3D) -> void:
 	material.z_clip_scale = ARM_Z_CLIP_SCALE
 
 
-## 袖・前腕・手のひら・指を組み立てる (影は落とさない。カメラの近くで画面を暗くしないため)
+## 付け根の骨 root_bone を今の回転で回した時の、先の骨 tip_bone の先の位置 (骨の空間)
+func _turned_tip(root_bone: String, tip_bone: String) -> Vector3:
+	var head: Vector3 = _bone_head(root_bone)
+	return head + (_current_turns[root_bone] as Quaternion) * (_bone_tip(tip_bone) - head)
+
+
+## 腕のモデルを置き、左腕と右の上腕を隠し、手の向きと大きさを合わせ、閉じた時の指の姿勢を求め、袖と指先の目印を足す
+## (影は落とさない。カメラの近くで画面を暗くしないため)
 func _build() -> void:
 	position = REST_POSITION
 	rotation = REST_ROTATION
+	var model: Node3D = ARMS_SCENE.instantiate() as Node3D
+	model.name = "Arms"
+	add_child(model)
+	_skeleton = model.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
+	# 手のモデルの材質も袖と同じ描画深度にし、壁際で手首から先だけが壁に隠れないようにする
+	for mesh_node: Node in model.find_children("*", "MeshInstance3D", true, false):
+		var hand_mesh: MeshInstance3D = mesh_node as MeshInstance3D
+		hand_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for surface: int in range(hand_mesh.mesh.get_surface_count()):
+			var hand_material: StandardMaterial3D = (
+				hand_mesh.mesh.surface_get_material(surface).duplicate() as StandardMaterial3D
+			)
+			_set_arm_depth(hand_material)
+			hand_mesh.set_surface_override_material(surface, hand_material)
+	# 手の局所の向きを骨の空間で作る: 指先の向き (手首から指の付け根) を -Z、小指から人差し指の向きを -X にする
+	var index_root: Vector3 = _bone_head(INDEX_ROOT_BONE)
+	var pinky_root: Vector3 = _bone_head(PINKY_ROOT_BONE)
+	var knuckles: Vector3 = (index_root + pinky_root) * 0.5
+	var forward: Vector3 = (knuckles - _bone_head(WRIST_BONE)).normalized()
+	var to_index: Vector3 = (index_root - pinky_root)
+	var x_axis: Vector3 = -(to_index - forward * to_index.dot(forward)).normalized()
+	var z_axis: Vector3 = -forward
+	var hand_frame: Basis = Basis(x_axis, z_axis.cross(x_axis), z_axis)
+	var scale_factor: float = KNUCKLE_SPAN_M / to_index.length()
+	# 骨の空間の点 p は、手の局所で hand_frame^-1 * (p - knuckles) * scale_factor の位置に来るようにする
+	_skeleton_to_hand = Transform3D(
+		hand_frame.inverse().scaled(Vector3.ONE * scale_factor),
+		hand_frame.inverse() * (-knuckles) * scale_factor,
+	)
+	model.transform = (
+		_skeleton_to_hand
+		* FurnitureModels.transform_to_ancestor(_skeleton, model).affine_inverse()
+	)
+	_wrist = _skeleton_to_hand * _bone_head(WRIST_BONE)
+
 	var skin: StandardMaterial3D = StandardMaterial3D.new()
 	skin.albedo_color = SKIN_COLOR
 	skin.roughness = 0.8
-	var nail := StandardMaterial3D.new()
-	nail.albedo_color = Color(0.77, 0.54, 0.47)
-	nail.roughness = 0.55
 	var sleeve: StandardMaterial3D = StandardMaterial3D.new()
 	sleeve.albedo_color = SLEEVE_COLOR
 	sleeve.roughness = 0.9
-
 	var cuff: StandardMaterial3D = sleeve.duplicate()
 	cuff.albedo_color = SLEEVE_COLOR.lightened(0.13)
-	for material: StandardMaterial3D in [skin, nail, sleeve, cuff]:
+	for material: StandardMaterial3D in [skin, sleeve, cuff]:
 		_set_arm_depth(material)
 	_sleeve = _arm_section("Sleeve", 0.071, 0.053, sleeve)
 	_lower_sleeve = _arm_section("LowerSleeve", 0.053, 0.042, sleeve)
 	_cuff = _arm_section("Cuff", 0.045, 0.043, cuff)
 	_forearm = _arm_section("Forearm", 0.035, 0.027, skin)
 	_elbow = HumanParts.add_sphere(self, "Elbow", Vector3.ZERO, 0.053, Vector3.ONE, sleeve, false)
-	# 手のひらは平たく潰した球で、指の付け根の関節の並び (拳の山) を横に渡したカプセルで足す
-	HumanParts.add_sphere(
-		self, "Palm", Vector3(0.0, 0.0, 0.04), 0.5, Vector3(0.084, 0.042, 0.113), skin, false
-	)
-	HumanParts.add_limb(
-		self, "Knuckles", Vector3(-0.027, 0.002, 0.0), Vector3(0.026, 0.002, 0.0), 0.011, skin, false
-	)
-	# 親指の付け根のふくらみ
-	HumanParts.add_sphere(
-		self, "ThumbBase", Vector3(-0.026, -0.008, 0.045), 0.5, Vector3(0.032, 0.026, 0.05), skin, false
-	)
-	for finger_idx: int in range(FINGER_NAMES.size()):
-		var finger_root: Node3D = Node3D.new()
-		finger_root.name = FINGER_NAMES[finger_idx]
-		finger_root.position = Vector3(FINGER_BASE_X_M[finger_idx], 0.0, 0.0)
-		add_child(finger_root)
-		var tip: Node3D = _add_finger_segments(
-			finger_root, FINGER_SEGMENT_M[finger_idx], FINGER_RADIUS_M[finger_idx],
-			Vector3.LEFT, FINGER_CURL_RAD[finger_idx], skin, nail,
-		)
-		if finger_idx == 0:
-			_index_finger = finger_root
-			_index_tip = tip
-	_thumb = Node3D.new()
-	_thumb.name = "Thumb"
-	_thumb.position = Vector3(-0.026, 0.0, 0.022)
-	add_child(_thumb)
-	var thumb_aim: Node3D = Node3D.new()
-	thumb_aim.name = "Aim"
-	thumb_aim.rotation.x = -0.50
-	_thumb.add_child(thumb_aim)
-	# 親指は人差し指より太い (半径 1 cm 強)
-	_thumb_tip = _add_finger_segments(
-		thumb_aim, Vector3(0.04, 0.041, 0.042), 0.011, Vector3.UP,
-		Vector3(0.98, -0.93, -0.93), skin, nail
-	)
+	_index_tip = Node3D.new()
+	_index_tip.name = "IndexTip"
+	add_child(_index_tip)
+	_thumb_tip = Node3D.new()
+	_thumb_tip.name = "ThumbTip"
+	add_child(_thumb_tip)
+
+	_closed_turns = _solve_pinch()
+	_open_axes = {
+		INDEX_ROOT_BONE: (hand_frame * Vector3.RIGHT).normalized(),
+		THUMB_ROOT_BONE: (hand_frame * Vector3.UP).normalized(),
+	}
 
 
-## 付け根 root から局所の -Z へ、長さ segment_lengths の 3 節の指を足す。関節で指ごとの角度だけ曲げ、
-## 先の節ほど細くする
-static func _add_finger_segments(
-	root: Node3D, segment_lengths: Vector3, radius: float, bend_axis: Vector3,
-	joint_angles: Vector3, skin: Material, nail: Material
-) -> Node3D:
-	var joint: Node3D = root
-	for segment_idx: int in range(3):
-		var bent: Node3D = Node3D.new()
-		bent.name = "Joint%d" % segment_idx
-		bent.rotation = bend_axis * joint_angles[segment_idx]
-		joint.add_child(bent)
-		var length: float = segment_lengths[segment_idx]
-		# 先の節ほど 1 割ずつ細くし、指先がすぼまって見えるようにする
-		HumanParts.add_limb(
-			bent, "Segment", Vector3.ZERO, Vector3(0.0, 0.0, -length),
-			radius * (1.0 - 0.1 * float(segment_idx)), skin, false,
+## 親指と人差し指の付け根の骨を、それぞれ付け根の周りに回して、2 本の先が 1 点で触れる回転 (骨の空間) を返す。
+## 指の曲がり (付け根から先の骨の休みの姿勢) は変えず、指を丸ごと回す。2 本の先が付け根から届く距離の球が交わる円の上で、
+## 休みの姿勢の 2 本の先の中点に最も近い点を触れる点にする
+func _solve_pinch() -> Dictionary:
+	var thumb_base: Vector3 = _bone_head(THUMB_ROOT_BONE)
+	var index_base: Vector3 = _bone_head(INDEX_ROOT_BONE)
+	var thumb_tip: Vector3 = _bone_tip(THUMB_TIP_BONE)
+	var index_tip: Vector3 = _bone_tip(INDEX_TIP_BONE)
+	var thumb_reach: float = thumb_base.distance_to(thumb_tip)
+	var index_reach: float = index_base.distance_to(index_tip)
+	var axis: Vector3 = index_base - thumb_base
+	var base_distance: float = axis.length()
+	axis /= base_distance
+	var along: float = (
+		(thumb_reach * thumb_reach - index_reach * index_reach + base_distance * base_distance)
+		/ (2.0 * base_distance)
+	)
+	var middle: Vector3 = (thumb_tip + index_tip) * 0.5 - thumb_base
+	var contact: Vector3 = (
+		thumb_base
+		+ axis * along
+		+ (
+			(middle - axis * middle.dot(axis)).normalized()
+			* sqrt(maxf(0.0, thumb_reach * thumb_reach - along * along))
 		)
-		if segment_idx == 2:
-			HumanParts.add_sphere(bent, "Nail", Vector3(0.0, radius * 0.75, -length * 0.78),
-				0.5, Vector3(radius * 1.2, radius * 0.36, radius * 1.6), nail, false)
-		var tip: Node3D = Node3D.new()
-		tip.name = "End"
-		tip.position = Vector3(0.0, 0.0, -length)
-		bent.add_child(tip)
-		joint = tip
-	return joint
+	)
+	return {
+		THUMB_ROOT_BONE: Quaternion(
+			(thumb_tip - thumb_base).normalized(), (contact - thumb_base).normalized()
+		),
+		INDEX_ROOT_BONE: Quaternion(
+			(index_tip - index_base).normalized(), (contact - index_base).normalized()
+		),
+	}
+
+
+## 骨の付け根の位置 (骨の空間。休みの姿勢)
+func _bone_head(bone_name: String) -> Vector3:
+	return _skeleton.get_bone_global_rest(_skeleton.find_bone(bone_name)).origin
+
+
+## 骨の先の位置 (骨の空間。休みの姿勢)。glTF の骨は先の位置を持たないため、子の骨があればその付け根、
+## 無ければ親から自分への長さだけ骨の +Y へ伸ばした位置とする (Blender の骨は +Y が付け根から先の向き)
+func _bone_tip(bone_name: String) -> Vector3:
+	var bone: int = _skeleton.find_bone(bone_name)
+	var children: PackedInt32Array = _skeleton.get_bone_children(bone)
+	var rest: Transform3D = _skeleton.get_bone_global_rest(bone)
+	if not children.is_empty():
+		return _skeleton.get_bone_global_rest(children[0]).origin
+	return rest.origin + rest.basis.y.normalized() * _skeleton.get_bone_rest(bone).origin.length()

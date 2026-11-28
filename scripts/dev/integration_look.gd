@@ -3,9 +3,16 @@ extends RefCounted
 
 ## 開発者向け調整値データ型スクリプト (部屋の幅の既定値の単一の正)
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
+## 屋敷のどの部屋の床の範囲にも入らない位置。部屋は 1 辺が部屋の幅で最大 16 部屋 (MansionTuning.MAX_ROOM_COUNT)
+## 並ぶため、部屋の幅の 100 倍離せばどの部屋にも入らない
+const OUTSIDE_MANSION_POSITION: Vector3 = Vector3(
+	MansionTuningScript.DEFAULT_ROOM_SIZE_M * 100.0,
+	0.05,
+	MansionTuningScript.DEFAULT_ROOM_SIZE_M * 100.0,
+)
 
 
-## 見た目の試作が、歩いている間に最初の部屋の中にいる時だけ環境を切り替えることを検証する。
+## 見た目の試作が、歩いている間に屋敷のどこかの部屋の中にいる時だけ環境を切り替えることを検証する。
 ## 終わる時はプレイヤーを最初の位置へ戻し、試作を重ね直す (後に続く手で毛を取る操作の検証の前提をそろえるため)。
 ## checker は結果を記録してフレームを進める integration の SceneTree
 static func verify_look_prototype_room(checker: SceneTree, main: Node3D, game_state: Node) -> void:
@@ -33,10 +40,16 @@ static func verify_look_prototype_room(checker: SceneTree, main: Node3D, game_st
 	player.global_position = Vector3(0.0, 0.05, -MansionTuningScript.DEFAULT_ROOM_SIZE_M)
 	await checker.process_frame
 	checker._check(
+		look_room.is_prototype_active() and environment_node.environment == inside_environment,
+		"隣の部屋に移っても試作の環境 (家具の陰あり) のまま",
+	)
+	player.global_position = OUTSIDE_MANSION_POSITION
+	await checker.process_frame
+	checker._check(
 		not look_room.is_prototype_active()
 		and environment_node.environment != inside_environment
 		and not environment_node.environment.ssao_enabled,
-		"隣の部屋に移ると試作の環境が消え、環境が既定 (家具の陰なし) に戻る",
+		"屋敷のどの部屋からも出ると試作の環境が消え、環境が既定 (家具の陰なし) に戻る",
 	)
 
 	# 試作の見た目を出していない時に setup を呼ぶと、その時の環境を既定の環境として取り込み直す
@@ -46,7 +59,7 @@ static func verify_look_prototype_room(checker: SceneTree, main: Node3D, game_st
 	look_room.setup(player, environment_node)
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	await checker.process_frame
-	player.global_position = Vector3(0.0, 0.05, -MansionTuningScript.DEFAULT_ROOM_SIZE_M)
+	player.global_position = OUTSIDE_MANSION_POSITION
 	await checker.process_frame
 	checker._check(
 		environment_node.environment == replaced_environment,

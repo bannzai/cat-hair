@@ -27,6 +27,51 @@ static func aim_at_floor_hairs(tree: SceneTree, main: Node3D, radius: float, min
 	return await _aim(tree, main, MansionLayout.SURFACE_FLOOR, radius, min_hairs, false)
 
 
+## 番号が surface_indices の表面 (家具の座面・スーツの前面・ニットの掛け布等) の毛を順に試し、その毛から水平に
+## 4 方向 (面が縦なら面の外向きを先に) のどれかへ STAND_DISTANCE_M 離れた所に立たせて目線を向ける。画面中央の狙いが
+## その毛の表面に当たり、その毛をつまめる時、その毛の ID を返す。見つからなければ -1
+static func aim_at_surface_hair(tree: SceneTree, main: Node3D, surface_indices: Array[int]) -> int:
+	var world: MansionWorld = main.get_node("MansionWorld")
+	var player: FirstPersonPlayer = main.get_node("Player")
+	var hand: HandController = main.hand
+	var hair_field: Node3D = world.get_hair_field()
+	var tried: int = 0
+	for surface_idx: int in surface_indices:
+		var surface: MansionLayout.SurfaceDef = world.get_surface_def(surface_idx)
+		if surface == null:
+			continue
+		var outward: Vector3 = Vector3(surface.basis.y.x, 0.0, surface.basis.y.z)
+		var directions: Array[Vector3] = [Vector3.RIGHT, Vector3.BACK, Vector3.LEFT, Vector3.FORWARD]
+		# 面の法線の水平成分が 0.5 (水平から 30 度より立った面) を超えたら縦の面として外向きから先に試す。
+		# 床・座面・天面 (水平成分 0) とスーツの前面 (1) を分ける中ほどの値
+		if outward.length() > 0.5:
+			directions.push_front(outward.normalized())
+		for slot: int in range(hair_field.get_surface_visible_instance_count(surface_idx)):
+			if tried >= MAX_CANDIDATES:
+				return -1
+			tried += 1
+			var hair_id: int = hair_field.get_hair_id_at_slot(surface_idx, slot)
+			var root: Vector3 = hair_field.get_hair_transform(hair_id).origin
+			for direction: Vector3 in directions:
+				# 立つ位置の足元は床の高さ (面の高さではない)
+				player.set_spawn(
+					Vector3(root.x, 0.0, root.z) + direction * STAND_DISTANCE_M, 0.0
+				)
+				await tree.physics_frame
+				await tree.physics_frame
+				player.look_at_point(root)
+				await tree.physics_frame
+				var target: Dictionary = hand.aim_target()
+				if target.is_empty() or int(target["surface_index"]) != surface_idx:
+					continue
+				var near: PackedInt32Array = hair_field.find_hairs_near(
+					surface_idx, target["point"], HandController.GRAB_RADIUS_M, 1
+				)
+				if near.size() == 1 and near[0] == hair_id:
+					return hair_id
+	return -1
+
+
 ## 最初の部屋の指定面で実際につまめる毛を照準に入れ、その ID を返す。床では最も急な見下ろし角に近づける
 static func aim_at_first_room_hair(tree: SceneTree, main: Node3D, surface_type: StringName) -> int:
 	return await _aim(tree, main, surface_type, HandController.GRAB_RADIUS_M, 0, true)

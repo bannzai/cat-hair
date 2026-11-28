@@ -502,10 +502,8 @@ func _check_object_surface_faces() -> void:
 	_check(
 		(table["center"] as Vector3).is_equal_approx(Vector3(0.0, 0.75, 0.0))
 		and (table["size"] as Vector2).is_equal_approx(Vector2(1.2, 0.8))
-		and is_equal_approx(
-			(sideboard["center"] as Vector3).y, 0.9 + MansionBuilderScript.SIDEBOARD_TOP_TRIM_HEIGHT_M
-		),
-		"テーブルの面は天板の上面全体、サイドボードは装飾縁の上面",
+		and is_equal_approx((sideboard["center"] as Vector3).y, 0.9),
+		"テーブルの面は天板の上面全体、サイドボードは天板の上面 (モデルの上端)",
 	)
 
 	var layout: MansionLayout = MansionBuilderScript.build_layout(null)

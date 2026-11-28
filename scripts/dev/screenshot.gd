@@ -58,6 +58,9 @@ const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 const TEST_SAVE_PATH: String = "user://screenshot_save_data.json"
 ## 部屋に入った直後と自動化の絵で見下ろす角度 (rad)。床と家具の上の毛が画面の下半分を占める角度
 const LOOK_OVERVIEW_PITCH: float = -0.45
+## 2 部屋目以降を撮る時に、部屋の中心から立つ位置までの水平距離 (部屋の幅に対する比率)。部屋の端の近くに立ち、
+## 部屋の家具の大半が画面に入る距離
+const ROOM_VIEW_DISTANCE_RATIO: float = 0.4
 
 
 ## tree の準備が終わってから _run() を始める (シーンの追加は _initialize() の後でないとできない)
@@ -140,7 +143,7 @@ func _capture_look_prototype(main: Node3D, game_state: Node) -> bool:
 	player.set_spawn(layout.spawn_position, layout.spawn_yaw)
 	await physics_frame
 	set_pitch(player, LOOK_OVERVIEW_PITCH)
-	if not await _capture("tmp/screenshot-look-enter.png"):
+	if not await _capture("tmp/screenshot-look-enter.png") or not await _capture_other_rooms(main):
 		return false
 
 	# 手で毛を取る操作 (#9) の本物の引きで、試作の部屋の床の毛を引いている途中を撮る
@@ -166,6 +169,31 @@ func _capture_look_prototype(main: Node3D, game_state: Node) -> bool:
 		push_error("look prototype FAIL: 掃除ロボットの帯で毛が 1 本も消えていない")
 		return false
 	return await _capture("tmp/screenshot-look-automation.png")
+
+
+## 2 部屋目以降を、部屋の端から中心を見下ろして tmp/screenshot-look-room-<番号>.png に撮る (見た目を全部の部屋に
+## 重ねたことを確かめる)。部屋の中で見た目の環境が切り替わらない時と、保存できない時は false
+func _capture_other_rooms(main: Node3D) -> bool:
+	var layout: MansionLayout = main.get_game_state().current_layout
+	var player: FirstPersonPlayer = main.get_node("Player")
+	for room_index: int in range(1, layout.rooms.size()):
+		var room: MansionLayout.RoomDef = layout.rooms[room_index]
+		player.set_spawn(
+			ViewPointScript.clear_spot(
+				layout, room, room.center, room.size.x * ROOM_VIEW_DISTANCE_RATIO, Vector3.BACK
+			),
+			0.0,
+		)
+		await physics_frame
+		player.look_at_point(room.center)
+		set_pitch(player, LOOK_OVERVIEW_PITCH)
+		await process_frame
+		if not main.look_room.is_prototype_active():
+			push_error("look FAIL: %d 部屋目の中で見た目の環境が切り替わらない" % (room_index + 1))
+			return false
+		if not await _capture("tmp/screenshot-look-room-%d.png" % (room_index + 1)):
+			return false
+	return true
 
 
 ## プレイヤーの見下ろす角度を pitch (rad) にする

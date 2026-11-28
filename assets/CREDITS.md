@@ -58,6 +58,68 @@
 - ライセンス: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)。クレジット表記は不要
 - 改変: `kenney_interfaceSounds.zip` から取り出し、ファイル名変更のみ
 
+## 3D モデル
+
+屋敷に置く物の種別とモデルの対応は `scripts/mansion/furniture_models.gd` を正とする。Poly Haven の素材の利用条件は https://polyhaven.com/license (CC0 1.0)。
+
+- ファイル: `models/Sofa_01/` (`Sofa_01_1k.gltf`・`Sofa_01.bin`・`textures/`)
+- 素材名・作者: Sofa 01 / Kirill Sannikov (Poly Haven)
+- 入手 URL: https://polyhaven.com/a/Sofa_01 (glTF の 1k の版を `https://api.polyhaven.com/files/Sofa_01` の URL から取得)
+- ライセンス: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)。クレジット表記は不要
+- 改変: なし (ゲームが物の大きさに合わせて伸縮して置く)
+
+- ファイル: `models/wooden_table_02/`
+- 素材名・作者: Wooden Table 02 / Serhii Khromov (Poly Haven)
+- 入手 URL: https://polyhaven.com/a/wooden_table_02 (glTF の 1k の版)
+- ライセンス: CC0 1.0。クレジット表記は不要
+- 改変: なし
+
+- ファイル: `models/ClassicConsole_01/`
+- 素材名・作者: Classic Console 01 / Kirill Sannikov (Poly Haven)
+- 入手 URL: https://polyhaven.com/a/ClassicConsole_01 (glTF の 1k の版)
+- ライセンス: CC0 1.0。クレジット表記は不要
+- 改変: なし (サイドボードとして置く)
+
+- ファイル: `models/GreenChair_01/`
+- 素材名・作者: Green Chair 01 / Kirill Sannikov (Poly Haven)
+- 入手 URL: https://polyhaven.com/a/GreenChair_01 (glTF の 1k の版)
+- ライセンス: CC0 1.0。クレジット表記は不要
+- 改変: なし (ニットを掛ける椅子として置く。ニットの掛け布はゲームが基本の形で足す)
+
+- ファイル: `models/first_person_arms.glb`
+- 素材名・作者: fps arms (rigged only) / para (OpenGameArt)。作者の記載では MakeHuman の出力を元にしている
+- 入手 URL: https://opengameart.org/content/fps-arms-rigged-only (`fps arms.7z` の `FPS ARMS RIG 1.fbx` と `new_diff.png`)
+- ライセンス: CC0 1.0 (配布ページの License(s) 欄)。クレジット表記は不要
+- 改変: Blender で FBX を読み、肌のテクスチャを貼り、右手の骨に結び付いた頂点だけを残して glb に書き出した (`scripts/assets/convert_models.py`。`.github/workflows/convert-models.yml` が GitHub Actions で実行する)
+
+- ファイル: `models/buyer.glb`
+- 素材名・作者: NPC male Steve / supersteve (OpenGameArt)
+- 入手 URL: https://opengameart.org/content/npc-male-steve (`steve_npc1.zip` の `steve_npc1.blend` と服・腕・靴のテクスチャ)
+- ライセンス: CC0 1.0 (配布ページの License(s) 欄)。クレジット表記は不要
+- 改変: 立って待つ動き (idol) の最初の形でメッシュを固めて骨を外し、顔・頭・耳・口・目の写真のテクスチャを単色に差し替えて glb に書き出した (`scripts/assets/convert_models.py`)。同梱の写真には実在の人の顔が写っているため、Steam で売る物に出さないよう差し替えた (issue #15)
+
+## 布の素材 (テクスチャ)
+
+どの物に貼るかは `scripts/look/look_prototype_room.gd` を正とする。
+
+- ファイル: `textures/dirty_carpet/` (`dirty_carpet_diff_1k.jpg`・`dirty_carpet_nor_gl_1k.jpg`)
+- 素材名・作者: Dirty Carpet / Rohit Seervi (Poly Haven)
+- 入手 URL: https://polyhaven.com/a/dirty_carpet (色 (Diffuse) と OpenGL の向きの法線 (nor_gl) の 1k の jpg)
+- ライセンス: CC0 1.0。クレジット表記は不要
+- 改変: なし (ゲームが色を掛けて臙脂に寄せる)
+
+- ファイル: `textures/knitted_fleece/`
+- 素材名・作者: Knitted Fleece / colormass・Rico Cilliers (Poly Haven)
+- 入手 URL: https://polyhaven.com/a/knitted_fleece (1k の jpg)
+- ライセンス: CC0 1.0。クレジット表記は不要
+- 改変: なし
+
+- ファイル: `textures/poly_wool_herringbone/`
+- 素材名・作者: Poly Wool Herringbone / colormass・Rico Cilliers (Poly Haven)
+- 入手 URL: https://polyhaven.com/a/poly_wool_herringbone (1k の jpg)
+- ライセンス: CC0 1.0。クレジット表記は不要
+- 改変: なし
+
 ## 床の毛
 
 `textures/floor_fur.png` は本作のために Python と Pillow で描いた画像。色と曲がり方が異なる短い毛を重ね、端をまたぐ毛は反対側にも描いている。

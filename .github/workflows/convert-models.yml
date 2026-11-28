@@ -1,0 +1,68 @@
+name: Convert models
+
+# OpenGameArt の CC0 の模型 (FBX・.blend) を、Godot が Blender 無しで読める glb に書き出す。
+# 開発マシンでは 3D のアプリを起動しないため (AGENTS.md「検証方法」)、ランナーの Blender で変換し、artifact から
+# assets/models/ に取り出して commit する。変換の手順を変えた時だけ動けばよいため、スクリプトの変更と手動の起動で動かす
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - scripts/assets/convert_models.py
+      - .github/workflows/convert-models.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 既定の shell (bash -e) は pipefail を付けず、blender ... | tee の失敗が tee の成功に隠れるため、pipefail 付きにする
+# (GitHub Actions の workflow syntax の defaults.run.shell の表。明示した shell: bash は bash -eo pipefail で動く)
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  convert:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Install Blender and archivers
+        run: |
+          sudo apt-get update
+          # apt の Blender は Ubuntu の Python で動き、FBX の読み込みと glTF の書き出しが numpy を要る
+          # (numpy を入れなかった run 45944980744 は「ModuleNotFoundError: No module named 'numpy'」で glb を書き出せなかった)
+          sudo apt-get install -y blender python3-numpy p7zip-full unzip
+      - name: Download sources
+        run: |
+          mkdir -p tmp/sources/arms tmp/sources/buyer tmp/models
+          curl -fsSL -o tmp/sources/arms.7z "https://opengameart.org/sites/default/files/fps%20arms.7z"
+          curl -fsSL -o tmp/sources/buyer.zip "https://opengameart.org/sites/default/files/steve_npc1.zip"
+          # 配布物が差し替わると出力の glb が黙って変わるため、commit した glb を作った時の配布物の sha256 で照合する
+          # (2026-11-27 に取得した物の値)
+          printf '%s  %s\n' \
+            31f6c7bd5caea8856c4aafca8461f38a3c8bfdd3d8f05c898e403b9475e54562 tmp/sources/arms.7z \
+            e892fe37336c74c0753d5c770686a0f4d32d2c096be2fe84ba7f4c3c2a9712d5 tmp/sources/buyer.zip \
+            | sha256sum -c -
+          7z x -otmp/sources/arms tmp/sources/arms.7z
+          unzip -o tmp/sources/buyer.zip -d tmp/sources/buyer
+          ls -la tmp/sources/arms tmp/sources/buyer
+      # --python-exit-code 1: -P のスクリプトで例外が出た時に Blender を exit 1 で終わらせる (既定の 0 は例外でも exit 0。
+      # https://docs.blender.org/manual/en/4.5/advanced/command_line/arguments.html )
+      - name: Convert arms
+        run: |
+          blender -b --factory-startup --python-exit-code 1 -P scripts/assets/convert_models.py -- \
+            arms tmp/models/first_person_arms.glb "tmp/sources/arms/FPS ARMS RIG 1.fbx" tmp/sources/arms/new_diff.png \
+            | tee tmp/models/arms.log
+          test -s tmp/models/first_person_arms.glb
+      - name: Convert buyer
+        run: |
+          blender -b --disable-autoexec --python-exit-code 1 tmp/sources/buyer/steve_npc1.blend \
+            -P scripts/assets/convert_models.py -- buyer tmp/models/buyer.glb tmp/sources/buyer \
+            | tee tmp/models/buyer.log
+          test -s tmp/models/buyer.glb
+      - name: Upload models
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cat-hair-converted-models
+          path: tmp/models/

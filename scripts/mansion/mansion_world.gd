@@ -10,8 +10,11 @@ const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd"
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 ## 毛を 1 本ずつ持って描くノードのスクリプト
 const HairFieldScript := preload("res://scripts/hair_field.gd")
-## 人の体の部品を作る関数 (買取業者の体)
-const HumanParts := preload("res://scripts/human/human_parts.gd")
+## 物の種別ごとの既製の 3D モデルと、物の箱に合わせて置く関数
+const FurnitureModels := preload("res://scripts/mansion/furniture_models.gd")
+## 買取業者の体の既製の 3D モデル (OpenGameArt の CC0 の人の模型。顔の写真を単色にして書き出したもの。
+## 変換は scripts/assets/convert_models.py、出典は assets/CREDITS.md)。glTF の +Z に顔を向けて立つ
+const TRADER_SCENE: PackedScene = preload("res://assets/models/buyer.glb")
 
 ## 上に物が重なり得る、床の高さの表面の種類 (物の真下に毛を置かない)
 const FLOOR_LIKE_SURFACE_TYPES: Array[StringName] = [
@@ -49,16 +52,18 @@ const BASEBOARD_DEPTH_EXTRA_M: float = 0.03
 const DOOR_FRAME_WIDTH_M: float = 0.08
 ## ドア枠を壁面からわずかに張り出して Z-fighting を防ぐ厚み加算 (m)
 const DOOR_FRAME_DEPTH_EXTRA_M: float = 0.04
-## テーブル天板の厚み (m。木製テーブルとして自然な強度に見える厚み)
+## テーブル天板の衝突体の厚み (m。木製テーブルとして自然な強度に見える厚み。モデルの天板の上面と衝突体の上面をそろえ、
+## 天板の下からは毛を遮らない)
 const TABLE_TOP_THICKNESS_M: float = 0.08
-## テーブル脚が極端に短い高さで潰れないための最小脚高さ (m)
-const TABLE_MIN_LEG_HEIGHT_M: float = 0.1
-## テーブル四隅の脚を天板端からわずかに内側へ寄せる X 方向配置比率 (幅の半分 0.5 より内側)
-const TABLE_LEG_OFFSET_X_RATIO: float = 0.42
-## テーブル四隅の脚を天板端からわずかに内側へ寄せる Z 方向配置比率 (奥行の半分 0.5 より内側)
-const TABLE_LEG_OFFSET_Z_RATIO: float = 0.40
-## テーブル脚の断面一辺の幅 (m。天板を支える見た目として細すぎずかさばらない一般的な木製脚幅)
-const TABLE_LEG_WIDTH_M: float = 0.07
+## 椅子に掛けたニットの、座面の前の縁から下へ垂らす長さ (物の高さに対する比率)。座面の高さ (KNIT_THROW の下端) の
+## 半分ほど垂らし、掛け布が座面に乗っているだけの板に見えないようにする
+const KNIT_DRAPE_LENGTH_RATIO: float = 0.2
+## スーツのラックの柱の太さ (m)。家庭用の金属のハンガーラックの柱 (径 2.5〜3 cm) の見当
+const SUIT_RACK_POLE_WIDTH_M: float = 0.03
+## スーツのラックの台の高さ (m)。床に置く金属の台の板の厚みの見当
+const SUIT_RACK_BASE_HEIGHT_M: float = 0.04
+## スーツの上着の袖の太さ (m)。大人の上着の袖口の幅 (13〜15 cm) より少し細い見当で、上着の前身頃の幅に比べて袖と分かる太さ
+const SUIT_SLEEVE_WIDTH_M: float = 0.11
 ## 買取業者の札の字 (Label3D は UI の theme のフォントを引かないため、日本語の字形を持つフォントを渡す)
 const SIGN_FONT: Font = preload("res://assets/fonts/NotoSansJP[wght].ttf")
 ## 買取業者を立たせる所の、最初の部屋の西の壁からの距離 (m)
@@ -66,8 +71,8 @@ const TRADER_WEST_OFFSET_M: float = 0.8
 ## 買取業者を立たせる所の、最初の部屋の南の壁 (屋敷の外に面した裏口の側) からの距離 (m)。
 ## 床の毛を置かない壁際の帯 (MansionBuilder.FLOOR_HAIR_INSET_M の半分) に収め、真下の毛が取れなくならないようにする
 const TRADER_SOUTH_OFFSET_M: float = 0.22
-## 買取業者の背の高さ (m。帽子を除く頭の上まで)。人の背の高さの見当で、札がプレイヤーの目線より少し上に来る高さ。
-## _build_trader_body の各部の位置と大きさは、この背の高さの大人の体の釣り合いで置いた値
+## 買取業者の背の高さ (m。頭の上まで)。人の背の高さの見当で、札がプレイヤーの目線より少し上に来る高さ。
+## 買取業者のモデルは、全身の範囲の高さがこの値になるよう縦横の釣り合いを保って縮める
 const TRADER_HEIGHT_M: float = 1.6
 
 ## 屋敷全体で 1 本ずつ描く毛の本数の上限 (HairField.draw_budget に渡す。rebuild の前に変えると次の作り直しから効く。
@@ -102,10 +107,6 @@ var _material_lamp: StandardMaterial3D = null
 var _material_carpet: StandardMaterial3D = null
 ## カーペット縁取り用マテリアル (金色系)
 var _material_carpet_trim: StandardMaterial3D = null
-## ソファ布地用マテリアル (深緑系)
-var _material_sofa: StandardMaterial3D = null
-## 木製家具用マテリアル (テーブル・椅子・キャビネット)
-var _material_wood: StandardMaterial3D = null
 ## 住人のスーツ用マテリアル (黒地で白い毛が見えやすい色)
 var _material_suit: StandardMaterial3D = null
 ## ハンガーラック支柱用マテリアル (金属調)
@@ -186,92 +187,18 @@ func _build_trader(layout: MansionLayout) -> void:
 	_trader.add_child(sign_label)
 
 
-## 買取業者の体 (靴・脚・腰・胴・腕・手・首・頭・顔・髪・帽子) を、足元を原点に、顔を部屋の中 (北。局所の -Z) へ
-## 向けて trader の子に組み立てる。札と同じ向きにし、部屋の中から近づくプレイヤーに正面が見えるようにする
+## 買取業者の体 (TRADER_SCENE のモデル) を、足元の中心を原点に、背の高さを TRADER_HEIGHT_M にし、顔を部屋の中
+## (北。局所の -Z) へ向けて trader の子に置く。札と同じ向きにし、部屋の中から近づくプレイヤーに正面が見えるようにする
 func _build_trader_body(trader: Node3D) -> void:
 	var body: Node3D = Node3D.new()
 	body.name = "Body"
 	trader.add_child(body)
-	# 作業着の焦げ茶で、明るい壁紙と床の前で人の形が見分けられ、光沢の無い布に見える粗さ
-	var jacket_material: StandardMaterial3D = _make_material(Color(0.32, 0.27, 0.2), 0.8)
-	# ズボンは作業着より暗い灰色で、上着との境 (腰) が見分けられる
-	var trousers_material: StandardMaterial3D = _make_material(Color(0.18, 0.18, 0.2), 0.85)
-	# 靴はほぼ黒の革で、ズボンより暗く足元の形が見分けられ、少し艶のある粗さ
-	var shoes_material: StandardMaterial3D = _make_material(Color(0.07, 0.06, 0.06), 0.5)
-	# 肌は画面の手 (scripts/player/hand_view.gd の SKIN_COLOR) より少し日焼けした色で、焦げ茶の作業着の上で顔と手が浮いて見える
-	var skin_material: StandardMaterial3D = _make_material(Color(0.86, 0.68, 0.55), 0.75)
-	# 目は黒に近い色で、肌の上の小さな点として正面から見える。濡れて見えるよう少し艶を残す粗さ
-	var eyes_material: StandardMaterial3D = _make_material(Color(0.05, 0.04, 0.04), 0.4)
-	# 帽子は作業着と同じ系統の、一段暗い色
-	var cap_material: StandardMaterial3D = _make_material(Color(0.22, 0.18, 0.13), 0.85)
-	# 肩の高さ (m)。背の高さ 1.6 m の大人の肩の見当で、上腕の付け根と、左右の肩を渡す部品で同じ高さにそろえる
-	var shoulder_y: float = 1.3
-	for side: float in [-1.0, 1.0]:
-		var side_name: String = "Left" if side < 0.0 else "Right"
-		# 肘の位置。上腕の終点と前腕の始点を同じ点にして、関節が離れないようにする
-		var elbow: Vector3 = Vector3(0.23 * side, 1.02, 0.01)
-		HumanParts.add_box(
-			body, side_name + "Shoe", Vector3(0.09 * side, 0.035, -0.03), Vector3(0.1, 0.07, 0.25),
-			shoes_material, true,
-		)
-		HumanParts.add_limb(
-			body, side_name + "Leg", Vector3(0.09 * side, 0.1, 0.0), Vector3(0.095 * side, 0.84, 0.0), 0.065,
-			trousers_material, true,
-		)
-		# 腕は肩から少し外へ開いて下ろし、肘から先をわずかに前へ出す
-		HumanParts.add_limb(
-			body, side_name + "UpperArm", Vector3(0.2 * side, shoulder_y, 0.0), elbow, 0.048,
-			jacket_material, true,
-		)
-		HumanParts.add_limb(
-			body, side_name + "Forearm", elbow, Vector3(0.22 * side, 0.78, -0.03), 0.042,
-			jacket_material, true,
-		)
-		HumanParts.add_sphere(
-			body, side_name + "Hand", Vector3(0.22 * side, 0.72, -0.035), 0.5,
-			Vector3(0.05, 0.1, 0.08), skin_material, true,
-		)
-		HumanParts.add_sphere(
-			body, side_name + "Eye", Vector3(0.035 * side, 1.51, -0.086), 0.012, Vector3.ONE,
-			eyes_material, false,
-		)
-		HumanParts.add_sphere(
-			body, side_name + "Ear", Vector3(0.086 * side, 1.49, 0.0), 0.5,
-			Vector3(0.02, 0.05, 0.035), skin_material, false,
-		)
-	# 半径 0.5 の球を伸ばす部品は、倍率がそのまま幅・高さ・奥行 (m) になる
-	HumanParts.add_sphere(
-		body, "Hips", Vector3(0.0, 0.87, 0.0), 0.5, Vector3(0.32, 0.18, 0.2), trousers_material, true
-	)
-	HumanParts.add_sphere(
-		body, "Torso", Vector3(0.0, 1.1, 0.0), 0.5, Vector3(0.38, 0.52, 0.23), jacket_material, true
-	)
-	HumanParts.add_limb(
-		body, "Shoulders", Vector3(-0.17, shoulder_y, 0.0), Vector3(0.17, shoulder_y, 0.0), 0.062,
-		jacket_material, true,
-	)
-	HumanParts.add_limb(
-		body, "Neck", Vector3(0.0, 1.32, 0.0), Vector3(0.0, 1.41, 0.0), 0.045, skin_material, true
-	)
-	HumanParts.add_sphere(
-		body, "Head", Vector3(0.0, 1.49, 0.0), 0.5, Vector3(0.17, 0.22, 0.19), skin_material, true
-	)
-	HumanParts.add_sphere(
-		body, "Nose", Vector3(0.0, 1.475, -0.093), 0.5, Vector3(0.028, 0.04, 0.03), skin_material, false
-	)
-	# 髪は頭の後ろ寄りに重ね、正面からは額の上と耳の後ろだけに見せる
-	HumanParts.add_sphere(
-		body, "Hair", Vector3(0.0, 1.5, 0.035), 0.5, Vector3(0.17, 0.19, 0.16),
-		# 髪は黒に近い焦げ茶で、肌と帽子の間で境が見え、艶の無い粗さ
-		_make_material(Color(0.12, 0.09, 0.07), 0.9), true,
-	)
-	# 作業帽は頭の上半分にかぶせ、つばを顔の側 (-Z) へ出す
-	HumanParts.add_sphere(
-		body, "Cap", Vector3(0.0, 1.555, 0.005), 0.5, Vector3(0.18, 0.1, 0.2), cap_material, true
-	)
-	HumanParts.add_box(
-		body, "CapBrim", Vector3(0.0, 1.56, -0.115), Vector3(0.15, 0.012, 0.08), cap_material, true
-	)
+	var model: Node3D = TRADER_SCENE.instantiate() as Node3D
+	var bounds: AABB = FurnitureModels.merged_mesh_aabb(model)
+	model.position = -FurnitureModels.bottom_center(bounds)
+	body.add_child(model)
+	# モデルは glTF の +Z に顔を向けるため、Y 軸で半回転して局所の -Z へ向ける
+	body.basis = Basis(Vector3.UP, PI).scaled(Vector3.ONE * (TRADER_HEIGHT_M / bounds.size.y))
 
 
 ## 構築済みの部屋ノード数を返す
@@ -337,8 +264,6 @@ func _init_materials() -> void:
 
 	_material_carpet = _make_material(Color(0.56, 0.16, 0.18), 0.95)
 	_material_carpet_trim = _make_material(Color(0.76, 0.62, 0.30), 0.85)
-	_material_sofa = _make_material(Color(0.20, 0.32, 0.34), 0.92)
-	_material_wood = _make_material(Color(0.38, 0.24, 0.14), 0.58)
 	_material_suit = _make_material(Color(0.11, 0.12, 0.15), 0.88)
 	_material_metal = _make_material(Color(0.62, 0.64, 0.68), 0.35)
 	_material_knit = _make_material(Color(0.76, 0.56, 0.28), 0.96)
@@ -540,7 +465,9 @@ func _build_wall(
 	)
 
 
-## 家具・布 1 つ分の 3D ノードを種別に応じた基本形状で生成する
+## 家具・布 1 つ分の 3D ノードを生成する。ソファ・テーブル・サイドボード・椅子は既製のモデル (FurnitureModels) を物の箱に
+## 合わせて置き、衝突体だけを毛の面の高さにそろえた直方体で足す。モデルの無いカーペット・スーツのラック・椅子に掛けた
+## ニットは、基本の形に写実の素材 (LookPrototypeRoom が貼る) で描く
 func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 	var object_root: Node3D = Node3D.new()
 	object_root.name = String(obj.object_id)
@@ -551,6 +478,8 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 	var object_width: float = obj.size.x
 	var object_height: float = obj.size.y
 	var object_depth: float = obj.size.z
+	if FurnitureModels.has_model(obj.object_kind):
+		object_root.add_child(FurnitureModels.instantiate_fitted(obj.object_kind, obj.size))
 
 	if obj.object_kind == MansionLayoutScript.OBJECT_CARPET:
 		_add_static_box(
@@ -570,62 +499,23 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 			false,
 		)
 	elif obj.object_kind == MansionLayoutScript.OBJECT_SOFA:
+		# 座面より上を手前から見通せるよう、衝突体は座面 (毛の面) の高さまでの台と、背もたれの前端より後ろの板にする
 		var seat_height: float = object_height * MansionBuilderScript.SOFA_SEAT_HEIGHT_RATIO
-		_add_static_box(
+		_add_collision_box(
 			object_root,
 			"Seat",
 			Vector3(0.0, seat_height * 0.5, 0.0),
 			Vector3(object_width, seat_height, object_depth),
-			_material_sofa,
-			true,
 		)
-		_add_static_box(
+		_add_collision_box(
 			object_root,
 			"Backrest",
 			Vector3(
-				0.0,
-				object_height * 0.68,
-				object_depth * MansionBuilderScript.SOFA_BACKREST_OFFSET_RATIO,
+				0.0, object_height * 0.5, object_depth * MansionBuilderScript.SOFA_BACKREST_OFFSET_RATIO
 			),
 			Vector3(
-				object_width,
-				object_height * 0.64,
-				object_depth * MansionBuilderScript.SOFA_BACKREST_DEPTH_RATIO,
+				object_width, object_height, object_depth * MansionBuilderScript.SOFA_BACKREST_DEPTH_RATIO
 			),
-			_material_sofa,
-			true,
-		)
-		_add_static_box(
-			object_root,
-			"ArmLeft",
-			Vector3(
-				-object_width * MansionBuilderScript.SOFA_ARM_OFFSET_RATIO,
-				object_height * 0.48,
-				0.0,
-			),
-			Vector3(
-				object_width * MansionBuilderScript.SOFA_ARM_WIDTH_RATIO,
-				object_height * 0.48,
-				object_depth,
-			),
-			_material_sofa,
-			false,
-		)
-		_add_static_box(
-			object_root,
-			"ArmRight",
-			Vector3(
-				object_width * MansionBuilderScript.SOFA_ARM_OFFSET_RATIO,
-				object_height * 0.48,
-				0.0,
-			),
-			Vector3(
-				object_width * MansionBuilderScript.SOFA_ARM_WIDTH_RATIO,
-				object_height * 0.48,
-				object_depth,
-			),
-			_material_sofa,
-			false,
 		)
 	elif obj.object_kind == MansionLayoutScript.OBJECT_SUIT_RACK:
 		if obj.wall_mounted:
@@ -641,11 +531,12 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 				false,
 			)
 		else:
+			# 台の奥行は物の奥行の 6 割 (上着の奥行 5.5 割より少し広く、上着が台からはみ出さずに立って見える)
 			_add_static_box(
 				object_root,
 				"Base",
-				Vector3(0.0, 0.03, 0.0),
-				Vector3(object_width, 0.06, object_depth),
+				Vector3(0.0, SUIT_RACK_BASE_HEIGHT_M * 0.5, 0.0),
+				Vector3(object_width, SUIT_RACK_BASE_HEIGHT_M, object_depth * 0.6),
 				_material_metal,
 				true,
 			)
@@ -653,7 +544,7 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 				object_root,
 				"Pole",
 				Vector3(0.0, object_height * 0.5, 0.0),
-				Vector3(0.06, object_height, 0.06),
+				Vector3(SUIT_RACK_POLE_WIDTH_M, object_height, SUIT_RACK_POLE_WIDTH_M),
 				_material_metal,
 				true,
 			)
@@ -673,75 +564,96 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 			_material_suit,
 			false,
 		)
-	elif obj.object_kind == MansionLayoutScript.OBJECT_KNIT_CHAIR:
+		# 上着を掛けるハンガーの横棒と、上着の左右に垂れる袖。袖は前身頃 (毛の面) の左右の外に置き、前の毛を遮らない。
+		# 横棒は肩 (高さの 0.88) の少し上の 0.95 に、物の幅の 95% で置き、柱の上端から左右に張り出して見える長さにする。
+		# 袖は上着の高さの 1.1 倍の長さで、中心を上着より高さの 5% 上げる (肩から垂れて上着の裾より少し下まで届く)。
+		# 袖の奥行は上着の奥行の 7 割 (前身頃の面より奥に収め、前から見て前身頃の毛に被らない)
+		var jacket_size: Vector3 = MansionBuilderScript.SUIT_JACKET_SIZE_RATIO * obj.size
 		_add_static_box(
 			object_root,
-			"ChairSeat",
-			Vector3(0.0, object_height * 0.30, 0.0),
-			Vector3(object_width, object_height * 0.60, object_depth),
-			_material_wood,
-			true,
+			"Hanger",
+			Vector3(0.0, object_height * 0.95, 0.0),
+			Vector3(object_width * 0.95, SUIT_RACK_POLE_WIDTH_M, SUIT_RACK_POLE_WIDTH_M),
+			_material_metal,
+			false,
 		)
-		_add_static_box(
+		for side: float in [-1.0, 1.0]:
+			_add_static_box(
+				object_root,
+				"SleeveLeft" if side < 0.0 else "SleeveRight",
+				Vector3(
+					side * (jacket_size.x * 0.5 + SUIT_SLEEVE_WIDTH_M * 0.5),
+					MansionBuilderScript.SUIT_JACKET_CENTER_RATIO.y * object_height
+					+ jacket_size.y * 0.05,
+					0.0,
+				),
+				Vector3(SUIT_SLEEVE_WIDTH_M, jacket_size.y * 1.1, jacket_size.z * 0.7),
+				_material_suit,
+				false,
+			)
+	elif obj.object_kind == MansionLayoutScript.OBJECT_KNIT_CHAIR:
+		var throw_center: Vector3 = MansionBuilderScript.KNIT_THROW_CENTER_RATIO * obj.size
+		var throw_size: Vector3 = MansionBuilderScript.KNIT_THROW_SIZE_RATIO * obj.size
+		# 衝突体は掛け布の下面までの台 (座面) と、背もたれの板にする。掛け布の上面の毛を手前から遮らない
+		var seat_top: float = throw_center.y - throw_size.y * 0.5
+		_add_collision_box(
+			object_root,
+			"ChairSeat",
+			Vector3(0.0, seat_top * 0.5, 0.0),
+			Vector3(object_width, seat_top, object_depth),
+		)
+		_add_collision_box(
 			object_root,
 			"ChairBack",
 			MansionBuilderScript.CHAIR_BACK_CENTER_RATIO * obj.size,
 			MansionBuilderScript.CHAIR_BACK_SIZE_RATIO * obj.size,
-			_material_wood,
-			false,
 		)
 		_add_static_box(
+			object_root, "KnitThrow", throw_center, throw_size, _material_knit, false
+		)
+		# 座面の前の縁から下へ垂らした掛け布の端
+		var drape_length: float = object_height * KNIT_DRAPE_LENGTH_RATIO
+		_add_static_box(
 			object_root,
-			"KnitThrow",
-			MansionBuilderScript.KNIT_THROW_CENTER_RATIO * obj.size,
-			MansionBuilderScript.KNIT_THROW_SIZE_RATIO * obj.size,
+			"KnitDrape",
+			Vector3(
+				0.0,
+				throw_center.y + throw_size.y * 0.5 - drape_length * 0.5,
+				throw_center.z + throw_size.z * 0.5 + throw_size.y * 0.5,
+			),
+			Vector3(throw_size.x, drape_length, throw_size.y),
 			_material_knit,
 			false,
 		)
 	elif obj.object_kind == MansionLayoutScript.OBJECT_SIDEBOARD:
-		_add_static_box(
+		_add_collision_box(
 			object_root,
 			"Cabinet",
 			Vector3(0.0, object_height * 0.5, 0.0),
 			Vector3(object_width, object_height, object_depth),
-			_material_wood,
-			true,
-		)
-		var top_trim_height: float = MansionBuilderScript.SIDEBOARD_TOP_TRIM_HEIGHT_M
-		_add_static_box(
-			object_root,
-			"TopTrim",
-			Vector3(0.0, object_height + top_trim_height * 0.5, 0.0),
-			Vector3(object_width + 0.05, top_trim_height, object_depth + 0.05),
-			_material_door_frame,
-			false,
 		)
 	else:
-		_add_static_box(
+		_add_collision_box(
 			object_root,
 			"TableTop",
 			Vector3(0.0, object_height - TABLE_TOP_THICKNESS_M * 0.5, 0.0),
 			Vector3(object_width, TABLE_TOP_THICKNESS_M, object_depth),
-			_material_wood,
-			true,
 		)
-		var leg_height: float = maxf(TABLE_MIN_LEG_HEIGHT_M, object_height - TABLE_TOP_THICKNESS_M)
-		var leg_offset_x: float = object_width * TABLE_LEG_OFFSET_X_RATIO
-		var leg_offset_z: float = object_depth * TABLE_LEG_OFFSET_Z_RATIO
-		for leg_pos: Vector3 in [
-			Vector3(-leg_offset_x, leg_height * 0.5, -leg_offset_z),
-			Vector3(leg_offset_x, leg_height * 0.5, -leg_offset_z),
-			Vector3(-leg_offset_x, leg_height * 0.5, leg_offset_z),
-			Vector3(leg_offset_x, leg_height * 0.5, leg_offset_z),
-		]:
-			_add_static_box(
-				object_root,
-				"Leg",
-				leg_pos,
-				Vector3(TABLE_LEG_WIDTH_M, leg_height, TABLE_LEG_WIDTH_M),
-				_material_wood,
-				false,
-			)
+
+
+## 見えない直方体の衝突体 (StaticBody3D) を親ノードへ追加する (モデルで描く物の、歩く・見通す邪魔をする範囲)
+func _add_collision_box(
+	parent_node: Node3D, node_name: String, box_position: Vector3, box_size: Vector3
+) -> void:
+	var static_body: StaticBody3D = StaticBody3D.new()
+	static_body.name = node_name
+	static_body.position = box_position
+	var box_shape: BoxShape3D = BoxShape3D.new()
+	box_shape.size = box_size
+	var collision_shape: CollisionShape3D = CollisionShape3D.new()
+	collision_shape.shape = box_shape
+	static_body.add_child(collision_shape)
+	parent_node.add_child(static_body)
 
 
 ## 直方体メッシュ (必要に応じて StaticBody3D 衝突体付き) を親ノードへ追加する

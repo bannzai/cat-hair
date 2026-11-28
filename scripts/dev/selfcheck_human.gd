@@ -1,6 +1,6 @@
 extends RefCounted
 ## 人の形 (画面に映る自分の手と腕・買取業者の体) の検証 (scripts/dev/selfcheck.gd から呼ぶ)。
-## 描画は確かめず (CI の撮影で目視する)、組み立てたノードの部品と、つまむ動きで指先が近づくことを確かめる。
+## 描画は確かめず (CI の撮影で目視する)、置いたモデルの骨と範囲と、つまむ動きで指先が近づくことを確かめる。
 
 ## 画面に映る手のスクリプト
 const HandViewScript := preload("res://scripts/player/hand_view.gd")
@@ -10,14 +10,30 @@ const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd"
 const MansionWorldScript := preload("res://scripts/mansion/mansion_world.gd")
 ## 屋敷の生成パラメータのスクリプト
 const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
-## 人の体の部品を作る関数
-const HumanParts := preload("res://scripts/human/human_parts.gd")
-## 位置を同じとみなす誤差 (m)。部品の寸法 (mm 単位) より十分小さく、浮動小数の丸めより大きい値
-const POSITION_TOLERANCE_M: float = 0.0001
+## 物の種別ごとのモデルと、モデルの範囲を測る関数
+const FurnitureModels := preload("res://scripts/mansion/furniture_models.gd")
+## 長さを同じとみなす誤差 (m)。モデルを合わせる寸法 (cm 単位) より十分小さく、浮動小数の丸めより大きい値
+const POSITION_TOLERANCE_M: float = 0.001
 ## 閉じた親指と人差し指の先の中心どうしの距離の上限 (m)。2 本の先の太さの和 (約 1.5 cm) より近ければ触れて見える
 const PINCH_CLOSED_MAX_M: float = 0.015
 ## 開いた親指と人差し指の先の中心どうしの距離の下限 (m)。毛をつまむ前に指の間が開いて見える幅 (約 4 cm)
 const PINCH_OPEN_MIN_M: float = 0.04
+## 自動化で走る掃除ロボットを作るスクリプト
+const AutomationControllerScript := preload("res://scripts/automation/automation_controller.gd")
+## 買取業者のモデル (顔・頭・耳・口・目の材質に写真のテクスチャが残っていないかを確かめる)
+const TRADER_SCENE: PackedScene = preload("res://assets/models/buyer.glb")
+## 写真から作られていた顔・頭・耳・口・目の材質の名前 (scripts/assets/convert_models.py の BUYER_FLAT_COLORS の鍵と同じ
+## 名前を、実装の定数を読まずにここに書く。変換で名前が変わると見つからず落ちる)
+const TRADER_PHOTO_MATERIAL_NAMES: Array[String] = [
+	"headHDmale.000", "ear", "mouth2.000", "eye.000"
+]
+## 腕のモデル (肌の材質を確かめる)
+const ARMS_SCENE: PackedScene = preload("res://assets/models/first_person_arms.glb")
+## 腕の肌の粗さ。scripts/assets/convert_models.py の SKIN_ROUGHNESS と同じ値を、変換の定数を読まずにここに書く
+## (Godot は Python の定数を読めず、glb の値と比べるため)
+const ARM_SKIN_ROUGHNESS: float = 0.65
+## 右手だけのモデルの範囲の上限 (m)。手の長さ 18〜20 cm に余裕を持たせ、前腕 (25 cm 前後) が残ると超える値
+const HAND_EXTENT_MAX_M: float = 0.24
 
 ## 検証結果を記録する selfcheck の SceneTree 参照
 var _checker: SceneTree = null
@@ -27,10 +43,13 @@ var _checker: SceneTree = null
 static func run_all(checker: SceneTree) -> void:
 	var suite: RefCounted = load("res://scripts/dev/selfcheck_human.gd").new()
 	suite._checker = checker
-	suite._check_limb_ends_and_shadow()
 	suite._check_hand_view_shape_and_pinch()
 	suite._check_player_body_bounds()
 	suite._check_trader_body()
+	suite._check_trader_face_is_not_photo()
+	suite._check_arm_skin_material()
+	suite._check_furniture_models_fit_box()
+	suite._check_robot_bumper_faces_forward()
 
 
 ## 検証結果を selfcheck 本体へ記録する
@@ -38,160 +57,83 @@ func _check(cond: bool, label: String) -> void:
 	_checker._check(cond, label)
 
 
-## add_limb のカプセルの両端の丸みの中心が、斜め・真下向きの 2 点に重なり、長さ 0 では回らず、
-## 球・直方体が渡した中心・大きさで置かれ、マテリアルと影を落とすかが引数どおりになるか
-func _check_limb_ends_and_shadow() -> void:
-	var parent_node: Node3D = Node3D.new()
-	var part_material: StandardMaterial3D = StandardMaterial3D.new()
-	var ends_ok: bool = true
-	for points: Array[Vector3] in [
-		[Vector3(0.1, 0.2, -0.3), Vector3(-0.2, 0.5, 0.4)] as Array[Vector3],
-		[Vector3(0.0, 1.0, 0.0), Vector3(0.0, 0.0, 0.0)] as Array[Vector3],
-		[Vector3(0.3, 0.1, 0.0), Vector3(-0.1, -0.2, -0.5)] as Array[Vector3],
-	]:
-		if not _limb_ends_match(
-			HumanParts.add_limb(parent_node, "Limb", points[0], points[1], 0.05, null, true),
-			points[0], points[1],
-		):
-			ends_ok = false
-	_check(ends_ok, "add_limb のカプセルの両端の丸みの中心が、斜め・真下向き・下へ斜めの 2 点に重なる")
-	var zero_limb: MeshInstance3D = HumanParts.add_limb(
-		parent_node, "Zero", Vector3(0.1, 0.1, 0.1), Vector3(0.1, 0.1, 0.1), 0.02, part_material,
-		false,
-	)
-	_check(
-		zero_limb.quaternion.is_equal_approx(Quaternion.IDENTITY)
-		and zero_limb.position.is_equal_approx(Vector3(0.1, 0.1, 0.1)),
-		"add_limb は長さ 0 の 2 点では回さず、その点に置く",
-	)
-	var sphere: MeshInstance3D = HumanParts.add_sphere(
-		parent_node, "Sphere", Vector3(0.1, 0.2, 0.3), 0.15, Vector3(1.0, 2.0, 1.0), part_material,
-		true,
-	)
-	var box: MeshInstance3D = HumanParts.add_box(
-		parent_node, "Box", Vector3(-0.1, 0.4, 0.2), Vector3(0.3, 0.2, 0.1), part_material, false
-	)
-	_check(
-		sphere.position.is_equal_approx(Vector3(0.1, 0.2, 0.3))
-		and is_equal_approx((sphere.mesh as SphereMesh).radius, 0.15)
-		and is_equal_approx((sphere.mesh as SphereMesh).height, 0.3)
-		and sphere.scale.is_equal_approx(Vector3(1.0, 2.0, 1.0))
-		and box.position.is_equal_approx(Vector3(-0.1, 0.4, 0.2))
-		and (box.mesh as BoxMesh).size.is_equal_approx(Vector3(0.3, 0.2, 0.1)),
-		"add_sphere・add_box は、渡した中心・半径・倍率・大きさで部品を置く",
-	)
-	_check(
-		sphere.material_override == part_material
-		and box.material_override == part_material
-		and zero_limb.material_override == part_material,
-		"人の体の部品は、渡したマテリアルで塗る",
-	)
-	_check(
-		sphere.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		and (
-			HumanParts.add_limb(
-				parent_node, "ShadowLimb", Vector3.ZERO, Vector3.UP, 0.05, part_material, true
-			).cast_shadow
-			== GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		)
-		and (
-			HumanParts.add_box(
-				parent_node, "ShadowBox", Vector3.ZERO, Vector3.ONE, part_material, true
-			).cast_shadow
-			== GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		)
-		and box.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		and zero_limb.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF,
-		"人の体の部品は、影を落とす引数が true の時だけ影を落とす",
-	)
-	parent_node.free()
-
-
-## カプセルの部品 limb の両端の丸みの中心が、2 点 from・to に (どちらの向きでも) 重なるかを返す
-static func _limb_ends_match(limb: MeshInstance3D, from: Vector3, to: Vector3) -> bool:
-	var ends: Array[Vector3] = _limb_ends(limb)
-	return (
-		(
-			ends[0].distance_to(from) < POSITION_TOLERANCE_M
-			and ends[1].distance_to(to) < POSITION_TOLERANCE_M
-		)
-		or (
-			ends[0].distance_to(to) < POSITION_TOLERANCE_M
-			and ends[1].distance_to(from) < POSITION_TOLERANCE_M
-		)
-	)
-
-
-## カプセルの部品 limb の、両端の丸みの中心の位置 (親の局所座標) を返す
-static func _limb_ends(limb: MeshInstance3D) -> Array[Vector3]:
-	var capsule: CapsuleMesh = limb.mesh as CapsuleMesh
-	var half_axis: Vector3 = limb.quaternion * Vector3.UP * (capsule.height * 0.5 - capsule.radius)
-	return [limb.position + half_axis, limb.position - half_axis]
-
-
-## 手が袖・前腕・手のひらと 3 節ずつの 5 本の指を持ち、引き始めは親指と人差し指の先が離れ、
-## 引く途中 (進み具合 1/3 以降) と引き終えた時は 2 本の先が触れるか
+## 手が指の骨付きの腕のモデルで、引き始めは親指と人差し指の先が離れ、引く途中 (進み具合 1/3 以降) と
+## 引き終えた時は 2 本の先が触れるか
 func _check_hand_view_shape_and_pinch() -> void:
 	# selfcheck は _initialize から同期で走り、root がまだツリーに入っていないため、手はツリーに入れずに
-	# 作った時点の部品 (hand_view.gd の _init で組み立てる) と、手の局所座標での位置で確かめる
+	# 作った時点のモデル (hand_view.gd の _init で置く) と、手の局所座標での位置で確かめる
 	var hand: Node3D = HandViewScript.new()
-	_check(
-		hand.position.is_equal_approx(HandViewScript.REST_POSITION)
-		and is_equal_approx(hand.get_pull_progress(), 0.0)
-		and _pinch_distance(hand) >= PINCH_OPEN_MIN_M,
-		"作った直後の画面の手は、引いていない位置 (REST_POSITION) にあり、親指と人差し指を開いている",
-	)
-	var fingers_ok: bool = true
-	# 期待する 5 本は実装の FINGER_NAMES から取らずにここに書き、指が減ると落ちるようにする
-	for finger_name: String in [
-		"IndexFinger", "MiddleFinger", "RingFinger", "LittleFinger", "Thumb",
-	]:
-		var finger: Node3D = hand.get_node_or_null(finger_name)
-		# コードで作ったノードは owner を持たないため、owner の無い子も数える (owned = false)
-		if finger == null or finger.find_children("Segment", "MeshInstance3D", true, false).size() != 3:
-			fingers_ok = false
-	_check(
-		fingers_ok
-		and hand.get_node_or_null("Sleeve") is MeshInstance3D
-		and hand.get_node_or_null("Forearm") is MeshInstance3D
-		and hand.get_node_or_null("Palm") is MeshInstance3D,
-		"画面の手は袖・前腕・手のひらと、3 節ずつの 5 本の指 (親指・人差し指・中指・薬指・小指) を持つ",
-	)
+	var skeletons: Array[Node] = hand.find_children("*", "Skeleton3D", true, false)
+	var bones_ok: bool = skeletons.size() == 1
+	if bones_ok:
+		# 期待する骨は実装の定数から取らずにここに書き、モデルを替えて骨の名前が変わると落ちるようにする
+		for bone_name: String in ["hand.R", "thumb.01.R", "thumb.03.R", "f_index.01.R", "f_index.03.R"]:
+			if (skeletons[0] as Skeleton3D).find_bone(bone_name) < 0:
+				bones_ok = false
+	_check(bones_ok, "画面の手は、右手の親指と人差し指の骨を持つ腕のモデルで描く")
 	var shadows_off: bool = true
 	for part: Node in hand.find_children("*", "MeshInstance3D", true, false):
 		if (part as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 			shadows_off = false
 	_check(shadows_off, "画面の手の部品は、カメラの近くで画面を暗くしないよう影を落とさない")
-	var segments_reach_ends: bool = true
-	for segment: Node in hand.find_children("Segment", "MeshInstance3D", true, false):
-		if not _limb_ends(segment as MeshInstance3D).any(
-			func(point: Vector3) -> bool:
-				return (
-					point.distance_to((segment.get_parent().get_node("End") as Node3D).position)
-					< POSITION_TOLERANCE_M
-				)
-		):
-			segments_reach_ends = false
-	_check(segments_reach_ends, "画面の手の指の各節のカプセルは、指先の位置を測る End まで伸びている")
-	hand.set_pull_progress(0.0)
-	var open_distance: float = _pinch_distance(hand)
-	var open_index_tip: Vector3 = _finger_tip(hand, hand.get_node("IndexFinger"))
-	var open_thumb_tip: Vector3 = _finger_tip(hand, hand.get_node("Thumb"))
-	hand.set_pull_progress(1.0 / 3.0)
-	var closed_distance: float = _pinch_distance(hand)
+	if not bones_ok:
+		hand.free()
+		return
 	_check(
-		open_index_tip.y > _finger_tip(hand, hand.get_node("IndexFinger")).y
-		and open_thumb_tip.x < _finger_tip(hand, hand.get_node("Thumb")).x,
+		hand.position.is_equal_approx(HandViewScript.REST_POSITION)
+		and is_equal_approx(hand.get_pull_progress(), 0.0),
+		"作った直後の画面の手は、引いていない位置 (REST_POSITION) にある",
+	)
+	var skeleton: Skeleton3D = skeletons[0] as Skeleton3D
+	hand.set_pull_progress(0.0)
+	var open_tips: Dictionary = hand.get_fingertips()
+	var open_distance: float = (open_tips["index"] as Vector3).distance_to(open_tips["thumb"])
+	var open_index_pose: Quaternion = skeleton.get_bone_pose_rotation(
+		skeleton.find_bone("f_index.01.R")
+	)
+	var open_thumb_pose: Quaternion = skeleton.get_bone_pose_rotation(
+		skeleton.find_bone("thumb.01.R")
+	)
+	hand.set_pull_progress(1.0 / 3.0)
+	_check(
+		not skeleton.get_bone_pose_rotation(skeleton.find_bone("f_index.01.R")).is_equal_approx(
+			open_index_pose
+		)
+		and not skeleton.get_bone_pose_rotation(skeleton.find_bone("thumb.01.R")).is_equal_approx(
+			open_thumb_pose
+		),
+		"つまむ時は、モデルの親指と人差し指の付け根の骨の姿勢を回す",
+	)
+	var closed_tips: Dictionary = hand.get_fingertips()
+	var closed_distance: float = (closed_tips["index"] as Vector3).distance_to(closed_tips["thumb"])
+	_check(
+		(open_tips["index"] as Vector3).y > (closed_tips["index"] as Vector3).y
+		and (open_tips["thumb"] as Vector3).x < (closed_tips["thumb"] as Vector3).x,
 		"毛をつまむ前は、人差し指の先を手の甲の側 (上) へ起こし、親指の先を外 (-X) へ開く",
 	)
-	var curled_down: bool = true
-	for finger_name: String in HandViewScript.FINGER_NAMES:
-		# 付け根は手の局所の y = 0 に並ぶ
-		if _finger_tip(hand, hand.get_node(finger_name)).y >= 0.0:
-			curled_down = false
-	_check(curled_down, "親指以外の 4 本の指は、先を手のひらの側 (下) へ曲げている (つまんで人差し指を起こしていない時)")
+	var forward_tips: Dictionary = _fingertips_from_bone_poses(hand, skeleton)
+	_check(
+		(forward_tips["index"] as Vector3).distance_to(forward_tips["thumb"]) <= PINCH_CLOSED_MAX_M
+		and (forward_tips["index"] as Vector3).is_equal_approx(closed_tips["index"])
+		and (forward_tips["thumb"] as Vector3).is_equal_approx(closed_tips["thumb"]),
+		"骨に設定した姿勢から順に辿って求めた指先も、閉じた時に触れ、手が返す指先の位置と一致する",
+	)
+	# モデルは右手だけ (変換で腕と左手の頂点を消した)。手の局所座標でのモデルの範囲が、指先から手首まで (大人の手の
+	# 長さ 18〜20 cm) に収まり、腕や左手の頂点が残っていない
+	var model_bounds: AABB = (
+		hand.get_node("Arms").transform * FurnitureModels.merged_mesh_aabb(hand.get_node("Arms"))
+	)
+	_check(
+		model_bounds.size.x < HAND_EXTENT_MAX_M
+		and model_bounds.size.y < HAND_EXTENT_MAX_M
+		and model_bounds.size.z < HAND_EXTENT_MAX_M
+		and hand.get_node_or_null("Sleeve") is MeshInstance3D
+		and hand.get_node_or_null("Forearm") is MeshInstance3D,
+		"画面の手のモデルは右手だけで (範囲 %s)、肩から手首を袖と前腕で結ぶ" % model_bounds.size,
+	)
 	hand.set_pull_progress(1.0)
-	var pulled_distance: float = _pinch_distance(hand)
+	var pulled_tips: Dictionary = hand.get_fingertips()
+	var pulled_distance: float = (pulled_tips["index"] as Vector3).distance_to(pulled_tips["thumb"])
 	_check(
 		open_distance >= PINCH_OPEN_MIN_M
 		and closed_distance <= PINCH_CLOSED_MAX_M
@@ -204,35 +146,179 @@ func _check_hand_view_shape_and_pinch() -> void:
 	hand.free()
 
 
-## 親指と人差し指の、いちばん先の節の端どうしの距離 (m。手の局所座標) を返す
-static func _pinch_distance(hand: Node3D) -> float:
-	return _finger_tip(hand, hand.get_node("IndexFinger")).distance_to(
-		_finger_tip(hand, hand.get_node("Thumb"))
+## 骨に設定した姿勢 (get_bone_pose_rotation) から、親の休みの姿勢を辿って親指と人差し指の先を求め、手の局所座標で返す。
+## 手の実装の計算 (get_fingertips) を使わず、骨に実際に入った回転から求める (付け根の骨だけを回し、先の骨は休みの姿勢)
+func _fingertips_from_bone_poses(hand: Node3D, skeleton: Skeleton3D) -> Dictionary:
+	var skeleton_to_hand: Transform3D = (
+		hand.get_node("Arms").transform
+		* FurnitureModels.transform_to_ancestor(skeleton, hand.get_node("Arms"))
 	)
+	var tips: Dictionary = {}
+	for pair: Array in [
+		["index", "f_index.01.R", "f_index.03.R"], ["thumb", "thumb.01.R", "thumb.03.R"]
+	]:
+		var root: int = skeleton.find_bone(pair[1])
+		# 付け根の骨の局所での先の骨の先 (休みの姿勢の付け根の骨から見た位置) を、姿勢を入れた付け根の骨で動かす
+		tips[pair[0]] = skeleton_to_hand * (
+			(
+				skeleton.get_bone_global_rest(skeleton.get_bone_parent(root))
+				* Transform3D(
+					Basis(skeleton.get_bone_pose_rotation(root)), skeleton.get_bone_rest(root).origin
+				)
+			)
+			* (
+				skeleton.get_bone_global_rest(root).affine_inverse()
+				* _rest_bone_tip(skeleton, skeleton.find_bone(pair[2]))
+			)
+		)
+	return tips
 
 
-## 指の付け根 finger から辿った、いちばん先の節の端 (End) の位置を、手 hand の局所座標で返す
-static func _finger_tip(hand: Node3D, finger: Node3D) -> Vector3:
-	var ends: Array[Node] = finger.find_children("End", "Node3D", true, false)
-	var deepest: Node3D = ends[0]
-	for end: Node in ends:
-		if _depth_below(hand, end) > _depth_below(hand, deepest):
-			deepest = end
-	var to_hand: Transform3D = Transform3D.IDENTITY
-	var node: Node3D = deepest
-	while node != hand:
-		to_hand = node.transform * to_hand
-		node = node.get_parent()
-	return to_hand.origin
+## 骨 bone の先の位置 (骨の空間。休みの姿勢)。子の骨があればその付け根、無ければ骨の +Y へ親からの長さだけ伸ばした位置
+func _rest_bone_tip(skeleton: Skeleton3D, bone: int) -> Vector3:
+	var children: PackedInt32Array = skeleton.get_bone_children(bone)
+	var rest: Transform3D = skeleton.get_bone_global_rest(bone)
+	if children.size() > 0:
+		return skeleton.get_bone_global_rest(children[0]).origin
+	return rest.origin + rest.basis.y.normalized() * skeleton.get_bone_rest(bone).origin.length()
 
 
-## node から祖先 ancestor までの親の段数を返す
-static func _depth_below(ancestor: Node, node: Node) -> int:
-	var depth: int = 0
-	while node != ancestor:
-		node = node.get_parent()
-		depth += 1
-	return depth
+## 腕のモデル (commit した first_person_arms.glb) の材質が、肌の写真を貼った金属でない肌か (変換で FBX の金属の値を
+## 消した。消し忘れると肌が銅のように光る)
+func _check_arm_skin_material() -> void:
+	var model: Node3D = ARMS_SCENE.instantiate() as Node3D
+	var skin_ok: bool = true
+	var surfaces: int = 0
+	for mesh_node: Node in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (mesh_node as MeshInstance3D).mesh
+		for surface: int in range(mesh.get_surface_count()):
+			var material: StandardMaterial3D = mesh.surface_get_material(surface) as StandardMaterial3D
+			surfaces += 1
+			if (
+				material == null
+				or material.albedo_texture == null
+				or not is_zero_approx(material.metallic)
+				or absf(material.roughness - ARM_SKIN_ROUGHNESS) > 0.01
+			):
+				skin_ok = false
+	_check(
+		surfaces > 0 and skin_ok,
+		"腕のモデルの材質は肌の写真を貼り、金属でなく (metallic 0)、粗さ %.2f の肌 (面 %d 個)"
+		% [ARM_SKIN_ROUGHNESS, surfaces],
+	)
+	model.free()
+
+
+## 買取業者のモデルの顔・頭・耳・口・目の材質に、写真のテクスチャが残っていないか (Steam で売る物に実在の人の顔を
+## 出さないため単色に差し替えた。issue #15)
+func _check_trader_face_is_not_photo() -> void:
+	var model: Node3D = TRADER_SCENE.instantiate() as Node3D
+	var found: Dictionary = {}
+	var textured: Array[String] = []
+	for mesh_node: Node in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (mesh_node as MeshInstance3D).mesh
+		for surface: int in range(mesh.get_surface_count()):
+			var material: StandardMaterial3D = mesh.surface_get_material(surface) as StandardMaterial3D
+			if material == null or not TRADER_PHOTO_MATERIAL_NAMES.has(material.resource_name):
+				continue
+			found[material.resource_name] = true
+			if material.albedo_texture != null:
+				textured.append(material.resource_name)
+	_check(
+		found.size() == TRADER_PHOTO_MATERIAL_NAMES.size() and textured.is_empty(),
+		"買取業者の顔・頭・耳・口・目の材質 (%d / %d 個) に写真のテクスチャが無い (残っている: %s)"
+		% [found.size(), TRADER_PHOTO_MATERIAL_NAMES.size(), ", ".join(textured)],
+	)
+	model.free()
+
+
+## 既製のモデルで描く家具を、物の箱に合わせて置いた時、モデルの範囲が箱とそろい (大きさが同じ・底が 0・中心が原点)、
+## モデルの無い種別では作らないか
+func _check_furniture_models_fit_box() -> void:
+	var box: Vector3 = Vector3(1.2, 0.7, 0.5)
+	var fits_ok: bool = true
+	var detail: PackedStringArray = []
+	for kind: StringName in FurnitureModels.SCENES.keys():
+		var fitted: Node3D = FurnitureModels.instantiate_fitted(kind, box)
+		var bounds: AABB = fitted.transform * FurnitureModels.merged_mesh_aabb(fitted)
+		var center: Vector3 = bounds.get_center()
+		if (
+			not bounds.size.is_equal_approx(box)
+			or absf(bounds.position.y) > POSITION_TOLERANCE_M
+			or absf(center.x) > POSITION_TOLERANCE_M
+			or absf(center.z) > POSITION_TOLERANCE_M
+		):
+			fits_ok = false
+			detail.append("%s: %s" % [kind, bounds])
+		fitted.free()
+	_check(
+		FurnitureModels.SCENES.size() == 4 and fits_ok,
+		"家具のモデル 4 種は、物の箱にちょうど収まり、底が床で中心が原点にそろう (ずれ: %s)" % ", ".join(detail),
+	)
+	# 範囲の合わせ方を、手で求めた範囲と比べる: 位置 (1, 0, 0)・倍率 2 の 1 m の箱 (範囲 x 0..2, y -1..1, z -1..1) と、
+	# 位置 (0, 3, 0) の親の下の 1 m の箱 (範囲 x -0.5..0.5, y 2.5..3.5, z -0.5..0.5) を合わせると
+	# x -0.5..2, y -1..3.5, z -1..1
+	var probe_root: Node3D = Node3D.new()
+	var scaled_box: MeshInstance3D = MeshInstance3D.new()
+	scaled_box.mesh = BoxMesh.new()
+	scaled_box.position = Vector3(1.0, 0.0, 0.0)
+	scaled_box.scale = Vector3.ONE * 2.0
+	probe_root.add_child(scaled_box)
+	var raised_parent: Node3D = Node3D.new()
+	raised_parent.position = Vector3(0.0, 3.0, 0.0)
+	probe_root.add_child(raised_parent)
+	var raised_box: MeshInstance3D = MeshInstance3D.new()
+	raised_box.mesh = BoxMesh.new()
+	raised_parent.add_child(raised_box)
+	_check(
+		FurnitureModels.merged_mesh_aabb(probe_root).is_equal_approx(
+			AABB(Vector3(-0.5, -1.0, -1.0), Vector3(2.5, 4.5, 2.0))
+		),
+		"モデルの範囲は、子孫の全部のメッシュを親の位置・倍率を辿って合わせた範囲になる (%s)"
+		% FurnitureModels.merged_mesh_aabb(probe_root),
+	)
+	# 祖先に着く前に Node3D でない親に当たる時は、そこまでの変換で止まる (素の Node の下の位置 (0, 3, 0) の親 → 子の
+	# 位置 (1, 0, 0) なら (1, 3, 0)。祖先 probe_root の位置 (5, 0, 0) は足さない)
+	var plain_parent: Node = Node.new()
+	var mid: Node3D = Node3D.new()
+	mid.position = Vector3(0.0, 3.0, 0.0)
+	plain_parent.add_child(mid)
+	var leaf: Node3D = Node3D.new()
+	leaf.position = Vector3(1.0, 0.0, 0.0)
+	mid.add_child(leaf)
+	probe_root.position = Vector3(5.0, 0.0, 0.0)
+	_check(
+		FurnitureModels.transform_to_ancestor(leaf, probe_root).origin.is_equal_approx(
+			Vector3(1.0, 3.0, 0.0)
+		)
+		and FurnitureModels.transform_to_ancestor(raised_box, probe_root).origin.is_equal_approx(
+			Vector3(0.0, 3.0, 0.0)
+		),
+		"祖先への変換は、祖先に着いたら祖先の位置を含めずに止まり、Node3D でない親に当たったらそこで止まる",
+	)
+	plain_parent.free()
+	probe_root.free()
+	var empty_node: Node3D = Node3D.new()
+	_check(
+		FurnitureModels.instantiate_fitted(&"carpet", box) == null
+		and FurnitureModels.merged_mesh_aabb(empty_node).size == Vector3.ZERO,
+		"モデルの無い種別 (カーペット) では作らず、メッシュの無いノードの範囲は大きさ 0",
+	)
+	empty_node.free()
+
+
+## 自動化で走る掃除ロボットの前の緩衝材が、走る向き (局所の -Z) の側にあるか
+func _check_robot_bumper_faces_forward() -> void:
+	var controller: Node3D = AutomationControllerScript.new()
+	var robot: Node3D = controller._build_robot(0)
+	var bumper: Node3D = robot.get_node_or_null("Body/Bumper")
+	_check(
+		bumper != null
+		and (FurnitureModels.transform_to_ancestor(bumper, robot).origin.z < 0.0),
+		"自動化で走る掃除ロボットの緩衝材は、走る向き (局所の -Z) の側にある",
+	)
+	robot.free()
+	controller.free()
 
 
 ## 立った体がどの向きの壁にも食い込まず、真下の視野の下 1/4 へ胸が収まるか。
@@ -262,7 +348,7 @@ func _check_player_body_bounds() -> void:
 	player.free()
 
 
-## 買取業者が頭・胴・左右の腕と脚を持ち、頭が胴より上・胴が脚より上にあり、顔 (鼻) を部屋の中 (-Z) へ向けているか
+## 買取業者がモデルで描かれ、足元が床 (立つ位置の原点) にあり、背の高さが 1.6 m で、影を落とすか
 func _check_trader_body() -> void:
 	var tuning: MansionTuning = MansionTuningScript.new()
 	tuning.room_count = 1
@@ -271,49 +357,34 @@ func _check_trader_body() -> void:
 	# 毛は買取業者の形に関わらないため、進行状態を渡さず毛 0 本で組み立てる
 	world.rebuild(MansionBuilderScript.build_layout(tuning), null)
 	var body: Node3D = world.get_node_or_null("Trader/Body")
-	var parts_ok: bool = body != null
-	if parts_ok:
-		for part_name: String in [
-			"Head", "Torso", "Hips", "Shoulders", "Neck", "Nose", "Hair", "Cap", "CapBrim",
-			"LeftUpperArm", "RightUpperArm", "LeftForearm", "RightForearm", "LeftHand", "RightHand",
-			"LeftLeg", "RightLeg", "LeftShoe", "RightShoe", "LeftEye", "RightEye", "LeftEar",
-			"RightEar",
-		]:
-			if not body.get_node_or_null(part_name) is MeshInstance3D:
-				parts_ok = false
-	_check(
-		parts_ok,
-		"買取業者は頭・胴・腰・肩・首・顔 (鼻・目・耳)・髪・帽子と、左右の腕 (上腕・前腕・手)・脚・靴を持つ",
+	var meshes: Array[Node] = (
+		[] if body == null else body.find_children("*", "MeshInstance3D", true, false)
 	)
-	if parts_ok:
-		var head: Node3D = body.get_node("Head")
+	_check(meshes.size() > 0, "買取業者は体のモデルで描く")
+	if meshes.size() > 0:
+		# 立つ位置 (Trader) の局所座標での体の範囲。Trader の札は体の外のため含めない
+		var bounds: AABB = body.transform * FurnitureModels.merged_mesh_aabb(body)
 		_check(
-			head.position.y > body.get_node("Torso").position.y
-			and body.get_node("Torso").position.y > body.get_node("LeftLeg").position.y
-			and body.get_node("Torso").position.y > body.get_node("RightLeg").position.y
-			# 頭は半径 0.5 の球を伸ばした部品で、倍率の Y の半分が頭の上端までの高さ
-			# 頭の上端は背の高さ (帽子を除く) にそろえて置いた。背の高さは円柱だった時と同じ 1.6 m
-			and absf(head.position.y + head.scale.y * 0.5 - 1.6) < POSITION_TOLERANCE_M
-			and is_equal_approx(MansionWorldScript.TRADER_HEIGHT_M, 1.6)
-			and body.get_node("Nose").position.z < head.position.z,
-			"買取業者の頭は胴より上で上端が背の高さ 1.6 m にあり、胴は左右の脚より上にあり、顔を部屋の中 (-Z) へ向けている",
+			absf(bounds.position.y) < POSITION_TOLERANCE_M
+			and absf(bounds.end.y - 1.6) < POSITION_TOLERANCE_M
+			and is_equal_approx(MansionWorldScript.TRADER_HEIGHT_M, 1.6),
+			"買取業者の足元は立つ位置の原点 (床の高さ) にあり、頭の上端は背の高さ 1.6 m にある (下端 %.4f・上端 %.4f)"
+			% [bounds.position.y, bounds.end.y],
 		)
-		var shoe: MeshInstance3D = body.get_node("LeftShoe")
+		# 立った人の体は腕や靴で左右前後に非対称なため、中心のずれは人の肩幅の 1/4 ほどの 0.1 m まで許す
 		_check(
-			absf(shoe.position.y - (shoe.mesh as BoxMesh).size.y * 0.5) < POSITION_TOLERANCE_M,
-			"買取業者の足元 (靴の底) は、立つ位置の原点 (床の高さ) にある",
+			absf(bounds.get_center().x) < 0.1 and absf(bounds.get_center().z) < 0.1,
+			"買取業者の体の中心は、立つ位置の真上にある",
 		)
-		var sides_ok: bool = true
-		for part_name: String in ["UpperArm", "Forearm", "Hand", "Leg"]:
-			if not (
-				body.get_node("Left" + part_name).position.x < 0.0
-				and body.get_node("Right" + part_name).position.x > 0.0
-			):
-				sides_ok = false
-		_check(sides_ok, "買取業者の左の腕と脚は -X の側、右は +X の側に分かれて付いている")
+		# モデルは glTF の +Z に顔を向ける。体の +Z が立つ位置の局所の -Z (部屋の中・札と同じ向き) を向いているか。
+		# -0.5 は向きの単位ベクトルが -Z から 60 度以内にあることで、横 (90 度) や後ろを向いた時と見分けられる値
 		_check(
-			body.get_node("Torso").cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-			and body.get_node("Nose").cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF,
-			"買取業者の胴は影を落とし、顔の小さな部品 (鼻) は影を落とさない",
+			(body.basis * Vector3.BACK).normalized().z < -0.5,
+			"買取業者のモデルの顔 (glTF の +Z) は、部屋の中 (立つ位置の局所の -Z) を向く",
 		)
+		var shadows_on: bool = true
+		for mesh_node: Node in meshes:
+			if (mesh_node as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				shadows_on = false
+		_check(shadows_on, "買取業者の体は影を落とす")
 	world.free()

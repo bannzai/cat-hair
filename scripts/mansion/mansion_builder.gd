@@ -20,30 +20,39 @@ const FLOOR_HAIR_WEIGHT: float = 2.5
 const JACKET_WALL_LIFT_M: float = 0.30
 ## 住人の初期機嫌 (0.0 不機嫌 〜 1.0 ご機嫌の中間値。開始時点で増減の余地を残す)
 const INITIAL_RESIDENT_MOOD: float = 0.5
-## ソファ表面 (座面) の高さ比率。MansionWorld の座面メッシュ高さ比率の単一情報源
-const SOFA_SEAT_HEIGHT_RATIO: float = 0.56
-## サイドボード天板の上に乗る装飾縁の高さ (m)。MansionWorld の TopTrim メッシュ高さの単一情報源
-const SIDEBOARD_TOP_TRIM_HEIGHT_M: float = 0.04
-## ソファの肘掛けの幅 (物の幅に対する比率)。MansionWorld の ArmLeft / ArmRight と座面の表面の単一情報源
+## ソファ表面 (座面) の高さ比率。MansionWorld の座面の衝突体の高さの単一情報源。
+## ソファのモデル (Poly Haven の Sofa_01) の座面のクッションの上面 (0.37〜0.38 m) を、モデルの高さ 0.80 m で割った値
+## (glTF の三角形に、上から下ろした縦の線が最初に当たる高さを、モデルの範囲の 10x10 の格子で測った。
+## 以下の家具の比率も同じ測り方)
+const SOFA_SEAT_HEIGHT_RATIO: float = 0.47
+## ソファの肘掛けの幅 (物の幅に対する比率)。座面の表面の左右の端 (肘掛けの内側) の単一情報源
 const SOFA_ARM_WIDTH_RATIO: float = 0.12
-## ソファの肘掛けの中心の X 位置 (物の幅に対する比率)
-const SOFA_ARM_OFFSET_RATIO: float = 0.44
-## ソファの背もたれの中心の Z 位置 (物の奥行に対する比率。後ろが負)
-const SOFA_BACKREST_OFFSET_RATIO: float = -0.36
-## ソファの背もたれの奥行 (物の奥行に対する比率)
-const SOFA_BACKREST_DEPTH_RATIO: float = 0.26
+## ソファの肘掛けの中心の X 位置 (物の幅に対する比率)。Sofa_01 の座面の高さが続く左右の端 (中心から幅の 0.395 倍) が、
+## 肘掛けの内側 (この値から幅の半分を引いた位置) になる値
+const SOFA_ARM_OFFSET_RATIO: float = 0.455
+## ソファの背もたれの中心の Z 位置 (物の奥行に対する比率。後ろが負)。MansionWorld の背もたれの衝突体の単一情報源
+const SOFA_BACKREST_OFFSET_RATIO: float = -0.38
+## ソファの背もたれの奥行 (物の奥行に対する比率)。Sofa_01 の背もたれの前端 (中心から奥行の 0.30 倍後ろ) が、
+## 中心の位置にこの値の半分を足した位置になる値
+const SOFA_BACKREST_DEPTH_RATIO: float = 0.16
 ## スーツの上着の中心位置 (物の幅・高さ・奥行に対する比率)。MansionWorld の SuitJacket と前身頃の表面の単一情報源
 const SUIT_JACKET_CENTER_RATIO: Vector3 = Vector3(0.0, 0.66, 0.0)
 ## スーツの上着の大きさ (物の幅・高さ・奥行に対する比率)
 const SUIT_JACKET_SIZE_RATIO: Vector3 = Vector3(0.72, 0.46, 0.55)
-## 椅子に掛けたニットの中心位置 (物の幅・高さ・奥行に対する比率)。MansionWorld の KnitThrow と表面の単一情報源
-const KNIT_THROW_CENTER_RATIO: Vector3 = Vector3(0.0, 0.72, -0.15)
-## 椅子に掛けたニットの大きさ (物の幅・高さ・奥行に対する比率)
-const KNIT_THROW_SIZE_RATIO: Vector3 = Vector3(0.88, 0.34, 0.72)
-## ニット椅子の背もたれの中心位置 (物の幅・高さ・奥行に対する比率)。ニットの表面はこの前端より手前に置く
-const CHAIR_BACK_CENTER_RATIO: Vector3 = Vector3(0.0, 0.75, -0.40)
-## ニット椅子の背もたれの大きさ (物の幅・高さ・奥行に対する比率)
-const CHAIR_BACK_SIZE_RATIO: Vector3 = Vector3(1.0, 0.50, 0.16)
+## 椅子に掛けたニットの中心位置 (物の幅・高さ・奥行に対する比率)。MansionWorld の KnitThrow と表面の単一情報源。
+## 椅子のモデル (Poly Haven の GreenChair_01。高さ 1.06 m) の座面の上面 (0.44〜0.47 m) に厚み 2 cm の掛け布を乗せ、
+## 背もたれの前端から座面の前の縁の手前までに広げる位置
+const KNIT_THROW_CENTER_RATIO: Vector3 = Vector3(0.0, 0.449, 0.06)
+## 椅子に掛けたニットの大きさ (物の幅・高さ・奥行に対する比率)。幅は GreenChair_01 の左右の肘掛けの内側
+## (中心から幅の 0.40 倍) に収まる幅、高さは厚み 2 cm
+const KNIT_THROW_SIZE_RATIO: Vector3 = Vector3(0.70, 0.019, 0.72)
+## ニット椅子の背もたれの中心位置 (物の幅・高さ・奥行に対する比率)。ニットの表面はこの前端より手前に置く。
+## GreenChair_01 の背もたれ (座面から上、前端は中心から奥行の 0.30 倍後ろ) を覆う位置
+const CHAIR_BACK_CENTER_RATIO: Vector3 = Vector3(0.0, 0.72, -0.38)
+## ニット椅子の背もたれの大きさ (物の幅・高さ・奥行に対する比率)。高さ 0.56 は中心 0.72 から上下に広げて、
+## 座面の上面 (0.44) から椅子の上端 (1.0) までを覆う値。奥行 0.16 は、中心 -0.38 から前端が -0.30 (GreenChair_01 の
+## 背もたれの前端を上から下ろした線で測った位置) に来る値
+const CHAIR_BACK_SIZE_RATIO: Vector3 = Vector3(1.0, 0.56, 0.16)
 ## 縦の面 (スーツの前身頃) の向き。局所 +Y (法線) を物の前 (+Z) に、局所 Z を下向きにする
 const FRONT_FACING_BASIS: Basis = Basis(
 	Vector3(1.0, 0.0, 0.0), Vector3(0.0, 0.0, 1.0), Vector3(0.0, -1.0, 0.0)
@@ -116,7 +125,8 @@ const ROOM_PRESETS: Array[Dictionary] = [
 ]
 
 ## 配置する物のプリセット。
-## size は一般的な家具の標準寸法 (m)、weight は面積と布の毛の付きやすさによる分配相対比。
+## size は寸法 (m)。既製のモデルで描く物 (MansionWorld が FurnitureModels で置く物) はモデルの実寸、
+## それ以外は一般的な標準寸法。weight は面積と布の毛の付きやすさによる分配相対比。
 ## 床・カーペット・ソファ・家具・住人のスーツ・ニットの全表面種別が揃う順で定義する。
 const OBJECT_PRESETS: Array[Dictionary] = [
 	{
@@ -128,13 +138,13 @@ const OBJECT_PRESETS: Array[Dictionary] = [
 	{
 		"kind": MansionLayoutScript.OBJECT_SOFA,
 		"surface_type": MansionLayoutScript.SURFACE_SOFA,
-		"size": Vector3(1.8, 0.85, 0.85),
+		"size": Vector3(1.57, 0.8, 0.66),
 		"weight": 1.8,
 	},
 	{
 		"kind": MansionLayoutScript.OBJECT_TABLE,
 		"surface_type": MansionLayoutScript.SURFACE_FURNITURE,
-		"size": Vector3(1.2, 0.72, 0.75),
+		"size": Vector3(1.13, 0.8, 0.71),
 		"weight": 1.0,
 	},
 	{
@@ -146,13 +156,13 @@ const OBJECT_PRESETS: Array[Dictionary] = [
 	{
 		"kind": MansionLayoutScript.OBJECT_KNIT_CHAIR,
 		"surface_type": MansionLayoutScript.SURFACE_KNIT,
-		"size": Vector3(0.7, 0.85, 0.7),
+		"size": Vector3(0.67, 1.06, 0.66),
 		"weight": 1.4,
 	},
 	{
 		"kind": MansionLayoutScript.OBJECT_SIDEBOARD,
 		"surface_type": MansionLayoutScript.SURFACE_FURNITURE,
-		"size": Vector3(1.4, 0.9, 0.5),
+		"size": Vector3(1.54, 0.95, 0.59),
 		"weight": 1.0,
 	},
 ]
@@ -600,11 +610,8 @@ static func object_surface_local_face(object_kind: StringName, object_size: Vect
 			"basis": Basis.IDENTITY,
 			"size": Vector2(throw_size.x, throw_front_z - back_front_z),
 		}
-	var top_height: float = height
-	if object_kind == MansionLayoutScript.OBJECT_SIDEBOARD:
-		top_height += SIDEBOARD_TOP_TRIM_HEIGHT_M
 	return {
-		"center": Vector3(0.0, top_height, 0.0),
+		"center": Vector3(0.0, height, 0.0),
 		"basis": Basis.IDENTITY,
 		"size": Vector2(width, depth),
 	}

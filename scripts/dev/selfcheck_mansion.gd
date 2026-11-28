@@ -134,10 +134,9 @@ func _check_mansion_builder_default() -> void:
 			var sb_surface: MansionLayout.SurfaceDef = layout.find_surface(
 				StringName("%s_surface" % String(obj.object_id))
 			)
-			var expected_y: float = obj.size.y + MansionBuilderScript.SIDEBOARD_TOP_TRIM_HEIGHT_M
 			_check(
-				sb_surface != null and is_equal_approx(sb_surface.center.y, expected_y),
-				"サイドボード表面高さが TopTrim 上面に一致する",
+				sb_surface != null and is_equal_approx(sb_surface.center.y, obj.size.y),
+				"サイドボード表面高さが天板の上面 (モデルを合わせる箱の上端) に一致する",
 			)
 			sideboard_checked = true
 			break

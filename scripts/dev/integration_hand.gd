@@ -11,6 +11,16 @@ const HandRulesScript := preload("res://scripts/hand/hand_rules.gd")
 const HandAim := preload("res://scripts/dev/hand_aim.gd")
 ## 屋敷レイアウト型スクリプト (表面の種類の定数を使う)
 const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
+## 屋敷ビルダーロジックスクリプト (物の種類の並び)
+const MansionBuilderScript := preload("res://scripts/mansion/mansion_builder.gd")
+## モデル (または自作の形) に置き換えた、毛の面を持つ物の種別 (カーペットは床の上の板で形を変えていないため外す)
+const MODEL_OBJECT_KINDS: Array[StringName] = [
+	MansionLayoutScript.OBJECT_SOFA,
+	MansionLayoutScript.OBJECT_TABLE,
+	MansionLayoutScript.OBJECT_SIDEBOARD,
+	MansionLayoutScript.OBJECT_KNIT_CHAIR,
+	MansionLayoutScript.OBJECT_SUIT_RACK,
+]
 ## 音声カタログ (効果音の出来事名)
 const AudioCatalog := preload("res://scripts/audio/audio_catalog.gd")
 ## AudioManager の型解決と実行時取得用スクリプト参照
@@ -49,6 +59,7 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await suite._verify_occluded_aim(main, game_state)
 	await suite._verify_rare_hair_from_pluck(main, game_state)
 	await suite._verify_hand_upgrade_twice(main, game_state)
+	await suite._verify_pluck_on_model_surfaces(main, game_state)
 	main.hand.allow_uncaptured_pluck = false
 	Input.action_release(HandController.ACTION_PLUCK)
 	await checker.process_frame
@@ -458,16 +469,20 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 	var rest: Transform3D = shoulder.global_transform.affine_inverse() * hand_view.global_transform
 	var detached_hair: MeshInstance3D = hand_view.get_node("PluckedHair")
 	var arm_radius: float = 0.0
+	var widest_part: String = ""
 	for part: MeshInstance3D in hand_view.find_children("*", "MeshInstance3D", true, false):
 		if not part.visible:
 			continue
-		var to_player: Transform3D = main.player.global_transform.affine_inverse() * part.global_transform
-		var vertices: PackedVector3Array = part.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
-		for vertex: Vector3 in vertices:
+		var to_player: Transform3D = main.player.global_transform.affine_inverse()
+		for vertex: Vector3 in _displayed_vertices(part):
 			var point: Vector3 = to_player * vertex
-			arm_radius = maxf(arm_radius, Vector2(point.x, point.z).length())
+			var radius: float = Vector2(point.x, point.z).length()
+			if radius > arm_radius:
+				arm_radius = radius
+				widest_part = part.name
 	_check(arm_radius <= FirstPersonPlayer.CAPSULE_RADIUS_M,
-		"腕を下ろした時は指先から袖まで壁際で当たり判定に収まる (実際 %.3f m)" % arm_radius)
+		"腕を下ろした時は指先から袖まで壁際で当たり判定に収まる (実際 %.3f m、最も外は %s)"
+		% [arm_radius, widest_part])
 
 	var audio_manager: AudioManagerScript = AudioManagerScript.resolve(_checker) as AudioManagerScript
 	var sound_count: int = audio_manager.get_sfx_play_count()
@@ -509,8 +524,8 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 	hand.set_process(true)
 	var screen: Rect2 = main.get_viewport().get_visible_rect()
 	for tip_path: String in [
-		"IndexFinger/Joint0/End/Joint1/End/Joint2/End",
-		"Thumb/Aim/Joint0/End/Joint1/End/Joint2/End",
+		"IndexTip",
+		"ThumbTip",
 	]:
 		var tip: Node3D = hand.get_hand_view().get_node(tip_path)
 		_check(
@@ -813,6 +828,78 @@ func _verify_rare_hair_from_pluck(main: Node3D, game_state: Node) -> void:
 	hand.set_rng_seed(Time.get_ticks_usec())
 
 
+## 既製のモデルに置き換えた家具 (ソファの座面・机とサイドボードの天面・椅子に掛けたニット) とスーツの前面の毛を、
+## 画面中央で狙って手でつまみ、引き終えると 1 本抜けるか (モデルや衝突体が毛の面を手前から遮らないこと)。
+## 4 種類すべての物が並ぶ屋敷 (1 部屋に物 6 個。MansionBuilder.OBJECT_PRESETS の 6 種類が 1 つずつ並ぶ) に一時的に
+## 作り直して確かめ、終わったら元の調整値の屋敷に戻す (保存はしない)
+func _verify_pluck_on_model_surfaces(main: Node3D, game_state: Node) -> void:
+	var original_tuning: MansionTuning = game_state.get_tuning()
+	var all_kinds_tuning: MansionTuning = original_tuning.clamped()
+	all_kinds_tuning.room_count = 1
+	all_kinds_tuning.object_count = MansionBuilderScript.OBJECT_PRESETS.size()
+	game_state.apply_tuning_and_rebuild(all_kinds_tuning, false)
+	await _checker.process_frame
+	var world: MansionWorld = main.mansion_world
+	# 確かめる物は、毛の面からではなく屋敷に置いた物から決める (モデルに置き換えて面が無くなった時に、
+	# 「置かれていない物」として飛ばさず落とすため)。机とサイドボードは同じ種類の面のため、物ごとに確かめる
+	var model_objects: Array[MansionLayout.ObjectDef] = []
+	var surface_types: Dictionary = {}
+	for obj: MansionLayout.ObjectDef in game_state.current_layout.objects:
+		if MODEL_OBJECT_KINDS.has(obj.object_kind):
+			model_objects.append(obj)
+			surface_types[obj.surface_type] = true
+	_check(
+		surface_types.size() == 4 and model_objects.size() == 5,
+		(
+			"物 6 個の 1 部屋の屋敷に、ソファ・机・サイドボード・ニットの椅子・スーツのラックの 5 個が並び、"
+			+ "面は 4 種類 (物 %d 個・面 %d 種類)"
+		) % [model_objects.size(), surface_types.size()],
+	)
+	for obj: MansionLayout.ObjectDef in model_objects:
+		var aimed_id: int = await HandAim.aim_at_surface_hair(
+			_checker, main, _object_surface_indices(world, obj)
+		)
+		_check(aimed_id >= 0, "「%s」の面の毛を、手の届く所から画面中央で狙える" % obj.object_kind)
+		if aimed_id < 0:
+			continue
+		var before_total: int = game_state.get_total_remaining_hairs()
+		await _press_pluck()
+		var pulled: PackedInt32Array = main.hand.get_pulling_ids()
+		var plucked: int = (
+			main.hand.advance_pull(main.hand.get_pull_duration()) if pulled.size() > 0 else 0
+		)
+		Input.action_release(HandController.ACTION_PLUCK)
+		await _checker.process_frame
+		_check(
+			pulled.has(aimed_id)
+			and plucked == 1
+			and not world.get_hair_field().has_hair(aimed_id)
+			and game_state.get_total_remaining_hairs() == before_total - 1,
+			"「%s」の面の毛を手でつまんで引き終えると、狙った 1 本が抜けて残り本数が 1 減る" % obj.object_kind,
+		)
+	game_state.apply_tuning_and_rebuild(original_tuning, false)
+	await _checker.process_frame
+
+
+## 物 obj の毛の面 (その物の種類の面のうち、面の中心が物の床の上の範囲に入るもの) の番号を返す
+static func _object_surface_indices(
+	world: MansionWorld, obj: MansionLayout.ObjectDef
+) -> Array[int]:
+	var indices: Array[int] = []
+	# 物の床の上の範囲は、回転しても収まるよう幅と奥行の大きい方の半分を半径にした円で見る
+	var reach: float = maxf(obj.size.x, obj.size.z) * 0.5
+	for surface_idx: int in range(world.get_hair_field().get_surface_count()):
+		var surface: MansionLayout.SurfaceDef = world.get_surface_def(surface_idx)
+		if (
+			surface != null
+			and surface.surface_type == obj.surface_type
+			and Vector2(surface.center.x - obj.position.x, surface.center.z - obj.position.z).length()
+			<= reach
+		):
+			indices.append(surface_idx)
+	return indices
+
+
 ## 毛のままの在庫のうち、指定した珍しい毛の本数を返す
 static func _rare_stock_count(game_state: Node, rare_hair_id: StringName) -> int:
 	var total: int = 0
@@ -870,3 +957,38 @@ func _hold_pluck(frame_count: int) -> void:
 		await _checker.process_frame
 	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
+
+
+## 部品の頂点を、表示される位置 (ワールド座標) で返す。骨で動く手のモデルは骨の姿勢を当てる
+## (メッシュの頂点は glb の結び付けの姿勢の座標で、部品の位置を掛けても表示の位置にならない。
+## dcc9acb の CI で、GPU から読み戻す bake_mesh_from_current_skeleton_pose は headless では null を返した)。
+## 当て方は Godot の骨の変形と同じ、骨のワールドの姿勢 × 結び付けの逆行列の重み付きの和。
+static func _displayed_vertices(part: MeshInstance3D) -> PackedVector3Array:
+	var arrays: Array = part.mesh.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var displayed := PackedVector3Array()
+	if part.skin == null:
+		for vertex: Vector3 in vertices:
+			displayed.append(part.global_transform * vertex)
+		return displayed
+	var skeleton: Skeleton3D = part.get_node(part.skeleton) as Skeleton3D
+	var bind_transforms: Array[Transform3D] = []
+	for bind: int in range(part.skin.get_bind_count()):
+		var bone: int = part.skin.get_bind_bone(bind)
+		if bone < 0:
+			bone = skeleton.find_bone(part.skin.get_bind_name(bind))
+		bind_transforms.append(
+			skeleton.global_transform * skeleton.get_bone_global_pose(bone)
+			* part.skin.get_bind_pose(bind)
+		)
+	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+	var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+	var per_vertex: int = roundi(float(bones.size()) / vertices.size())
+	for index: int in range(vertices.size()):
+		var point := Vector3.ZERO
+		for slot: int in range(per_vertex):
+			var weight: float = weights[index * per_vertex + slot]
+			if weight > 0.0:
+				point += bind_transforms[bones[index * per_vertex + slot]] * vertices[index] * weight
+		displayed.append(point)
+	return displayed
