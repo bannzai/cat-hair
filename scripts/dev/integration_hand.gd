@@ -79,10 +79,14 @@ func _verify_hair_book_blocks_and_shows(main: Node3D, game_state: Node) -> void:
 		main.hair_book_panel.visible and not hand.enabled and not main.player.controls_enabled,
 		"B キーで図鑑が開き、歩く操作とつまむ操作が止まる",
 	)
+	# 入力の処理の後、HUD が通常の _process で表示を更新したフレームを確認する。
+	await _checker.process_frame
 	_check(
 		not hand.can_begin_pull() and not main.crosshair.is_visible_in_tree()
 		and not main.look_hud.get_node("GuideLabel").is_visible_in_tree(),
-		"届く毛を狙っていても、図鑑を開くと手の案内と照準が消える",
+		"届く毛を狙っていても、図鑑を開くと手の案内と照準が消える (つまめる=%s 案内=%s 照準=%s)"
+		% [hand.can_begin_pull(), main.look_hud.get_node("GuideLabel").is_visible_in_tree(),
+			main.crosshair.is_visible_in_tree()],
 	)
 	var before_total: int = game_state.get_total_remaining_hairs()
 	await _hold_pluck(3)
