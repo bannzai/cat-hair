@@ -54,6 +54,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_player_mouse_predicates()
 	suite._check_save_and_load_roundtrip()
 	suite._check_save_missing_corrupted_and_clamping()
+	suite._check_legacy_mansion_starts_fresh()
 	suite._check_game_state_override_reconcile_and_notifications()
 	suite._check_game_state_and_builder_edge_cases()
 	suite._check_format_hair_count()
@@ -710,6 +711,31 @@ func _check_save_missing_corrupted_and_clamping() -> void:
 		and clamped_save.building_records[0].returned_found_item_count == 0,
 		"負値・レベル 0・機嫌範囲外が安全範囲に丸められる",
 	)
+
+
+## 毛が 12 万本だった初版の保存ファイルを置き、実際の起動経路で既定の屋敷が新しく始まるか確かめる。
+func _check_legacy_mansion_starts_fresh() -> void:
+	var legacy: SaveData = SaveDataScript.new()
+	legacy.schema_version = 1
+	legacy.tuning = MansionTuningScript.new()
+	legacy.tuning.hair_count = 120000
+	legacy.building_progress = MansionBuilderScript.build_initial_progress(
+		MansionBuilderScript.build_layout(legacy.tuning), legacy.tuning,
+	)
+	var file: FileAccess = FileAccess.open(TEST_SAVE_PATH, FileAccess.WRITE)
+	_check(file != null, "旧版の保存ファイルを開ける")
+	if file == null:
+		return
+	_check(file.store_string(JSON.stringify(legacy.to_dict())), "12 万本の旧版データを書き込める")
+	file.close()
+	var state: Node = GameStateScript.new()
+	state.initialize_from_storage(TEST_SAVE_PATH)
+	_check(
+		not state.loaded_from_save and state.get_total_remaining_hairs() == 9999999,
+		"12 万本の旧版データから起動すると「はじめる」用の屋敷に 9,999,999 本の毛がある",
+	)
+	state.free()
+	SaveStorageScript.delete_save_file(TEST_SAVE_PATH)
 
 
 ## GameState の引数上書き・全 3 種 ID 照合 (_reconcile_progress_with_layout)・終了通知条件を検証する

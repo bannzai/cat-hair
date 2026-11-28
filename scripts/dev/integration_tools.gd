@@ -52,6 +52,7 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await suite._verify_empty_consumable(main, game_state)
 	await suite._verify_every_tool_once(main, game_state)
 	await suite._verify_cleaning_fee(main, game_state)
+	await suite._verify_talk_to_trader(main)
 	await suite._verify_trader_range_and_room_gauge(main)
 	await suite._verify_edge_inputs(main, game_state)
 	await suite._verify_rebuild_resets_tools(main, game_state, dense_tuning)
@@ -444,6 +445,49 @@ func _aim_at_floor_hairs(main: Node3D) -> bool:
 			MIN_HAIRS_IN_RANGE
 		)
 		>= 0
+	)
+
+
+## 買取業者の胸を狙うと売る操作が案内され、案内されたキーで販売画面を開けるか。
+## 照準を外した時や話せる距離の外では同じ入力で販売画面を開かないか。
+func _verify_talk_to_trader(main: Node3D) -> void:
+	var trader: Vector3 = main.mansion_world.get_trader_position()
+	var chest: Vector3 = trader + Vector3.UP * 1.1
+	var guide: Label = main.look_hud.get_node("GuideLabel")
+	main.player.set_spawn(trader + Vector3.FORWARD * 1.5, 0.0)
+	await _checker.physics_frame
+	main.player.look_at_point(chest)
+	await _checker.process_frame
+	await _checker.process_frame
+	_check(
+		guide.is_visible_in_tree() and guide.text.contains("E") and guide.text.contains("毛を売る")
+		and main.crosshair.is_visible_in_tree(),
+		"近くの買取業者に照準を合わせると、E で毛を売る案内が見える",
+	)
+	await _checker._press_physical_key(KEY_E)
+	_check(
+		main.tool_shop_panel.is_visible_in_tree()
+		and main.tool_shop_panel.get_sell_button().is_visible_in_tree(),
+		"買取業者に向けて E を押すと毛を売るボタンが見える",
+	)
+	main.close_tool_shop()
+	main.player.look_at_point(main.player.get_camera().global_position + Vector3.FORWARD)
+	await _checker.process_frame
+	await _checker.process_frame
+	await _checker._press_physical_key(KEY_E)
+	_check(
+		not (guide.is_visible_in_tree() and guide.text.contains("毛を売る"))
+		and not main.tool_shop_panel.visible, "照準を外すと売る案内が消え、E で販売画面が開かない",
+	)
+	main.player.set_spawn(trader + Vector3.FORWARD * 2.5, 0.0)
+	await _checker.physics_frame
+	main.player.look_at_point(chest)
+	await _checker.process_frame
+	await _checker.process_frame
+	await _checker._press_physical_key(KEY_E)
+	_check(
+		not (guide.is_visible_in_tree() and guide.text.contains("毛を売る"))
+		and not main.tool_shop_panel.visible, "離れた買取業者を狙っても売る案内と販売画面が出ない",
 	)
 
 

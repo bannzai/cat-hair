@@ -35,6 +35,7 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	main.hand.allow_uncaptured_pluck = true
 	await checker.process_frame
 	suite._verify_crosshair_centered(main)
+	await suite._verify_tap(main, game_state)
 	await suite._verify_play_guide(main)
 	await suite._verify_hair_book_blocks_and_shows(main, game_state)
 	await suite._verify_aim_at_nothing(main, game_state)
@@ -126,6 +127,52 @@ func _verify_hair_book_blocks_and_shows(main: Node3D, game_state: Node) -> void:
 	# 図鑑の検証で GameState だけ 1 本減らしたので、毛の見た目をそろえるため作り直す
 	game_state.mansion_rebuilt.emit(game_state.current_layout)
 	await _checker.process_frame
+
+
+## 同じフレーム内に押して離す E と、押し続けてキーリピートが届く E を実際の入力経路に通す。
+func _verify_tap(main: Node3D, game_state: Node) -> void:
+	var audio: AudioManagerScript = AudioManagerScript.resolve(_checker) as AudioManagerScript
+	_check(main.player.find_child("Body", true, false) == null
+		and main.player.find_child("HandView", true, false) == null, "自分の体と手を描くノードがない")
+	for hold: bool in [false, true]:
+		var hair: int = await HandAim.aim_at_floor_hair(_checker, main)
+		if hair < 0:
+			_check(false, "押す前に床の毛に照準が合う")
+			return
+		var total: int = game_state.get_total_remaining_hairs()
+		var sounds: int = audio.get_sfx_play_count()
+		_send_key(main, true)
+		if hold:
+			await _checker.process_frame
+			await HandAim.aim_at_floor_hair(_checker, main)
+			_send_key(main, true, true)
+		_send_key(main, false)
+		await _checker.process_frame
+		_check(not main.mansion_world.get_hair_field().has_hair(hair)
+			and game_state.get_total_remaining_hairs() == total - 1
+			and audio.get_sfx_play_count() == sounds + 1
+			and audio.get_last_sfx_event_name() == AudioCatalog.SFX_PLUCK_HAIR,
+			"E の短押し・長押しのどちらも狙った 1 本だけが取れて成功音が 1 回鳴る (長押し=%s)" % hold)
+	main.player.look_at_point(main.player.get_camera().global_position + Vector3.UP * 4.0)
+	await _checker.physics_frame
+	var before: int = game_state.get_total_remaining_hairs()
+	var sounds_before: int = audio.get_sfx_play_count()
+	_send_key(main, true)
+	_send_key(main, false)
+	await _checker.process_frame
+	_check(game_state.get_total_remaining_hairs() == before and main.tool_message_label.text.is_empty()
+		and audio.get_sfx_play_count() == sounds_before + 1
+		and audio.get_last_sfx_event_name() != AudioCatalog.SFX_PLUCK_HAIR,
+		"空振りでは本数と照準の文字が変わらず、成功音と異なる音が 1 回鳴る")
+
+
+## 実際の操作と同じ E キーのイベントをビューポートに渡す。
+func _send_key(main: Node3D, pressed: bool, repeat: bool = false) -> void:
+	var event := InputEventKey.new()
+	event.physical_keycode = KEY_E
+	event.pressed = pressed
+	event.echo = repeat
+	main.get_viewport().push_input(event)
 
 
 ## 狙いの先に毛の表面が無い (真上を見る) 時は、つまむ入力で何も変わらないか
