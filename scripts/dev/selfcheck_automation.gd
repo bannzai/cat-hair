@@ -36,6 +36,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._checker = checker
 	suite._check_route_clock()
 	suite._check_cat_rules()
+	suite._check_cat_tail()
 	suite._check_robot_rules()
 	suite._check_game_state_cats()
 	suite._check_game_state_robots()
@@ -55,6 +56,46 @@ static func run_all(checker: SceneTree) -> void:
 ## 判定を selfcheck 本体に記録する
 func _check(cond: bool, label: String) -> void:
 	_checker._check(cond, label)
+
+
+## 描くメッシュの端から、尻尾の付け根が頭の反対の側の胴に接し、先が背後に向くことを確かめる。
+func _check_cat_tail() -> void:
+	var controller: AutomationController = AutomationController.new()
+	var cat: Node3D = controller._build_cat({
+		"cat_id": &"black", "name": "くろまめ", "color": SurfaceHairScript.COLOR_BLACK,
+	})
+	var body: Node3D = cat.get_node("Body")
+	var capsules: Array[MeshInstance3D] = []
+	var head: MeshInstance3D = null
+	for part: Node in body.get_children():
+		var mesh_part := part as MeshInstance3D
+		if mesh_part == null:
+			continue
+		if mesh_part.mesh is CapsuleMesh:
+			capsules.append(mesh_part)
+		elif mesh_part.mesh is SphereMesh:
+			head = mesh_part
+	if capsules.size() >= 2 and head != null:
+		var torso: MeshInstance3D = capsules[0]
+		var tail: MeshInstance3D = capsules[1]
+		var tail_half: Vector3 = tail.basis.y * (tail.mesh as CapsuleMesh).height * 0.5
+		var base: Vector3 = tail.position - tail_half
+		var tip: Vector3 = tail.position + tail_half
+		var forward: Vector3 = head.position - torso.position
+		forward.y = 0.0
+		forward = forward.normalized()
+		var rump: Vector3 = torso.position - forward * (torso.mesh as CapsuleMesh).height * 0.5
+		_check(
+			(base - torso.position).dot(forward) < 0.0
+			and base.distance_to(rump) < (torso.mesh as CapsuleMesh).radius * 0.65
+			and (tip - base).dot(forward) < 0.0,
+			"猫の尻尾の付け根が頭と反対側の胴の後端に接し、先が後ろに伸びる (付け根 %s、胴の後端 %s)"
+			% [base, rump],
+		)
+	else:
+		_check(false, "猫の胴・頭・尻尾のメッシュがある")
+	cat.free()
+	controller.free()
 
 
 ## 一巡の秒数・時刻ごとの留まる所・移る途中の位置・出来事の回数 (区間の分け方で変わらない) を確かめる

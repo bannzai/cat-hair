@@ -1,6 +1,6 @@
 extends Node3D
 ## 体の右肩から手首へ腕を結び、つまんだ毛の先端に親指と人差し指を合わせる。
-## 腕と手の寸法・角度・色は、床と縦面の撮影で根元と指先を同時に追えるよう調整した値。
+## つまむ指の腹、手首へ細くなる前腕、ひじで折れる袖を一続きに描く。
 
 ## 指に持たせる毛も、面の毛と同じメッシュで描く。
 const HairFieldScript := preload("res://scripts/hair_field.gd")
@@ -12,7 +12,17 @@ const REST_POSITION: Vector3 = Vector3(0.30, -0.55, 0.0)
 ## 下ろした手が体の脇で下を向く角度。
 const REST_ROTATION: Vector3 = Vector3(-1.2, 0.15, 0.0)
 ## 照準を右手で覆わず、毛先の左右に指が見える向き。
-const PINCH_ROTATION: Vector3 = Vector3(-0.40, 1.05, -0.28)
+const PINCH_ROTATION: Vector3 = Vector3(-0.64, 0.65, -0.78)
+## 一人称の腕が壁際で途切れないよう、腕と持った毛だけの描画深度を手前に寄せる。
+const ARM_Z_CLIP_SCALE: float = 0.8
+## 肩から肘までの上腕の長さ (m)。
+const UPPER_ARM_M: float = 0.32
+## 肘から手首までの前腕の長さ (m)。
+const FOREARM_M: float = 0.27
+## つまんだ時にも肘の曲がりを残す、肩から手首までの距離 (m)。
+const BENT_REACH_M: float = 0.53
+## 腕が手のひらにつながる位置。
+const WRIST: Vector3 = Vector3(0.0, 0.0, 0.082)
 ## 腕を下ろす前に、閉じた指先で抜いた毛をひと目確かめられる間を置く。
 const SHOW_HAIR_SECONDS: float = 0.16
 ## 抜けた瞬間と腕を下ろす動きを別々に追える時間。
@@ -20,7 +30,7 @@ const RETURN_SECONDS: float = 0.24
 ## つまむ前の親指と人差し指の開き (rad)
 const FINGER_OPEN_RAD: float = 0.55
 ## 肌の色
-const SKIN_COLOR: Color = Color(0.93, 0.74, 0.62)
+const SKIN_COLOR: Color = Color(0.69, 0.45, 0.34)
 ## 袖の色
 const SLEEVE_COLOR: Color = Color(0.25, 0.32, 0.45)
 ## 親指以外の 4 本の指のノード名 (人差し指・中指・薬指・小指の順。下の指ごとの表も同じ順)
@@ -38,19 +48,11 @@ const FINGER_SEGMENT_M: Array[Vector3] = [
 ## 親指以外の 4 本の指の太さ (半径 m。大人の指の幅 1.5〜1.8 cm の見当で、
 ## 中指を最も太く、小指を最も細くした。付け根の間隔 1.8 cm に対して指どうしの隙間がほとんど空かず、揃えた指に見える)
 const FINGER_RADIUS_M: Array[float] = [0.0085, 0.0088, 0.0082, 0.0072]
-## 親指以外の 4 本の指の関節 1 つごとの曲げ (rad。
-## 人差し指はつまむために伸ばし気味に、ほかの 3 本は力を抜いて手のひらの側へ軽く曲げる)
-const FINGER_CURL_RAD: Array[float] = [0.18, 0.38, 0.45, 0.5]
-## 親指の付け根 (手首の近くの、手のひらの左下) から指先への 3 節の長さ (m)。付け根の骨を含む親指の長さ 11〜12 cm の見当で、
-## 閉じた時に指先が人差し指の先に届く長さ (下の THUMB_AIM と合わせ、2 本の先の中心が約 7 mm まで近づく。
-## 指の太さの和より近く、先どうしが触れて見える。scripts/dev/selfcheck_human.gd が組み立てた手で確かめる)
-const THUMB_SEGMENT_M: Vector3 = Vector3(0.05, 0.038, 0.03)
-## 親指の付け根の位置 (手首の近くの、手のひらの左下)
-const THUMB_BASE_POSITION: Vector3 = Vector3(-0.036, -0.012, 0.045)
-## 親指を閉じた時に向ける向き (付け根から、閉じた人差し指の先の少し左下へ向かう向き)
-const THUMB_AIM: Vector3 = Vector3(0.0, -0.0135, -0.122)
-## 親指の関節 1 つごとの、人差し指の側 (+X) への曲げ (rad。強く曲げると先が人差し指の先から右へ外れるため、わずかにする)
-const THUMB_CURL_RAD: float = 0.02
+## 指ごとの 3 関節の角度 (rad)。人差し指の先を親指に向け、残る指は手のひらの内側に畳む。
+const FINGER_CURL_RAD: Array[Vector3] = [
+	Vector3(0.07, 0.73, 0.65), Vector3(0.63, 1.04, 0.78),
+	Vector3(0.76, 1.06, 0.79), Vector3(0.85, 1.10, 0.78),
+]
 
 ## 引いている進み具合 (0 = 開いた手、1 = つまんで引き終えた手)
 var _pull_progress: float = 0.0
@@ -69,6 +71,12 @@ var _shoulder: Node3D
 var _sleeve: MeshInstance3D
 ## 肘から手首までの前腕。
 var _forearm: MeshInstance3D
+## 袖の上下をつなぐ肘の丸み。
+var _elbow: MeshInstance3D
+## 肘から袖口までを覆う布。
+var _lower_sleeve: MeshInstance3D
+## 袖口に付く折り返し。
+var _cuff: MeshInstance3D
 ## 抜いた直後だけ指先に残す毛。
 var _plucked: MeshInstance3D
 ## 抜いた毛を見せてから手を下ろすアニメーション。
@@ -105,7 +113,9 @@ func attach_to_shoulder(shoulder: Node3D) -> void:
 	_plucked = MeshInstance3D.new()
 	_plucked.name = "PluckedHair"
 	_plucked.mesh = HairFieldScript.build_hair_mesh()
-	_plucked.material_override = HairFieldScript.build_hair_material()
+	var held_material: StandardMaterial3D = HairFieldScript.build_hair_material()
+	_set_arm_depth(held_material)
+	_plucked.material_override = held_material
 	_plucked.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_plucked.hide()
 	add_child(_plucked)
@@ -126,10 +136,26 @@ func pinch_at(tip: Vector3, reach_end: float, progress: float) -> void:
 	var reach: float = set_pull_progress(progress, reach_end)
 	var rest: Transform3D = _rest_transform()
 	var pinch_basis: Basis = get_parent_node_3d().global_basis * Basis.from_euler(PINCH_ROTATION)
-	global_basis = rest.basis.slerp(pinch_basis, reach)
+	var hand_scale: float = lerpf(1.0, _reach_scale(tip, pinch_basis), reach)
+	global_basis = rest.basis.slerp(pinch_basis, reach).scaled(Vector3.ONE * hand_scale)
 	var tip_offset: Vector3 = get_pinch_position() - global_position
 	global_position = rest.origin.lerp(tip - tip_offset, reach)
 	_pose_arm()
+
+
+## 肘の曲がる範囲で視線と指先が交わる距離を求め、実際の毛先までの倍率を返す。
+func _reach_scale(tip: Vector3, pinch_basis: Basis) -> float:
+	var eye: Vector3 = get_parent_node_3d().global_position
+	var ray: Vector3 = eye.direction_to(tip)
+	if ray.is_zero_approx():
+		return 1.0
+	var wrist_offset: Vector3 = pinch_basis * (WRIST - to_local(get_pinch_position()))
+	var offset: Vector3 = eye + wrist_offset - _shoulder.global_position
+	var chord: float = sqrt(maxf(
+		0.0, BENT_REACH_M * BENT_REACH_M - offset.slide(ray).length_squared()
+	))
+	# 手が目に触れるほど近い角度では、手のひらが画面をふさがない奥行きを保つ。
+	return maxf(1.0, eye.distance_to(tip) / maxf(0.32, chord - offset.dot(ray)))
 
 
 ## 実際に抜けた毛のメッシュを同じ姿勢・色で指に持たせ、持ち上げてから腕を下ろす
@@ -178,7 +204,7 @@ func _return_step(weight: float, start: Transform3D) -> void:
 ## 下ろした手が腰の外側に来る、右肩を基準にしたワールド姿勢。
 func _rest_transform() -> Transform3D:
 	return _shoulder.global_transform * Transform3D(
-		Basis.from_euler(REST_ROTATION), Vector3(0.065, -0.54, -0.07)
+		Basis.from_euler(REST_ROTATION), Vector3(0.032, -0.65, -0.13)
 	)
 
 
@@ -200,19 +226,66 @@ func _process(_delta: float) -> void:
 	_pose_arm()
 
 
-## 手首から肩への途中に肘の曲がりを残し、どの面でも腕が途中で切れないようにする
+## 指先を毛に合わせたまま、肩・肘・手首の三角形を上腕と前腕の長さから求める。
 func _pose_arm() -> void:
-	var wrist := Vector3(0.0, 0.0, 0.085)
-	var shoulder: Vector3 = to_local(_shoulder.global_position)
-	var elbow: Vector3 = shoulder.lerp(wrist, 0.51)
-	elbow += global_basis.inverse() * _shoulder.global_basis * Vector3(0.11, -0.08, 0.02)
-	HumanParts.pose_limb(_sleeve, shoulder, elbow)
-	HumanParts.pose_limb(_forearm, elbow, wrist)
+	# 目を中心に全体を相似拡大すると、画面上の肩は元の位置に留まり、遠い面でも腕だけが伸びない。
+	var eye: Vector3 = get_parent_node_3d().global_position
+	var shoulder: Vector3 = to_local(
+		eye + (_shoulder.global_position - eye) * global_basis.x.length()
+	)
+	var span: Vector3 = WRIST - shoulder
+	var distance: float = maxf(span.length(), 0.001)
+	var axis: Vector3 = span / distance
+	var along: float = clampf(
+		(distance * distance + UPPER_ARM_M * UPPER_ARM_M - FOREARM_M * FOREARM_M)
+		/ (2.0 * distance), 0.0, UPPER_ARM_M
+	)
+	var bend: Vector3 = global_basis.inverse() * _shoulder.global_basis * Vector3(1, -0.65, 0.4)
+	var elbow: Vector3 = shoulder + axis * along
+	var offset: float = sqrt(maxf(0.0, UPPER_ARM_M * UPPER_ARM_M - along * along))
+	elbow += bend.slide(axis).normalized() * offset
+	_fit_arm_section(_sleeve, shoulder, elbow)
+	var sleeve_end: Vector3 = elbow.lerp(WRIST, 0.48)
+	_fit_arm_section(_lower_sleeve, elbow, sleeve_end)
+	_fit_arm_section(_cuff, elbow.lerp(sleeve_end, 0.80), sleeve_end)
+	_fit_arm_section(_forearm, sleeve_end, WRIST)
+	_elbow.position = elbow
+
+
+## 筒の両端を関節に合わせる。輪郭の太さはメッシュで決まり、長さだけを変える。
+static func _fit_arm_section(part: MeshInstance3D, start: Vector3, end: Vector3) -> void:
+	var direction: Vector3 = end - start
+	part.position = (start + end) * 0.5
+	part.quaternion = Quaternion(Vector3.UP, direction.normalized())
+	part.scale = Vector3(1.0, direction.length(), 1.0)
+
+
+## 上腕、袖口、前腕を、それぞれ先端に向かって細くなる形で作る。
+func _arm_section(part_name: String, base_radius: float, end_radius: float,
+		material: Material) -> MeshInstance3D:
+	var mesh := CylinderMesh.new()
+	mesh.height = 1.0
+	mesh.bottom_radius = base_radius
+	mesh.top_radius = end_radius
+	var part := MeshInstance3D.new()
+	part.name = part_name
+	part.mesh = mesh
+	part.material_override = material
+	part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(part)
+	return part
 
 
 ## 現在の引いている進み具合を返す
 func get_pull_progress() -> float:
 	return _pull_progress
+
+
+## 深度だけを変えるので、指先は画面で毛先に重なり、指や袖同士の前後関係も保たれる。
+## 出典: https://github.com/godotengine/godot/blob/4.7-stable/doc/classes/BaseMaterial3D.xml#L489
+static func _set_arm_depth(material: StandardMaterial3D) -> void:
+	material.use_z_clip_scale = true
+	material.z_clip_scale = ARM_Z_CLIP_SCALE
 
 
 ## 袖・前腕・手のひら・指を組み立てる (影は落とさない。カメラの近くで画面を暗くしないため)
@@ -222,20 +295,25 @@ func _build() -> void:
 	var skin: StandardMaterial3D = StandardMaterial3D.new()
 	skin.albedo_color = SKIN_COLOR
 	skin.roughness = 0.8
+	var nail := StandardMaterial3D.new()
+	nail.albedo_color = Color(0.77, 0.54, 0.47)
+	nail.roughness = 0.55
 	var sleeve: StandardMaterial3D = StandardMaterial3D.new()
 	sleeve.albedo_color = SLEEVE_COLOR
 	sleeve.roughness = 0.9
 
-	# 袖は手首の少し手前から肘の側へ、画面の外まで伸ばす。前腕は袖口から手首まで見える
-	_sleeve = HumanParts.add_limb(
-		self, "Sleeve", Vector3(0.0, 0.006, 0.15), Vector3(0.0, 0.02, 0.42), 0.042, sleeve, false
-	)
-	_forearm = HumanParts.add_limb(
-		self, "Forearm", Vector3(0.0, 0.0, 0.085), Vector3(0.0, 0.006, 0.17), 0.026, skin, false
-	)
+	var cuff: StandardMaterial3D = sleeve.duplicate()
+	cuff.albedo_color = SLEEVE_COLOR.lightened(0.13)
+	for material: StandardMaterial3D in [skin, nail, sleeve, cuff]:
+		_set_arm_depth(material)
+	_sleeve = _arm_section("Sleeve", 0.071, 0.053, sleeve)
+	_lower_sleeve = _arm_section("LowerSleeve", 0.053, 0.042, sleeve)
+	_cuff = _arm_section("Cuff", 0.045, 0.043, cuff)
+	_forearm = _arm_section("Forearm", 0.035, 0.027, skin)
+	_elbow = HumanParts.add_sphere(self, "Elbow", Vector3.ZERO, 0.053, Vector3.ONE, sleeve, false)
 	# 手のひらは平たく潰した球で、指の付け根の関節の並び (拳の山) を横に渡したカプセルで足す
 	HumanParts.add_sphere(
-		self, "Palm", Vector3(0.0, 0.0, 0.04), 0.5, Vector3(0.078, 0.03, 0.1), skin, false
+		self, "Palm", Vector3(0.0, 0.0, 0.04), 0.5, Vector3(0.084, 0.042, 0.113), skin, false
 	)
 	HumanParts.add_limb(
 		self, "Knuckles", Vector3(-0.027, 0.002, 0.0), Vector3(0.026, 0.002, 0.0), 0.011, skin, false
@@ -251,35 +329,37 @@ func _build() -> void:
 		add_child(finger_root)
 		var tip: Node3D = _add_finger_segments(
 			finger_root, FINGER_SEGMENT_M[finger_idx], FINGER_RADIUS_M[finger_idx],
-			Vector3(-FINGER_CURL_RAD[finger_idx], 0.0, 0.0), skin,
+			Vector3.LEFT, FINGER_CURL_RAD[finger_idx], skin, nail,
 		)
 		if finger_idx == 0:
 			_index_finger = finger_root
 			_index_tip = tip
 	_thumb = Node3D.new()
 	_thumb.name = "Thumb"
-	_thumb.position = THUMB_BASE_POSITION
+	_thumb.position = Vector3(-0.026, 0.0, 0.022)
 	add_child(_thumb)
 	var thumb_aim: Node3D = Node3D.new()
 	thumb_aim.name = "Aim"
-	thumb_aim.basis = Basis.looking_at(THUMB_AIM, Vector3.UP)
+	thumb_aim.rotation.x = -0.50
 	_thumb.add_child(thumb_aim)
 	# 親指は人差し指より太い (半径 1 cm 強)
 	_thumb_tip = _add_finger_segments(
-		thumb_aim, THUMB_SEGMENT_M, 0.0105, Vector3(0.0, -THUMB_CURL_RAD, 0.0), skin
+		thumb_aim, Vector3(0.04, 0.041, 0.042), 0.011, Vector3.UP,
+		Vector3(0.98, -0.93, -0.93), skin, nail
 	)
 
 
-## 付け根 root から局所の -Z へ、長さ segment_lengths の 3 節の指を足す。節ごとに関節で joint_bend だけ曲げ、
+## 付け根 root から局所の -Z へ、長さ segment_lengths の 3 節の指を足す。関節で指ごとの角度だけ曲げ、
 ## 先の節ほど細くする
 static func _add_finger_segments(
-	root: Node3D, segment_lengths: Vector3, radius: float, joint_bend: Vector3, skin: Material
+	root: Node3D, segment_lengths: Vector3, radius: float, bend_axis: Vector3,
+	joint_angles: Vector3, skin: Material, nail: Material
 ) -> Node3D:
 	var joint: Node3D = root
 	for segment_idx: int in range(3):
 		var bent: Node3D = Node3D.new()
 		bent.name = "Joint%d" % segment_idx
-		bent.rotation = joint_bend
+		bent.rotation = bend_axis * joint_angles[segment_idx]
 		joint.add_child(bent)
 		var length: float = segment_lengths[segment_idx]
 		# 先の節ほど 1 割ずつ細くし、指先がすぼまって見えるようにする
@@ -287,6 +367,9 @@ static func _add_finger_segments(
 			bent, "Segment", Vector3.ZERO, Vector3(0.0, 0.0, -length),
 			radius * (1.0 - 0.1 * float(segment_idx)), skin, false,
 		)
+		if segment_idx == 2:
+			HumanParts.add_sphere(bent, "Nail", Vector3(0.0, radius * 0.75, -length * 0.78),
+				0.5, Vector3(radius * 1.2, radius * 0.36, radius * 1.6), nail, false)
 		var tip: Node3D = Node3D.new()
 		tip.name = "End"
 		tip.position = Vector3(0.0, 0.0, -length)

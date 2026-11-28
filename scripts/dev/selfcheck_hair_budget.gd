@@ -23,6 +23,10 @@ const ScenebenchScript := preload("res://scripts/dev/scenebench.gd")
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 ## 検証で使う小さな描く本数の上限 (100 本の面で、描く毛と埋もれた毛の両方を 1 本ずつ追って数えられる本数)
 const SMALL_BUDGET: int = 10
+## 厚みの境界を検査する床面の幅と奥行き (m)。
+const FUR_FLOOR_SIZE := Vector2(2.0, 2.0)
+## この床で毛の層が最も厚くなる本数。
+const SATURATED_COUNT := ceili(FUR_FLOOR_SIZE.x * FUR_FLOOR_SIZE.y * FloorFur.FULL_DENSITY)
 ## 屋敷を組む検証で使う描く本数の上限。既定の屋敷 (4 部屋・数十の面) の全部の面に数本ずつ配られて描く毛が残り、
 ## 吸引車が 1 面で触れる本数 (max_hairs) より描いている毛が少ない面ができて埋もれた毛の経路を通る本数
 const WORLD_BUDGET: int = 100
@@ -37,6 +41,8 @@ static func run_all(checker: SceneTree) -> void:
 	suite._checker = checker
 	suite._check_group_counts_over_budget()
 	suite._check_remove_refills_until_buried_runs_out()
+	suite._check_floor_fur_after_cleaning()
+	suite._check_floor_fur_density_limits()
 	suite._check_plucked_spot_stays_clear()
 	suite._check_refill_on_tiny_surface()
 	suite._check_add_and_remove_buried()
@@ -59,6 +65,83 @@ static func _counts(rows: Array) -> Array[PackedInt32Array]:
 	var typed: Array[PackedInt32Array] = []
 	typed.assign(rows)
 	return typed
+
+
+## 同じ種と描画枠で床の毛を置く。埋もれた本数だけを変えて、掃除の途中と再読み込みした時の形を比べる。
+static func _make_floor_with_buried(buried: int) -> Node3D:
+	var field := HairFieldScript.new()
+	field.draw_budget = 256
+	field.add_oriented_surface("floor", Transform3D.IDENTITY, FUR_FLOOR_SIZE, 1.0, [], true)
+	field.populate_with_group_counts(_counts([PackedInt32Array([field.draw_budget + buried, 0, 0])]))
+	return field
+
+
+## 山の一部が床面より下がったとき、床に移った毛もまだ山に乗る毛も、同じ残り本数で置き直した形に一致するか。
+func _check_floor_fur_after_cleaning() -> void:
+	var field: Node3D = _make_floor_with_buried(SATURATED_COUNT)
+	var removed := floori(SATURATED_COUNT * 0.5)
+	var reloaded: Node3D = _make_floor_with_buried(SATURATED_COUNT - removed)
+	var bare: Node3D = _make_floor_with_buried(0)
+	HairFieldScript.remove_buried_hairs(field, 0, HairFieldScript.HairColorGroup.WHITE, removed)
+	var flat_count: int = 0
+	var slope_count: int = 0
+	var flat_ok: bool = true
+	var slope_ok: bool = true
+	for slot: int in range(field.get_surface_visible_instance_count(0)):
+		var hair_id: int = field.get_hair_id_at_slot(0, slot)
+		var actual: Transform3D = field.get_hair_transform(hair_id)
+		var expected: Transform3D = reloaded.get_hair_transform(hair_id)
+		var flat: Transform3D = bare.get_hair_transform(hair_id)
+		if expected.is_equal_approx(flat):
+			flat_count += 1
+			flat_ok = flat_ok and actual.is_equal_approx(flat)
+			flat_ok = flat_ok and (actual * HairFieldScript.HAIR_TIP).y > 0.0
+		elif not expected.basis.is_equal_approx(flat.basis):
+			slope_count += 1
+			slope_ok = slope_ok and actual.is_equal_approx(expected)
+	_check(flat_count > 0 and flat_ok, "山から床に下りた毛は床の傾きに戻り、毛先が床の上にある")
+	_check(slope_count > 0 and slope_ok, "山に残った毛は掃除後の山肌に沿って傾く")
+	field.free()
+	reloaded.free()
+	bare.free()
+
+
+## 層が床下に隠れる最少の本数と、層が最も厚くなる本数を超えた側で、毛の根元と照準の当たる高さを確かめる。
+func _check_floor_fur_density_limits() -> void:
+	var bare: Node3D = _make_floor_with_buried(0)
+	var one: Node3D = _make_floor_with_buried(1)
+	var layer: FloorFur = one.get_child(0).get_child(0) as FloorFur
+	_check(layer != null and not layer.visible and _same_floor_roots_and_hits(one, bare),
+		"埋もれた毛が 1 本の層は床の下に隠れ、各根元と照準の交点は裸の床と一致する")
+	one.free()
+	bare.free()
+	var full: Node3D = _make_floor_with_buried(SATURATED_COUNT)
+	# 1 本だけ超えた場合と、厚みの丸め幅を十分に超えた場合の両方で飽和を確かめる。
+	for buried: int in [SATURATED_COUNT + 1, SATURATED_COUNT * 2]:
+		var extra: Node3D = _make_floor_with_buried(buried)
+		_check(_same_floor_roots_and_hits(extra, full),
+			"埋もれた毛が %d 本の床は、飽和する %d 本の床と各根元・照準の交点が一致する"
+			% [buried, SATURATED_COUNT])
+		extra.free()
+	full.free()
+
+
+## 同じ種の床どうしで、各毛の姿勢と、その真上から狙ったときの表面の交点が一致するか。
+static func _same_floor_roots_and_hits(actual: Node3D, expected: Node3D) -> bool:
+	var slots: int = expected.get_surface_visible_instance_count(0)
+	if slots == 0 or actual.get_surface_visible_instance_count(0) != slots:
+		return false
+	for slot: int in range(slots):
+		var hair_id: int = expected.get_hair_id_at_slot(0, slot)
+		var pose: Transform3D = expected.get_hair_transform(hair_id)
+		if not pose.is_equal_approx(actual.get_hair_transform(hair_id)):
+			return false
+		var eye: Vector3 = pose.origin + Vector3.UP
+		var hit: Dictionary = actual.intersect_surfaces(eye, Vector3.DOWN, 2.0)
+		var target: Dictionary = expected.intersect_surfaces(eye, Vector3.DOWN, 2.0)
+		if hit.is_empty() or target.is_empty() or not hit["point"].is_equal_approx(target["point"]):
+			return false
+	return true
 
 
 ## 検証結果を selfcheck 本体へ記録する
