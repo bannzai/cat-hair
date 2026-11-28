@@ -15,6 +15,12 @@ static func aim_at_floor_hair(tree: SceneTree, main: Node3D) -> int:
 	return await _aim(tree, main, MansionLayout.SURFACE_FLOOR, HandController.GRAB_RADIUS_M, 0, false)
 
 
+## 床面から 8 cm 以上積もった毛の山で、表面にある 1 本に照準を合わせる。
+static func aim_at_floor_pile(tree: SceneTree, main: Node3D) -> int:
+	return await _aim(
+		tree, main, MansionLayout.SURFACE_FLOOR, HandController.GRAB_RADIUS_M, 0, true, 0.08)
+
+
 ## aim_at_floor_hair と同じ順に床の毛を試し、狙いの点から radius の中に毛が min_hairs 本以上ある所で止める
 ## (道具の検証用。毛の多い屋敷では、狙いの点にいちばん近い毛が試した 1 本と限らないため)。止めた毛の ID を返し、見つからなければ -1
 static func aim_at_floor_hairs(tree: SceneTree, main: Node3D, radius: float, min_hairs: int) -> int:
@@ -30,7 +36,7 @@ static func aim_at_first_room_hair(tree: SceneTree, main: Node3D, surface_type: 
 ## 1 以上の時は radius の中に毛が min_hairs 本以上ある所で止め、試した毛の ID を返す (見つからなければ -1)
 static func _aim(
 	tree: SceneTree, main: Node3D, surface_type: StringName, radius: float,
-	min_hairs: int, first_room: bool,
+	min_hairs: int, first_room: bool, min_height: float = 0.0,
 ) -> int:
 	var world: MansionWorld = main.get_node("MansionWorld")
 	var player: FirstPersonPlayer = main.get_node("Player")
@@ -48,9 +54,11 @@ static func _aim(
 		for slot: int in range(slot_count):
 			if tried >= MAX_CANDIDATES:
 				return -1
-			tried += 1
 			var hair_id: int = hair_field.get_hair_id_at_slot(surface_idx, slot)
 			var root: Vector3 = hair_field.get_hair_transform(hair_id).origin
+			if root.y - surface.center.y < min_height:
+				continue
+			tried += 1
 			player.set_spawn(_stand_position(surface, root, first_room), 0.0)
 			await tree.physics_frame
 			await tree.physics_frame

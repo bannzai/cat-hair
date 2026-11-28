@@ -47,6 +47,7 @@ jobs:
       - name: Selfcheck
         run: make selfcheck GODOT="${{ steps.godot.outputs.godot }}"
       - name: Integration
+        if: ${{ !cancelled() }}
         run: make integration GODOT="${{ steps.godot.outputs.godot }}"
       - name: Failure path of the check base
         run: make failure-path GODOT="${{ steps.godot.outputs.godot }}"
