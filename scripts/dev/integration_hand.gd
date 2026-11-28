@@ -27,6 +27,7 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	suite._verify_crosshair_centered(main)
 	await suite._verify_tap(main, game_state)
 	await suite._verify_bare_floor(main, game_state)
+	suite._verify_offset_pluck(main, game_state)
 	await suite._verify_play_guide(main)
 	await suite._verify_hair_book_blocks_and_shows(main, game_state)
 	await suite._verify_occluded_aim(main, game_state)
@@ -131,10 +132,8 @@ func _verify_tap(main: Node3D, game_state: Node) -> void:
 		var total: int = game_state.get_total_remaining_hairs()
 		var sounds: int = audio.get_sfx_play_count()
 		var stock: int = game_state.get_raw_hair_stock_count()
-		var surface: MansionLayout.SurfaceDef = main.mansion_world.get_surface_def(
-			main.hand.aim_target()["surface_index"])
 		var surface_hair: SurfaceHair = game_state.save_data.building_progress.find_surface_hair(
-			surface.surface_id)
+			main.mansion_world.get_surface_def(main.hand.aim_target()["surface_index"]).surface_id)
 		var color: StringName = main.mansion_world.get_hair_color_id(hair)
 		var color_count: int = surface_hair.count_for_color(color)
 		await _checker.process_frame
@@ -210,6 +209,40 @@ func _verify_bare_floor(main: Node3D, game_state: Node) -> void:
 		and audio.get_last_sfx_event_name() == AudioCatalog.SFX_BUTTON
 		and main.tool_message_label.text.is_empty(),
 		"届く床面の毛がない所で押すと本数が変わらず、前の道具の通知が消え、空振り音が 1 回鳴る")
+
+
+## 同じずれで床は取れ、布は器用さを強化すると取れることを、屋敷の毛の削除まで確かめる。
+func _verify_offset_pluck(main: Node3D, game_state: Node) -> void:
+	var field: Node3D = main.mansion_world.get_hair_field()
+	var upgrade: StringName = HandRulesScript.UPGRADE_DEXTERITY
+	var original_level: int = game_state.get_hand_upgrade_level(upgrade)
+	for kind: StringName in [MansionLayout.SURFACE_FLOOR, MansionLayout.SURFACE_SUIT]:
+		game_state.set_hand_upgrade_level(upgrade, 0)
+		var tested: bool = false
+		for index: int in range(field.get_surface_count()):
+			var surface: MansionLayout.SurfaceDef = main.mansion_world.get_surface_def(index)
+			if surface.surface_type != kind:
+				continue
+			for slot: int in range(field.get_surface_visible_instance_count(index)):
+				var hair: int = field.get_hair_id_at_slot(index, slot)
+				var root: Vector3 = field.get_hair_transform(hair).origin
+				var point: Vector3 = root + surface.basis.x * 0.055
+				# となりの毛を取った結果が混ざらないよう、この根元しかない所を選ぶ。
+				if field.find_hairs_near(index, point, 0.09, 2) != PackedInt32Array([hair]):
+					continue
+				var target := {"surface_index": index, "point": point}
+				if kind == MansionLayout.SURFACE_SUIT:
+					_check(main.hand.pluck_at(target) == 0 and field.has_hair(hair),
+						"上着の毛は根元から 5.5 cm ずれると初期の手では取れない")
+					game_state.set_hand_upgrade_level(upgrade, 2)
+				_check(main.hand.pluck_at(target) == 1 and not field.has_hair(hair),
+					"5.5 cm ずれた毛は床なら初期の手で、上着なら器用さ 2 段で取れる (%s)" % kind)
+				tested = true
+				break
+			if tested:
+				break
+		_check(tested, "ほかの毛から離れた %s の毛でつかめる半径を確かめた" % kind)
+	game_state.set_hand_upgrade_level(upgrade, original_level)
 
 
 ## 狙いを床の毛に向けた後、その周りの床を順に狙い、狙った所のつまめる範囲内に毛が無い所で止める。止めたら true

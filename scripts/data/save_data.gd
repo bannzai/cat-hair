@@ -11,6 +11,8 @@ const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 
 ## 保存版。版 2 からは初期本数を 12 万本に調整した屋敷も再開できる。
 const SCHEMA_VERSION: int = 2
+## 描画本数に上限を設ける前、版 1 で新規の屋敷に保存していた初期本数。
+const LEGACY_DEFAULT_HAIR_COUNT: int = 120000
 
 ## 保存スキーマのバージョン
 @export var schema_version: int = SCHEMA_VERSION
@@ -71,7 +73,7 @@ static func from_dict(raw_save_dict: Variant) -> SaveData:
 	if parsed_tuning == null:
 		return null
 	# 少ない毛で始まった旧版の屋敷だけを作り直す。掃除で減った現在の本数は判定に使わない。
-	if float(raw_version) == 1.0 and parsed_tuning.hair_count == 120000:
+	if float(raw_version) == 1.0 and parsed_tuning.hair_count == LEGACY_DEFAULT_HAIR_COUNT:
 		return null
 	var save_data: SaveData = SaveData.new()
 	save_data.schema_version = SCHEMA_VERSION

@@ -103,14 +103,13 @@ func _hairs_at(target: Dictionary, count: int, nearest_first: bool) -> PackedInt
 func pluck_at(target: Dictionary) -> int:
 	if _world == null or _game_state == null or target.is_empty():
 		return 0
-	var ids := _hairs_at(target, HandRulesScript.grab_count(
-		_game_state.get_hand_upgrade_level(HandRulesScript.UPGRADE_GRAB_COUNT)), true)
 	var field: Node3D = _world.get_hair_field()
 	var surface: MansionLayout.SurfaceDef = _world.get_surface_def(target["surface_index"])
 	var count: int = 0
 	var rare_ids: Array[StringName] = []
 	var new_rare_ids: Array[StringName] = []
-	for hair_id: int in ids:
+	for hair_id: int in _hairs_at(target, HandRulesScript.grab_count(
+			_game_state.get_hand_upgrade_level(HandRulesScript.UPGRADE_GRAB_COUNT)), true):
 		var color_id: StringName = _world.get_hair_color_id(hair_id)
 		var rare_id: StringName = HandRulesScript.roll_rare_hair(color_id, _rng.randf())
 		var result: Dictionary = _game_state.pluck_hair(surface.surface_id, color_id, rare_id)

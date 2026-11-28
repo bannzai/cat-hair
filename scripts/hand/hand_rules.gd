@@ -10,6 +10,13 @@ const MansionLayoutScript := preload("res://scripts/mansion/mansion_layout.gd")
 ## 面ごとの毛データ型スクリプト (色の定数を使う)
 const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 
+## 床でつまめる半径。長押しだった版でも狙えた範囲を引き継ぐ。
+const FLAT_GRAB_RADIUS_M: float = 0.08
+## 布に絡んだ毛は、床の半分まで根元に照準を近づける。
+const FABRIC_GRAB_RADIUS_M: float = FLAT_GRAB_RADIUS_M / 2.0
+## 強化 4 段で初期の床と布の半径差を埋める刻みにする。
+const DEXTERITY_RADIUS_STEP_M: float = 0.01
+
 ## 手の強化の種類: 指先の器用さ (照準の周りでつまめる範囲が広がる)。保存データの hand_upgrade_levels のキー
 const UPGRADE_DEXTERITY: StringName = &"dexterity"
 ## 手の強化の種類: 一度につまめる本数。保存データの hand_upgrade_levels のキー
@@ -55,7 +62,8 @@ const RARE_HAIRS: Array[Dictionary] = [
 static func grab_radius(surface_type: StringName, dexterity_level: int) -> float:
 	var flat: bool = surface_type in [
 		MansionLayoutScript.SURFACE_FLOOR, MansionLayoutScript.SURFACE_FURNITURE]
-	return (0.08 if flat else 0.04) + 0.01 * maxi(0, dexterity_level)
+	return (FLAT_GRAB_RADIUS_M if flat else FABRIC_GRAB_RADIUS_M) + (
+		DEXTERITY_RADIUS_STEP_M * maxi(0, dexterity_level))
 
 
 ## 一度につまめる本数の段から、一度につまめる本数を返す
