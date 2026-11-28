@@ -54,7 +54,7 @@ func setup(
 
 ## マウスを捕捉したプレイ中の押下だけを受け付ける。キーの自動リピートは新たな押下に含めない。
 func try_pluck(event: InputEvent) -> void:
-	if not enabled or not _can_use_mouse() or not event.is_action_pressed(ACTION_PLUCK):
+	if not enabled or not can_use_mouse() or not event.is_action_pressed(ACTION_PLUCK):
 		return
 	if pluck_at(aim_target()) == 0:
 		_play_sfx(AudioCatalog.SFX_BUTTON)
@@ -62,11 +62,12 @@ func try_pluck(event: InputEvent) -> void:
 
 ## 今の照準に取れる毛があるか。案内と取得処理で同じ半径を使う。
 func can_pluck() -> bool:
-	return enabled and _can_use_mouse() and not Input.is_action_pressed(ACTION_PLUCK) \
+	return enabled and can_use_mouse() and not Input.is_action_pressed(ACTION_PLUCK) \
 		and not _hairs_at(aim_target(), 1, false).is_empty()
 
 
-func _can_use_mouse() -> bool:
+## クリックと E を屋敷の操作として受け取れるか。買取業者の操作案内もこの状態に従う。
+func can_use_mouse() -> bool:
 	return Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED or allow_uncaptured_pluck
 
 

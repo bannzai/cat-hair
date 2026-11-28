@@ -128,14 +128,16 @@ func _verify_tap(main: Node3D, game_state: Node) -> void:
 		await _checker.process_frame
 		_check(main.crosshair.is_visible_in_tree() and main.look_hud.get_node("GuideLabel").visible,
 			"届く毛を狙うと照準と操作の案内が現れる")
-		_send_key(main, true)
+		_send_key(true)
 		var lifted: MeshInstance3D = main.player.get_camera().get_node_or_null("PluckedHair")
 		_check(lifted != null and lifted.is_visible_in_tree(), "押した直後に手前に 1 本の毛が見える")
 		if hold:
 			await _checker.process_frame
-			await HandAim.aim_at_floor_hair(_checker, main)
-			_send_key(main, true, true)
-		_send_key(main, false)
+			var next_hair: int = await HandAim.aim_at_floor_hair(_checker, main)
+			_check(next_hair >= 0 and Input.is_action_pressed(HandController.ACTION_PLUCK),
+				"E を押したまま別の毛を狙える")
+			_send_key(true, true)
+		_send_key(false)
 		await _checker.process_frame
 		_check(not main.mansion_world.get_hair_field().has_hair(hair)
 			and game_state.get_total_remaining_hairs() == total - 1
@@ -147,8 +149,8 @@ func _verify_tap(main: Node3D, game_state: Node) -> void:
 	await _checker.physics_frame
 	var before: int = game_state.get_total_remaining_hairs()
 	var sounds_before: int = audio.get_sfx_play_count()
-	_send_key(main, true)
-	_send_key(main, false)
+	_send_key(true)
+	_send_key(false)
 	await _checker.process_frame
 	_check(game_state.get_total_remaining_hairs() == before and main.tool_message_label.text.is_empty()
 		and audio.get_sfx_play_count() == sounds_before + 1
@@ -198,13 +200,14 @@ func _aim_at_bare_floor(main: Node3D) -> bool:
 	return false
 
 
-## 実際の操作と同じ E キーのイベントをビューポートに渡す。
-func _send_key(main: Node3D, pressed: bool, repeat: bool = false) -> void:
+## E の押下状態と入力イベントを同じフレームで更新する。
+static func _send_key(pressed: bool, repeat: bool = false) -> void:
 	var event := InputEventKey.new()
 	event.physical_keycode = KEY_E
 	event.pressed = pressed
 	event.echo = repeat
-	main.get_viewport().push_input(event)
+	Input.parse_input_event(event)
+	Input.flush_buffered_events()
 
 
 ## 道具を買う画面の「手の強化」のボタンを続けて 2 回押すと、2 回とも段が上がるか
@@ -313,10 +316,14 @@ func _verify_occluded_aim(main: Node3D, game_state: Node) -> void:
 ## マウスが捕捉されていないときは、毛が照準の先にあっても操作を受け付けない。
 func _verify_capture_gate(main: Node3D, game_state: Node) -> void:
 	var hair: int = await HandAim.aim_at_floor_hair(_checker, main)
+	var guide: Label = main.look_hud.get_node("GuideLabel")
+	await _checker.process_frame
+	await _checker.process_frame
+	_check(guide.is_visible_in_tree(), "毛を狙って操作できる間は取得の案内が見える")
 	main.hand.allow_uncaptured_pluck = false
 	var before: int = game_state.get_total_remaining_hairs()
 	await _checker._press_physical_key(KEY_E)
-	_check(hair >= 0 and not main.hand.can_pluck()
+	_check(hair >= 0 and not main.hand.can_pluck() and not guide.is_visible_in_tree()
 		and game_state.get_total_remaining_hairs() == before,
 		"マウスを放している間は毛を取る案内が消え、E を押しても本数が変わらない")
 	main.hand.allow_uncaptured_pluck = true

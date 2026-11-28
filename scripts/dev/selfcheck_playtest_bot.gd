@@ -461,7 +461,7 @@ func _check_action_seconds() -> void:
 		var seconds: float = PolicyScript.action_seconds(pair[0])
 		_checker._check(
 			is_equal_approx(seconds, float(pair[1])),
-			"1 手 %s の秒は %.1f 秒 (引く秒 2 秒。実際: %.2f 秒)" % [str(pair[0]), float(pair[1]), seconds]
+			"1 手 %s の秒は %.1f 秒 (実際: %.2f 秒)" % [str(pair[0]), float(pair[1]), seconds]
 		)
 
 

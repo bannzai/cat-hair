@@ -163,7 +163,11 @@ func _verify_grab_upgrade(main: Node3D, game_state: Node) -> void:
 	var radius: float = HandRulesScript.grab_radius(MansionLayout.SURFACE_FLOOR, 0)
 	var aimed: int = await HandAim.aim_at_floor_hairs(_checker, main, radius, 2)
 	var before: int = game_state.get_total_remaining_hairs()
+	var field: Node3D = main.mansion_world.get_hair_field()
+	var drawn_before: int = HairFieldScript.count_drawn_hairs(field)
 	await _checker._press_physical_key(KEY_E)
-	_check(aimed >= 0 and game_state.get_total_remaining_hairs() == before - 2,
+	_check(aimed >= 0 and game_state.get_total_remaining_hairs() == before - 2
+		and field.get_remaining_count() == before - 2
+		and HairFieldScript.count_drawn_hairs(field) == drawn_before,
 		"つまめる本数を 1 段強化すると 1 回の押下で 2 本取れる")
 	game_state.set_hand_upgrade_level(HandRulesScript.UPGRADE_GRAB_COUNT, 0)

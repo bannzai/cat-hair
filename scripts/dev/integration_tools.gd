@@ -455,6 +455,11 @@ func _verify_talk_to_trader(main: Node3D) -> void:
 	main.player.set_spawn(trader + Vector3.FORWARD * 1.5, 0.0)
 	await _checker.physics_frame
 	main.player.look_at_point(chest)
+	main.hand.allow_uncaptured_pluck = false
+	await _checker._press_physical_key(KEY_E)
+	_check(not guide.is_visible_in_tree() and not main.tool_shop_panel.visible,
+		"マウスを解放した状態では買取業者の案内が消え、E で販売画面が開かない")
+	main.hand.allow_uncaptured_pluck = true
 	await _checker.process_frame
 	await _checker.process_frame
 	_check(

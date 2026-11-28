@@ -386,7 +386,8 @@ func is_near_trader() -> bool:
 
 ## 画面中央で、毛を売れる距離にいる買取業者を直接狙っているか。
 func _can_talk_to_trader() -> bool:
-	if not _is_playing or not player.controls_enabled or not is_near_trader():
+	if (not _is_playing or not player.controls_enabled
+			or not hand.can_use_mouse() or not is_near_trader()):
 		return false
 	var camera: Camera3D = player.get_camera()
 	var hit: Variant = mansion_world.intersect_trader(camera.global_position, -camera.global_basis.z)
