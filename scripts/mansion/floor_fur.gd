@@ -24,11 +24,20 @@ static func drape(strand: Transform3D, fur: FloorFur) -> Transform3D:
 	var h: float = fur.height_at(strand.origin)
 	if h <= 0:
 		return strand
-	var dx: float = fur.height_at(strand.origin + Vector3.RIGHT * 0.01) - h
-	var dz: float = fur.height_at(strand.origin + Vector3.BACK * 0.01) - h
-	strand.basis = Basis(Quaternion(Vector3.UP, Vector3(-dx, 0.01, -dz).normalized())) * strand.basis
+	strand.basis = fur._slope_at(strand.origin, h, fur._depth) * strand.basis
 	strand.origin.y += h
 	return strand
+
+
+## 露出している山肌の高さの差から、水平な床の法線を山の法線へ向ける回転を返す。
+func _slope_at(point: Vector3, height: float, depth: float) -> Basis:
+	if height <= 0.0:
+		return Basis.IDENTITY
+	var p: Vector2 = Vector2(point.x, point.z)
+	var step: float = SPACING * 0.1
+	var dx: float = maxf(_sample(p + Vector2.RIGHT * step) - depth, 0.0) - height
+	var dz: float = maxf(_sample(p + Vector2.DOWN * step) - depth, 0.0) - height
+	return Basis(Quaternion(Vector3.UP, Vector3(-dx, step, -dz).normalized()))
 
 
 ## 水平な床に残っている、1 本ずつは描かない毛の層を作る。家具と床端に近づくと塊は薄くなる。
@@ -81,7 +90,7 @@ func build(spec: Dictionary, buried: int) -> void:
 	visible = _depth < MAX_HEIGHT
 
 
-## 埋もれた本数を厚みに換算し、目に見える厚みが変化した時だけ個々の毛の根元を追従させる。
+## 埋もれた本数を厚みに換算し、目に見える厚みが変化した時だけ毛の根元と傾きを山肌に合わせ直す。
 func update_buried(buried: int, bucket: Dictionary) -> void:
 	var next: float = _depth_for(buried)
 	if is_equal_approx(next, _depth):
@@ -95,7 +104,14 @@ func update_buried(buried: int, bucket: Dictionary) -> void:
 	for slot: int in range(strands.visible_instance_count):
 		var strand: Transform3D = transforms[slot]
 		var h: float = _sample(Vector2(strand.origin.x, strand.origin.z))
-		strand.origin.y += maxf(h - _depth, 0.0) - maxf(h - old, 0.0)
+		var old_height: float = maxf(h - old, 0.0)
+		var new_height: float = maxf(h - _depth, 0.0)
+		if old_height == new_height:
+			continue
+		var old_slope: Basis = _slope_at(strand.origin, old_height, old)
+		var new_slope: Basis = _slope_at(strand.origin, new_height, _depth)
+		strand.basis = new_slope * old_slope.transposed() * strand.basis
+		strand.origin.y += new_height - old_height
 		transforms[slot] = strand
 		strands.set_instance_transform(slot, strand)
 

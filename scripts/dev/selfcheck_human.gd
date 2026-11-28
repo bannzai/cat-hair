@@ -29,6 +29,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._checker = checker
 	suite._check_limb_ends_and_shadow()
 	suite._check_hand_view_shape_and_pinch()
+	suite._check_player_body_bounds()
 	suite._check_trader_body()
 
 
@@ -232,6 +233,33 @@ static func _depth_below(ancestor: Node, node: Node) -> int:
 		node = node.get_parent()
 		depth += 1
 	return depth
+
+
+## 立った体がどの向きの壁にも食い込まず、真下の視野の下 1/4 へ胸が収まるか。
+func _check_player_body_bounds() -> void:
+	var player := FirstPersonPlayer.new()
+	var camera: Camera3D = player.get_camera()
+	var wall_clearance: float = (player.get_node("CollisionShape3D").shape as CapsuleShape3D).radius
+	var lowest_quarter: float = tan(deg_to_rad(camera.fov * 0.5)) * 0.5
+	var eye_height: float = camera.get_parent_node_3d().position.y
+	var body: Node3D = player.get_node("Body")
+	for child: Node in body.get_children():
+		var part := child as MeshInstance3D
+		if part == null:
+			continue
+		var widest: float = 0.0
+		var chest_in_lower_quarter: bool = true
+		var vertices: PackedVector3Array = part.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		for vertex: Vector3 in vertices:
+			var point: Vector3 = part.transform * vertex
+			widest = maxf(widest, Vector2(point.x, point.z).length())
+			if part.name == &"Torso" and point.z < lowest_quarter * (eye_height - point.y):
+				chest_in_lower_quarter = false
+		_check(not vertices.is_empty() and widest <= wall_clearance,
+			"壁際で %s の輪郭が衝突半径 %.3f m に収まる (実際 %.3f m)" % [part.name, wall_clearance, widest])
+		if part.name == &"Torso":
+			_check(chest_in_lower_quarter, "真下を向くと胴の輪郭は画面の下 1/4 に収まる")
+	player.free()
 
 
 ## 買取業者が頭・胴・左右の腕と脚を持ち、頭が胴より上・胴が脚より上にあり、顔 (鼻) を部屋の中 (-Z) へ向けているか

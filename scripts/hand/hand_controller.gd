@@ -181,6 +181,7 @@ func _can_use_mouse() -> bool:
 func can_begin_pull() -> bool:
 	return (
 		enabled and _can_use_mouse() and not is_pulling()
+		and not Input.is_action_pressed(ACTION_PLUCK)
 		and not _hairs_at(aim_target(), 1).is_empty()
 	)
 

@@ -37,6 +37,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._checker = checker
 	suite._check_group_counts_over_budget()
 	suite._check_remove_refills_until_buried_runs_out()
+	suite._check_floor_fur_after_cleaning()
 	suite._check_plucked_spot_stays_clear()
 	suite._check_refill_on_tiny_surface()
 	suite._check_add_and_remove_buried()
@@ -59,6 +60,44 @@ static func _counts(rows: Array) -> Array[PackedInt32Array]:
 	var typed: Array[PackedInt32Array] = []
 	typed.assign(rows)
 	return typed
+
+
+## 同じ種と描画枠で床の毛を置く。埋もれた本数だけを変えて、掃除の途中と再読み込みした時の形を比べる。
+static func _make_floor_with_buried(buried: int) -> Node3D:
+	var field: Node3D = HairFieldScript.new()
+	field.draw_budget = 256
+	field.add_oriented_surface("floor", Transform3D.IDENTITY, Vector2(2, 2), 1.0, [], true)
+	field.populate_with_group_counts(_counts([[field.draw_budget + buried, 0, 0]]))
+	return field
+
+
+## 山の一部が床面より下がったとき、床に移った毛もまだ山に乗る毛も、同じ残り本数で置き直した形に一致するか。
+func _check_floor_fur_after_cleaning() -> void:
+	var field: Node3D = _make_floor_with_buried(56000)
+	var reloaded: Node3D = _make_floor_with_buried(28000)
+	var bare: Node3D = _make_floor_with_buried(0)
+	HairFieldScript.remove_buried_hairs(field, 0, HairFieldScript.HairColorGroup.WHITE, 28000)
+	var flat_count: int = 0
+	var slope_count: int = 0
+	var flat_ok: bool = true
+	var slope_ok: bool = true
+	for slot: int in range(field.get_surface_visible_instance_count(0)):
+		var hair_id: int = field.get_hair_id_at_slot(0, slot)
+		var actual: Transform3D = field.get_hair_transform(hair_id)
+		var expected: Transform3D = reloaded.get_hair_transform(hair_id)
+		var flat: Transform3D = bare.get_hair_transform(hair_id)
+		if expected.is_equal_approx(flat):
+			flat_count += 1
+			flat_ok = flat_ok and actual.is_equal_approx(flat)
+			flat_ok = flat_ok and (actual * HairFieldScript.HAIR_TIP).y > 0.0
+		elif not expected.basis.is_equal_approx(flat.basis):
+			slope_count += 1
+			slope_ok = slope_ok and actual.is_equal_approx(expected)
+	_check(flat_count > 0 and flat_ok, "山から床に下りた毛は床の傾きに戻り、毛先が床の上にある")
+	_check(slope_count > 0 and slope_ok, "山に残った毛は掃除後の山肌に沿って傾く")
+	field.free()
+	reloaded.free()
+	bare.free()
 
 
 ## 検証結果を selfcheck 本体へ記録する

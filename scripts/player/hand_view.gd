@@ -196,7 +196,7 @@ func _return_step(weight: float, start: Transform3D) -> void:
 ## 下ろした手が腰の外側に来る、右肩を基準にしたワールド姿勢。
 func _rest_transform() -> Transform3D:
 	return _shoulder.global_transform * Transform3D(
-		Basis.from_euler(REST_ROTATION), Vector3(0.065, -0.54, -0.07)
+		Basis.from_euler(REST_ROTATION), Vector3(0.032, -0.65, -0.13)
 	)
 
 

@@ -443,6 +443,17 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 	await _checker.create_timer(0.6).timeout
 	var rest: Transform3D = shoulder.global_transform.affine_inverse() * hand_view.global_transform
 	var detached_hair: MeshInstance3D = hand_view.get_node("PluckedHair")
+	var arm_radius: float = 0.0
+	for part: MeshInstance3D in hand_view.find_children("*", "MeshInstance3D", true, false):
+		if not part.visible:
+			continue
+		var to_player: Transform3D = main.player.global_transform.affine_inverse() * part.global_transform
+		var vertices: PackedVector3Array = part.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		for vertex: Vector3 in vertices:
+			var point: Vector3 = to_player * vertex
+			arm_radius = maxf(arm_radius, Vector2(point.x, point.z).length())
+	_check(arm_radius <= FirstPersonPlayer.CAPSULE_RADIUS_M,
+		"腕を下ろした時は指先から袖まで壁際で当たり判定に収まる (実際 %.3f m)" % arm_radius)
 
 	var audio_manager: AudioManagerScript = AudioManagerScript.resolve(_checker) as AudioManagerScript
 	var sound_count: int = audio_manager.get_sfx_play_count()
@@ -665,27 +676,35 @@ func _verify_upgrades_change_pull(main: Node3D, game_state: Node) -> void:
 ## マウスを捕捉していない時 (headless の検証の許可も無い時) はつままないか
 func _verify_hold_plucks_and_capture_gate(main: Node3D, game_state: Node) -> void:
 	var hand: HandController = main.hand
-	if await HandAim.aim_at_floor_hair(_checker, main) < 0:
-		_check(false, "押し続ける検証で床の毛を狙える")
-		return
+	var camera: Camera3D = main.player.get_camera()
+	main.player.look_at_point(camera.global_position + Vector3(0.0, 10.0, 0.01))
+	await _press_pluck()
 	var before_total: int = game_state.get_total_remaining_hairs()
-	await _hold_until_plucked(hand)
-	_check(
-		game_state.get_total_remaining_hairs() == before_total - 1 and not hand.is_pulling(),
-		"押し続けると引く時間の後に 1 本抜け、押したままでは次の毛を引き始めない",
-	)
-	Input.action_release(HandController.ACTION_PLUCK)
-	await _checker.process_frame
-
-	# 同じ起動の中で、離して狙い直し、もう一度押し続けると 2 本目も抜ける (1 本目の後に止まらない)
-	if await HandAim.aim_at_floor_hair(_checker, main) < 0:
-		_check(false, "1 本抜いた後に、次の床の毛を狙い直せる")
-		return
-	await _hold_until_plucked(hand)
-	_check(
-		game_state.get_total_remaining_hairs() == before_total - 2 and not hand.is_pulling(),
-		"1 本抜いた後に離して狙い直し、もう一度押し続けると 2 本目も抜ける",
-	)
+	var guide: Label = main.look_hud.get_node("GuideLabel")
+	for previous: String in ["空振り", "1 本抜いた"]:
+		if await HandAim.aim_at_floor_hair(_checker, main) < 0:
+			Input.action_release(HandController.ACTION_PLUCK)
+			_check(false, "%s後に床の毛を狙える" % previous)
+			return
+		await _checker.process_frame
+		await _checker.process_frame
+		_check(
+			not hand.is_pulling() and not guide.is_visible_in_tree()
+			and not main.crosshair.is_visible_in_tree(),
+			"%s後、押したまま届く毛を狙い直しても引き始めず、案内と照準も出ない" % previous,
+		)
+		Input.action_release(HandController.ACTION_PLUCK)
+		await _checker.process_frame
+		_check(
+			guide.is_visible_in_tree() and main.crosshair.is_visible_in_tree(),
+			"%s後、同じ狙いでボタンを離すと次の押下の案内と照準が出る" % previous,
+		)
+		var count_before_press: int = game_state.get_total_remaining_hairs()
+		await _hold_until_plucked(hand)
+		_check(
+			game_state.get_total_remaining_hairs() == count_before_press - 1 and not hand.is_pulling(),
+			"%s後、離して押し直すと 1 本抜け、押したまま次の毛を引き始めない" % previous,
+		)
 	Input.action_release(HandController.ACTION_PLUCK)
 	await _checker.process_frame
 
