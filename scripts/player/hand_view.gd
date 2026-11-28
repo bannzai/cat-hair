@@ -47,9 +47,13 @@ const PINKY_ROOT_BONE: String = "f_pinky.01.R"
 const THUMB_ROOT_BONE: String = "thumb.01.R"
 ## 右手の親指の先の骨の名前
 const THUMB_TIP_BONE: String = "thumb.03.R"
-## 隠す骨。左右の鎖骨 (子の三角筋・上腕・前腕も縮む) と左手 (腕の骨とは別の操作用の骨の下にある)。右手も操作用の骨の
-## 下にあり、鎖骨を縮めても残る
-const HIDDEN_BONES: Array[String] = ["clavicle.L", "hand.L.control", "clavicle.R"]
+## 隠す骨。左右の腕の骨と左手 (腕の骨とは別の操作用の骨の下にある)。右手も操作用の骨の下にあり、隠しても残る。
+## どれも根の骨へ付け替え、右の手首の 1 点に縮める。縮める先を骨ごとの付け根にすると、2 つの骨にまたがる肌 (肘・手首) が
+## 遠く離れた 2 点の間に引き伸ばされ、手から細い棘が伸びて見えた (PR #69 の df6437b の撮影 pull-suit-pinch)
+const HIDDEN_BONES: Array[String] = [
+	"clavicle.R", "deltoid.R", "upper_arm.R", "forearm.R",
+	"clavicle.L", "deltoid.L", "upper_arm.L", "forearm.L", "hand.L.control",
+]
 ## 隠す骨の縮め方。0 にすると骨の行列が逆にできず警告が出る場合があるため、見えないほど小さい値にする
 const HIDDEN_BONE_SCALE: float = 0.0001
 
@@ -262,7 +266,12 @@ func _build() -> void:
 	for mesh_node: Node in model.find_children("*", "MeshInstance3D", true, false):
 		(mesh_node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	for bone_name: String in HIDDEN_BONES:
-		_skeleton.set_bone_pose_scale(_skeleton.find_bone(bone_name), Vector3.ONE * HIDDEN_BONE_SCALE)
+		var hidden: int = _skeleton.find_bone(bone_name)
+		_skeleton.set_bone_parent(hidden, -1)
+		_skeleton.set_bone_pose(
+			hidden,
+			Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * HIDDEN_BONE_SCALE), _bone_head(WRIST_BONE)),
+		)
 
 	# 手の局所の向きを骨の空間で作る: 指先の向き (手首から指の付け根) を -Z、小指から人差し指の向きを -X にする
 	var index_root: Vector3 = _bone_head(INDEX_ROOT_BONE)

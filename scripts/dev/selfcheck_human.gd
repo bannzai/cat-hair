@@ -117,10 +117,23 @@ func _check_hand_view_shape_and_pinch() -> void:
 		and (forward_tips["thumb"] as Vector3).is_equal_approx(closed_tips["thumb"]),
 		"骨に設定した姿勢から順に辿って求めた指先も、閉じた時に触れ、手が返す指先の位置と一致する",
 	)
+	# 隠す骨は、どれも根の骨に付け替えて右の手首の 1 点に縮める (肘・手首の肌が離れた 2 点の間に伸びないため)
+	var wrist_rest: Vector3 = skeleton.get_bone_global_rest(skeleton.find_bone("hand.R")).origin
+	var hidden_ok: bool = true
+	for bone_name: String in [
+		"clavicle.R", "deltoid.R", "upper_arm.R", "forearm.R",
+		"clavicle.L", "deltoid.L", "upper_arm.L", "forearm.L", "hand.L.control",
+	]:
+		var hidden: int = skeleton.find_bone(bone_name)
+		if (
+			hidden < 0
+			or skeleton.get_bone_parent(hidden) != -1
+			or skeleton.get_bone_pose_scale(hidden).x > HIDDEN_SCALE_MAX
+			or not skeleton.get_bone_pose_position(hidden).is_equal_approx(wrist_rest)
+		):
+			hidden_ok = false
 	_check(
-		skeleton.get_bone_pose_scale(skeleton.find_bone("clavicle.L")).x <= HIDDEN_SCALE_MAX
-		and skeleton.get_bone_pose_scale(skeleton.find_bone("hand.L.control")).x <= HIDDEN_SCALE_MAX
-		and skeleton.get_bone_pose_scale(skeleton.find_bone("clavicle.R")).x <= HIDDEN_SCALE_MAX
+		hidden_ok
 		# 右手は縮めない (休みの姿勢の倍率 1)。0.5 は縮めた骨 (HIDDEN_SCALE_MAX 以下) と取り違えない中ほどの値
 		and skeleton.get_bone_pose_scale(skeleton.find_bone("hand.R")).x > 0.5
 		and skeleton.get_bone_pose_scale(skeleton.find_bone("hand.R.control")).x > 0.5
