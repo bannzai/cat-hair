@@ -245,7 +245,7 @@ func _verify_robot_panel(main: Node3D, game_state: Node) -> void:
 	)
 	_check(
 		panel.get_buy_button().disabled,
-		"お金が 300 円に足りない時は掃除ロボットを買うボタンを押せない",
+		"お金が 1500 円に足りない時は掃除ロボットを買うボタンを押せない",
 	)
 	game_state.save_data.building_progress.money = RobotRulesScript.ROBOT_PRICE
 	panel.refresh(game_state)
@@ -256,7 +256,7 @@ func _verify_robot_panel(main: Node3D, game_state: Node) -> void:
 		robots.size() == 1 and game_state.get_money() == 0 and robots[0].robot_room_ids.size() == 1
 		and main.automation.get_robot_node_count() == 1
 		and panel.get_robot_button(0) != null,
-		"買うボタンで 300 円払って掃除ロボットを 1 台買い、今いる部屋を回る順にして屋敷に置かれる",
+		"買うボタンで 1500 円払って掃除ロボットを 1 台買い、今いる部屋を回る順にして屋敷に置かれる",
 	)
 	var rooms: Array[MansionLayout.RoomDef] = game_state.current_layout.rooms
 	var first: StringName = robots[0].robot_room_ids[0] if not robots.is_empty() else &""
@@ -575,6 +575,11 @@ static func _clear_surface(hair_field: Node3D, game_state: Node, surface_id: Str
 	for index: int in range(surfaces.size()):
 		if surfaces[index].surface_id != surface_id:
 			continue
+		# 埋もれた毛を先に消し、描いている毛を消した時に描き足さないようにする
+		for group: int in range(HairFieldScript.HairColorGroup.size()):
+			HairFieldScript.remove_buried_hairs(
+				hair_field, index, group, hair_field.get_surface_remaining_count(index)
+			)
 		for hair_id: int in hair_field.find_hairs_near(
 			index, surfaces[index].center, INF, hair_field.get_surface_remaining_count(index)
 		):

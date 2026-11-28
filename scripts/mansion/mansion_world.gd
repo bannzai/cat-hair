@@ -75,6 +75,9 @@ const TRADER_SOUTH_OFFSET_M: float = 0.22
 ## 買取業者のモデルは、全身の範囲の高さがこの値になるよう縦横の釣り合いを保って縮める
 const TRADER_HEIGHT_M: float = 1.6
 
+## 屋敷全体で 1 本ずつ描く毛の本数の上限 (HairField.draw_budget に渡す。rebuild の前に変えると次の作り直しから効く。
+## 計測で上限を変えて比べる scenebench が変える)
+var hair_draw_budget: int = HairFieldScript.DEFAULT_DRAW_BUDGET
 ## 部屋ノード群の親コンテナ
 var _rooms_root: Node3D = null
 ## 家具・布ノード群の親コンテナ
@@ -132,6 +135,7 @@ func rebuild(layout: MansionLayout, progress: BuildingProgress) -> void:
 
 	_hair_field = HairFieldScript.new()
 	_hair_field.name = "HairField"
+	_hair_field.draw_budget = hair_draw_budget
 	add_child(_hair_field)
 
 	_lights_root = Node3D.new()
@@ -141,10 +145,10 @@ func rebuild(layout: MansionLayout, progress: BuildingProgress) -> void:
 	for room_idx: int in range(layout.rooms.size()):
 		_build_room_node(layout.rooms[room_idx], room_idx)
 
+	_layout = layout
 	for obj: MansionLayout.ObjectDef in layout.objects:
 		_build_object_node(obj)
 
-	_layout = layout
 	_build_hairs(layout, progress)
 	_build_trader(layout)
 
@@ -514,23 +518,36 @@ func _build_object_node(obj: MansionLayout.ObjectDef) -> void:
 			),
 		)
 	elif obj.object_kind == MansionLayoutScript.OBJECT_SUIT_RACK:
-		# 台の奥行は物の奥行の 6 割 (上着の奥行 5.5 割より少し広く、上着が台からはみ出さずに立って見える)
-		_add_static_box(
-			object_root,
-			"Base",
-			Vector3(0.0, SUIT_RACK_BASE_HEIGHT_M * 0.5, 0.0),
-			Vector3(object_width, SUIT_RACK_BASE_HEIGHT_M, object_depth * 0.6),
-			_material_metal,
-			true,
-		)
-		_add_static_box(
-			object_root,
-			"Pole",
-			Vector3(0.0, object_height * 0.5, 0.0),
-			Vector3(SUIT_RACK_POLE_WIDTH_M, object_height, SUIT_RACK_POLE_WIDTH_M),
-			_material_metal,
-			true,
-		)
+		if obj.wall_mounted:
+			# 玄関の北壁から上着の中心まで届く長さ。家具の縮尺と壁際の余白の両方を含む。
+			var entrance: MansionLayout.RoomDef = _layout.rooms[0]
+			var hook_depth: float = obj.position.z - (entrance.center.z - entrance.size.z * 0.5)
+			_add_static_box(
+				object_root,
+				"WallHook",
+				Vector3(0.0, object_height * 0.88, -hook_depth * 0.5),
+				Vector3(0.045, 0.065, hook_depth),
+				_material_metal,
+				false,
+			)
+		else:
+			# 台の奥行は物の奥行の 6 割 (上着の奥行 5.5 割より少し広く、上着が台からはみ出さずに立って見える)
+			_add_static_box(
+				object_root,
+				"Base",
+				Vector3(0.0, SUIT_RACK_BASE_HEIGHT_M * 0.5, 0.0),
+				Vector3(object_width, SUIT_RACK_BASE_HEIGHT_M, object_depth * 0.6),
+				_material_metal,
+				true,
+			)
+			_add_static_box(
+				object_root,
+				"Pole",
+				Vector3(0.0, object_height * 0.5, 0.0),
+				Vector3(SUIT_RACK_POLE_WIDTH_M, object_height, SUIT_RACK_POLE_WIDTH_M),
+				_material_metal,
+				true,
+			)
 		_add_static_box(
 			object_root,
 			"SuitJacket",
@@ -705,7 +722,7 @@ static func _object_footprints_in_room(
 	var footprints: Array[Dictionary] = []
 	for obj: MansionLayout.ObjectDef in layout.objects:
 		if (
-			obj.room_id != surface.room_id
+			obj.room_id != surface.room_id or obj.wall_mounted
 			or MansionBuilderScript.object_surface_id(obj.object_id) == surface.surface_id
 		):
 			continue

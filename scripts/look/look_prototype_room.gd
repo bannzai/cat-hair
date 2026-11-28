@@ -121,6 +121,7 @@ const NODE_MATERIAL_KINDS: Dictionary = {
 	"Base": &"metal",
 	"Pole": &"metal",
 	"Hanger": &"metal",
+	"WallHook": &"metal",
 }
 
 ## 掃除ロボットの置き物を置く部屋 (レイアウトの TARGET_ROOM_INDEX の部屋。無い時は null)

@@ -44,12 +44,20 @@ MOVIE_FRAMES ?= 150
 # movie-automation target が録画するフレーム数 (30 fps × 11 秒 = 330)。時計を 4 倍で進めるため、掃除ロボットが
 # 1 部屋に留まる 20 秒より長い 40 秒分を録り、毛を取る様子と残り本数の減り方が見える長さ (倍率は scripts/dev/movie.gd)
 MOVIE_AUTOMATION_FRAMES ?= 330
+# playtest target の固定 FPS とフレーム数 (15 fps × 60 秒 = 900)。CI の実測 (run 45944154277) で、毛 120,000 本の屋敷では
+# Playtest movie の step が約 7 分で、screenshot-and-movie job の timeout (30 分) に収まる
+PLAYTEST_FPS ?= 15
+PLAYTEST_FRAMES ?= 900
+# playtest target で bot が 1 フレームに行う手の数 (早送り)。make simulate と同じ屋敷で約 870 フレーム × 2 手 ≒ 1,700 手を録る。
+# 6 手の時 (run 45944154277) は約 990 手目 (165 フレーム目) で掃除ロボットが映り、残りの 5 / 6 は残った毛を手で抜く場面だった。
+# 2 手なら最初の道具・掃除ロボットを置く様子が録画の前半から終わりにかけて映る
+PLAYTEST_STEPS_PER_FRAME ?= 2
 # hairbench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/hairbench.gd の DEFAULT_COUNTS が SSOT)
 HAIRBENCH_COUNTS ?=
-# scenebench target の計測本数の上書き (カンマ区切り。未指定時は scripts/dev/scenebench.gd の DEFAULT_COUNTS が SSOT)
-SCENEBENCH_COUNTS ?=
+# scenebench target の計測する描く本数の上限の上書き (カンマ区切り。未指定時は scripts/dev/scenebench.gd の DEFAULT_DRAW_BUDGETS が SSOT)
+SCENEBENCH_DRAW_BUDGETS ?=
 
-.PHONY: import check selfcheck integration failure-path lint check-generated uid uidcheck test verify screenshot movie movie-automation hairbench scenebench run build-macos build-windows build-linux build-web build-all clean
+.PHONY: import check selfcheck integration failure-path lint check-generated uid uidcheck test verify screenshot movie movie-pull movie-automation simulate playtest hairbench scenebench run build-macos build-windows build-linux build-web build-all clean
 
 # ログ・撮影の出力先。.gdignore を置き、撮影した PNG を Godot に import させない
 $(LOG_DIR)/.gdignore:
@@ -109,7 +117,8 @@ uidcheck: import
 	tail -n 1 $(LOG_DIR)/uidcheck.log | grep -q '^exit=0$$'
 	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/uidcheck.log
 
-# 検証の土台 (scripts/dev/headless_check.gd) と hairbench.gd の失敗の経路の検証。わざと失敗する条件で動かし、
+# 検証の土台 (scripts/dev/headless_check.gd)・hairbench.gd・bot_play.gd (引数が足りない・最初の道具に届かない・
+# simulate.json を書けない) の失敗の経路の検証。わざと失敗する条件で動かし、
 # exit code 1 で終わり、完了の行が出ないことを確かめる (失敗を握り潰して常に OK を返す退行を検出する)
 failure-path: import
 	"$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/failure_path_check.gd > $(LOG_DIR)/failure-path.log 2>&1; \
@@ -117,11 +126,27 @@ failure-path: import
 	tail -n 1 $(LOG_DIR)/failure-path.log | grep -q '^exit=1$$'
 	grep -q 'failure_path_check FAIL' $(LOG_DIR)/failure-path.log
 	! grep -q '^failure_path_check OK$$' $(LOG_DIR)/failure-path.log
+	"$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/bot_play.gd > $(LOG_DIR)/bot-play-failure-path.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/bot-play-failure-path.log; \
+	tail -n 1 $(LOG_DIR)/bot-play-failure-path.log | grep -q '^exit=1$$'
+	grep -q 'bot_play.gd には --simulate か' $(LOG_DIR)/bot-play-failure-path.log
+	! grep -qE '^(simulate|playtest) OK$$' $(LOG_DIR)/bot-play-failure-path.log
+	SIMULATE_MAX_SECONDS=60 SIMULATE_JSON="res://tmp/simulate-fail.json" "$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/bot_play.gd -- --simulate > $(LOG_DIR)/simulate-failure-path.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/simulate-failure-path.log; \
+	rm -f $(LOG_DIR)/simulate-fail.json; \
+	tail -n 1 $(LOG_DIR)/simulate-failure-path.log | grep -q '^exit=1$$'
+	grep -q '最初の道具を買えなかった' $(LOG_DIR)/simulate-failure-path.log
+	! grep -q '^simulate OK$$' $(LOG_DIR)/simulate-failure-path.log
+	SIMULATE_MAX_SECONDS=60 SIMULATE_JSON="res://tmp/nonexistent-simulate-dir/out.json" "$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/bot_play.gd -- --simulate > $(LOG_DIR)/simulate-json-failure-path.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/simulate-json-failure-path.log; \
+	tail -n 1 $(LOG_DIR)/simulate-json-failure-path.log | grep -q '^exit=1$$'
+	grep -q 'を書けない' $(LOG_DIR)/simulate-json-failure-path.log
+	! grep -q '^simulate OK$$' $(LOG_DIR)/simulate-json-failure-path.log
 	HAIRBENCH_COUNTS="10" HAIRBENCH_JSON="$(LOG_DIR)/hairbench-fail.json" HAIRBENCH_PNG_PREFIX="hairbench-fail" "$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/hairbench.gd > $(LOG_DIR)/hairbench-failure-path.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/hairbench-failure-path.log; \
 	rm -f $(LOG_DIR)/hairbench-fail.json $(LOG_DIR)/hairbench-fail-*.png; \
 	tail -n 1 $(LOG_DIR)/hairbench-failure-path.log | grep -q '^exit=1$$'
-	grep -q '^hairbench count=10 rendered=false' $(LOG_DIR)/hairbench-failure-path.log
+	grep -q '^hairbench count=10 drawn=10 rendered=false' $(LOG_DIR)/hairbench-failure-path.log
 	! grep -q '^hairbench OK$$' $(LOG_DIR)/hairbench-failure-path.log
 	HAIRBENCH_COUNTS="10" HAIRBENCH_JSON="$(LOG_DIR)/nonexistent-hairbench-dir/out.json" HAIRBENCH_PNG_PREFIX="hairbench-fail" "$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/hairbench.gd > $(LOG_DIR)/hairbench-json-failure-path.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/hairbench-json-failure-path.log; \
@@ -187,6 +212,20 @@ movie: import
 	rm -f $(LOG_DIR)/movie.avi
 	bash scripts/ci/check-movie-brightness.sh $(LOG_DIR)/movie.mp4
 
+# 各面で歩行・照準・つまみ・途中解放・引き抜きを録り、操作の進行に対応するフレームを動画から切り出す。
+# 3 面で完遂と中断を撮る。30 fps での実測は約 350 フレーム。探索・移動の余裕を含め、撮影時間を 30 秒に制限する。
+movie-pull: import
+	rm -f $(LOG_DIR)/movie-pull.avi $(LOG_DIR)/movie-pull.mp4 $(LOG_DIR)/pull-*.png
+	"$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) --write-movie $(LOG_DIR)/movie-pull.avi --fixed-fps $(MOVIE_FPS) --quit-after $$((30 * $(MOVIE_FPS))) --script res://scripts/dev/pull_movie.gd > $(LOG_DIR)/movie-pull.log 2>&1
+	grep -q '^pull movie OK$$' $(LOG_DIR)/movie-pull.log
+	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/movie-pull.log | grep -v $(WINDOWED_LOG_NOISE) | grep -q .
+	ffmpeg -loglevel error -y -i $(LOG_DIR)/movie-pull.avi -c:v libx264 -pix_fmt yuv420p $(LOG_DIR)/movie-pull.mp4
+	rm -f $(LOG_DIR)/movie-pull.avi
+	bash scripts/ci/check-movie-brightness.sh $(LOG_DIR)/movie-pull.mp4
+	awk '/^PULL_FRAME / {print $$2, $$3}' $(LOG_DIR)/movie-pull.log | while read -r stage frame; do \
+		ffmpeg -nostdin -loglevel error -y -i $(LOG_DIR)/movie-pull.mp4 -vf "select=eq(n\,$$frame)" -frames:v 1 $(LOG_DIR)/pull-$$stage.png && test -s $(LOG_DIR)/pull-$$stage.png || exit 1; \
+	done
+
 # 屋敷に入って掃除ロボットを置き、猫と掃除ロボットの時計を速めて、掃除ロボットが毛を取って残り本数が減る様子を
 # tmp/movie-automation.mp4 に録画する (検査は movie target と同じ)
 movie-automation: import
@@ -200,7 +239,32 @@ movie-automation: import
 	rm -f $(LOG_DIR)/movie-automation.avi
 	bash scripts/ci/check-movie-brightness.sh $(LOG_DIR)/movie-automation.mp4
 
-# 毛の描画の試作ベンチマーク。1,000 / 10,000 / 100,000 / 1,000,000 本の描画可否と 1 フレームの描画時間を
+# 自動テストプレイ。bot (scripts/dev/playtest_bot.gd) が headless で屋敷をはじめから遊び、節目 (最初の道具を買う・
+# 最初の掃除ロボットを置く・住人全員がご機嫌になる) までのゲーム内の時間を tmp/simulate.json に書く。ゲーム内の時間は
+# 1 フレームの中で早送りするため、--quit-after の上限には届かない。JSON が無い・古いまま pass しないよう先に消す
+simulate: import
+	rm -f $(LOG_DIR)/simulate.json
+	"$(GODOT)" --headless $(ENGINE_LOG) --path . $(SCRIPT_FLAGS) --script res://scripts/dev/bot_play.gd -- --simulate > $(LOG_DIR)/simulate.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/simulate.log; \
+	grep -q '^simulate OK$$' $(LOG_DIR)/simulate.log
+	tail -n 1 $(LOG_DIR)/simulate.log | grep -q '^exit=0$$'
+	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/simulate.log
+	test -f $(LOG_DIR)/simulate.json
+
+# 自動テストプレイの録画。描画付きで、bot が早送りで遊ぶ様子 (毛を取る・道具を買う・掃除ロボットを置く) を
+# tmp/playtest.mp4 に撮る (検査は movie target と同じ)。make simulate と同じ屋敷を早送りで遊ぶ (PLAYTEST_STEPS_PER_FRAME)
+playtest: import
+	rm -f $(LOG_DIR)/playtest.avi $(LOG_DIR)/playtest.mp4
+	"$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) --write-movie $(LOG_DIR)/playtest.avi --fixed-fps $(PLAYTEST_FPS) --quit-after $(PLAYTEST_FRAMES) --script res://scripts/dev/bot_play.gd -- --frames=$(PLAYTEST_FRAMES) --fps=$(PLAYTEST_FPS) --steps-per-frame=$(PLAYTEST_STEPS_PER_FRAME) > $(LOG_DIR)/playtest.log 2>&1; \
+	echo "exit=$$?" >> $(LOG_DIR)/playtest.log; \
+	grep -q '^playtest OK$$' $(LOG_DIR)/playtest.log
+	tail -n 1 $(LOG_DIR)/playtest.log | grep -q '^exit=0$$'
+	! grep -E '$(LOG_ERROR_PATTERN)' $(LOG_DIR)/playtest.log | grep -v $(WINDOWED_LOG_NOISE) | grep -q .
+	ffmpeg -loglevel error -y -i $(LOG_DIR)/playtest.avi -c:v libx264 -pix_fmt yuv420p $(LOG_DIR)/playtest.mp4
+	rm -f $(LOG_DIR)/playtest.avi
+	bash scripts/ci/check-movie-brightness.sh $(LOG_DIR)/playtest.mp4
+
+# 毛の描画の試作ベンチマーク。本数ごと (既定は scripts/dev/hairbench.gd の DEFAULT_COUNTS) の描画可否と 1 フレームの描画時間を
 # tmp/hairbench.json に出力し、本数ごとの画面を tmp/hairbench-<本数>.png に撮る
 hairbench: import
 	rm -f $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json
@@ -212,12 +276,13 @@ hairbench: import
 	test -f $(LOG_DIR)/hairbench.json
 	ls $(LOG_DIR)/hairbench-*.png
 
-# 屋敷の 1 フレームの時間のベンチマーク。メインシーンで毛の本数を変えながら、部屋に入った直後と掃除ロボットが
-# 動いている間の 1 フレームの時間・処理の時間・描画の CPU / GPU の時間・描いた三角形の数を tmp/scenebench.json に出し、
-# 本数ごとの画面を tmp/scenebench-<本数>.png に撮る (本数の既定は scripts/dev/scenebench.gd の DEFAULT_COUNTS)
+# 屋敷の 1 フレームの時間のベンチマーク。メインシーンで既定の毛の本数のまま 1 本ずつ描く本数の上限を変えながら、
+# 部屋に入った直後と掃除ロボットが動いている間の 1 フレームの時間・処理の時間・描画の CPU / GPU の時間・描いた三角形の数を
+# tmp/scenebench.json に出し、上限ごとの画面を tmp/scenebench-<上限>.png に撮る
+# (上限の既定は scripts/dev/scenebench.gd の DEFAULT_DRAW_BUDGETS)
 scenebench: import
 	rm -f $(LOG_DIR)/scenebench-*.png $(LOG_DIR)/scenebench.json
-	SCENEBENCH_COUNTS="$(SCENEBENCH_COUNTS)" "$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) $(SCRIPT_FLAGS) --script res://scripts/dev/scenebench.gd > $(LOG_DIR)/scenebench.log 2>&1; \
+	SCENEBENCH_DRAW_BUDGETS="$(SCENEBENCH_DRAW_BUDGETS)" "$(GODOT)" $(ENGINE_LOG) --path . $(WINDOWED_FLAGS) $(SCRIPT_FLAGS) --script res://scripts/dev/scenebench.gd > $(LOG_DIR)/scenebench.log 2>&1; \
 	echo "exit=$$?" >> $(LOG_DIR)/scenebench.log; \
 	grep -q '^scenebench OK$$' $(LOG_DIR)/scenebench.log
 	tail -n 1 $(LOG_DIR)/scenebench.log | grep -q '^exit=0$$'
@@ -269,8 +334,10 @@ build-all: build-macos build-windows build-linux
 # ディレクトリごとや *.log をまとめては消さない)。ログは target ごとの <target>.log と、ENGINE_LOG の <target>.godot.log
 clean:
 	rm -rf build
-	rm -f $(foreach target,import check selfcheck integration integration-cmdline uidcheck failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-automation hairbench scenebench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
+	rm -f $(foreach target,import check selfcheck integration integration-cmdline uidcheck failure-path bot-play-failure-path simulate-failure-path simulate-json-failure-path hairbench-failure-path hairbench-json-failure-path screenshot movie movie-pull movie-automation simulate playtest hairbench scenebench run build-macos build-windows build-linux build-web,$(LOG_DIR)/$(target).log $(LOG_DIR)/$(target).godot.log)
 	rm -f $(LOG_DIR)/screenshot-*.png $(LOG_DIR)/hairbench-*.png $(LOG_DIR)/hairbench.json $(LOG_DIR)/scenebench-*.png $(LOG_DIR)/scenebench.json $(LOG_DIR)/movie.avi $(LOG_DIR)/movie.mp4 $(LOG_DIR)/movie-automation.avi $(LOG_DIR)/movie-automation.mp4
+	rm -f $(LOG_DIR)/movie-pull.avi $(LOG_DIR)/movie-pull.mp4 $(LOG_DIR)/pull-*.png
+	rm -f $(LOG_DIR)/simulate.json $(LOG_DIR)/simulate-fail.json $(LOG_DIR)/playtest.avi $(LOG_DIR)/playtest.mp4
 
 # 引数なしの make で run を実行する (人が手で動作確認するための入口。検査・テストは CI が行う)
 .DEFAULT_GOAL := run

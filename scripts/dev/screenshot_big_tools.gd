@@ -32,7 +32,7 @@ const ROOM_PITCH: float = -0.5
 ## 撮れたら空文字、失敗したら理由を返す
 static func capture_all(shooter: SceneTree, main: Node3D) -> String:
 	var game_state: Node = main.get_game_state()
-	game_state.save_data.building_progress.money = 100000
+	game_state.save_data.building_progress.money = 1000000
 	for tool_id: StringName in [
 		ToolCatalogScript.TOOL_SUCTION_TRUCK,
 		ToolCatalogScript.TOOL_ADHESIVE_SHEET,
@@ -116,7 +116,7 @@ static func _stretch_room_hairs_as_pulled(main: Node3D) -> PackedInt32Array:
 	for surface_index: int in range(hair_field.get_surface_count()):
 		if main.mansion_world.get_surface_def(surface_index).room_id != room_id:
 			continue
-		for slot: int in range(hair_field.get_surface_remaining_count(surface_index)):
+		for slot: int in range(hair_field.get_surface_visible_instance_count(surface_index)):
 			var hair_id: int = hair_field.get_hair_id_at_slot(surface_index, slot)
 			pulling.append(hair_id)
 			hair_field.set_hair_display_transform(

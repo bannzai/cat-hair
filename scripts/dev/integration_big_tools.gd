@@ -18,6 +18,11 @@ const SurfaceHairScript := preload("res://scripts/data/surface_hair.gd")
 const HairStockScript := preload("res://scripts/data/hair_stock.gd")
 ## 部屋ごとにかける道具で、部屋の毛が 1 回で取り切れないことを確かめられる屋敷全体の毛の本数
 const DENSE_HAIR_COUNT: int = 60000
+## この検証の間だけ使う描く本数の上限。DENSE_HAIR_COUNT の 1/10 にし、部屋の面ごとの描いている毛が吸引車・アンドロイドの
+## 1 面で触れる本数より少なくなって、埋もれた毛からも取る経路を通るようにする
+const DENSE_DRAW_BUDGET: int = DENSE_HAIR_COUNT / 10
+## 毛の描画・管理 (描く本数の上限の既定値)
+const HairFieldScript := preload("res://scripts/hair_field.gd")
 ## 道具の取りこぼしの抽選の乱数のシード (結果を毎回同じにする)
 const RNG_SEED: int = 20261127
 ## 掃除機を毛の無い所に向けるため、狙いの周りの毛を消す半径 (m)。掃除機が届く半径 (0.5 m) より広くし、範囲に毛を残さない
@@ -36,13 +41,15 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	var original_tuning: MansionTuning = game_state.get_tuning()
 	var dense_tuning: MansionTuning = original_tuning.clamped()
 	dense_tuning.hair_count = DENSE_HAIR_COUNT
+	# 描く本数を総本数より少なくし、部屋ごとにかける道具が埋もれた毛からも取る経路 (呼び出し元の apply_room_removal) を通す
+	main.mansion_world.hair_draw_budget = DENSE_DRAW_BUDGET
 	game_state.apply_tuning_and_rebuild(dense_tuning, false)
 	await checker.process_frame
 	main.auto_advance_time = false
 	main.tools.allow_uncaptured_use = true
 	main.tools.set_rng_seed(RNG_SEED)
 	main.big_tools.set_rng_seed(RNG_SEED)
-	game_state.save_data.building_progress.money = 100000
+	game_state.save_data.building_progress.money = 1000000
 	await suite._verify_suction_truck(main, game_state)
 	await suite._verify_adhesive_sheet(main, game_state)
 	await suite._verify_android(main, game_state)
@@ -51,6 +58,7 @@ static func run_all(checker: SceneTree, main: Node3D, game_state: Node) -> void:
 	await suite._verify_rebuild_clears_big_tools(main, game_state, dense_tuning)
 	main.tools.allow_uncaptured_use = false
 	Input.action_release(HandController.ACTION_PLUCK)
+	main.mansion_world.hair_draw_budget = HairFieldScript.DEFAULT_DRAW_BUDGET
 	game_state.apply_tuning_and_rebuild(original_tuning, false)
 	await checker.process_frame
 
@@ -233,6 +241,14 @@ func _verify_android_exchanges_vacuum_pack(main: Node3D, game_state: Node) -> vo
 	if game_state.find_owned_tool(ToolCatalogScript.TOOL_TWEEZERS) == null:
 		game_state.purchase(GameStateScript.PURCHASE_TOOL, ToolCatalogScript.TOOL_TWEEZERS)
 	var cleared: Dictionary = {}
+	# 描いている毛を消すと埋もれた毛から描き足され、狙いの範囲にまた毛が出るため、この面の埋もれた毛を先に消す
+	var buried: PackedInt32Array = HairFieldScript.buried_group_counts(
+		hair_field, target["surface_index"]
+	)
+	for group: int in range(buried.size()):
+		HairFieldScript.remove_buried_hairs(hair_field, target["surface_index"], group, buried[group])
+		var buried_color: StringName = SurfaceHairScript.STANDARD_COLORS[group]
+		cleared[buried_color] = int(cleared.get(buried_color, 0)) + buried[group]
 	for hair_id: int in near_ids:
 		var color_id: StringName = main.mansion_world.get_hair_color_id(hair_id)
 		cleared[color_id] = int(cleared.get(color_id, 0)) + 1
@@ -304,21 +320,26 @@ func _verify_android_releases_pull(main: Node3D) -> void:
 	for surface_index: int in range(hair_field.get_surface_count()):
 		if main.mansion_world.get_surface_def(surface_index).room_id != room_id:
 			continue
-		for slot: int in range(hair_field.get_surface_remaining_count(surface_index)):
+		for slot: int in range(hair_field.get_surface_visible_instance_count(surface_index)):
 			var hair_id: int = hair_field.get_hair_id_at_slot(surface_index, slot)
 			pulling.append(hair_id)
 	main.hand._pulling_ids = pulling
+	var field_before: int = hair_field.get_remaining_count()
 	var cleaned: Dictionary = main.big_tools.step_android()
 	var kept: int = 0
 	for hair_id: int in pulling:
 		if hair_field.has_hair(hair_id):
 			kept += 1
+	# アンドロイドは描いている毛 (引いている毛) に加えて埋もれた毛からも取るため、引いている毛から消えた本数は
+	# 取った本数以下になる。取った本数そのものは HairField の残りの減りと比べる
 	_check(
 		int(cleaned.get("removed", 0)) > 0
-		and kept == pulling.size() - int(cleaned.get("removed", 0))
+		and kept < pulling.size()
+		and pulling.size() - kept <= int(cleaned.get("removed", 0))
+		and field_before - hair_field.get_remaining_count() == int(cleaned.get("removed", 0))
 		and not main.hand.is_pulling(),
-		"引いている毛の一部 (%d 本) をアンドロイドが取ると、手は引くのをやめ、残りの %d 本は消えずに残る"
-		% [int(cleaned.get("removed", 0)), kept],
+		"引いている毛の一部 (%d 本) をアンドロイドが取ると (取った本数 %d)、手は引くのをやめ、残りの %d 本は消えずに残る"
+		% [pulling.size() - kept, int(cleaned.get("removed", 0)), kept],
 	)
 
 

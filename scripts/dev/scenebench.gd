@@ -1,11 +1,12 @@
 extends SceneTree
 ## 屋敷の 1 フレームの時間のベンチマーク (描画付きで起動)。
-## メインシーンで屋敷に入り、毛の本数を変えながら「部屋に入った直後」(最初の部屋の入口から見下ろす) と
+## メインシーンで屋敷に入り、毛の本数を既定 (MansionTuning.DEFAULT_HAIR_COUNT) のまま、1 本ずつ描く本数の上限
+## (MansionWorld.hair_draw_budget) を変えながら「部屋に入った直後」(最初の部屋の入口から見下ろす) と
 ## 「掃除ロボットが動いている間」(最初の部屋に掃除ロボット 4 台を置き、時計を進める) の 2 つの場面で、
 ## 1 フレームの時間・処理 (スクリプト) の時間・描画の CPU / GPU の時間・描いた三角形とドローコールの数を計る。
-## 結果を JSON (既定 tmp/scenebench.json) に、本数ごとの部屋に入った直後の画面を tmp/scenebench-<本数>.png に書き、
-## 全部の本数を終えたら「scenebench OK」を出して quit(0) する。CI のソフトウェア描画の数字は実機の fps ではなく、
-## 変更の前後・本数の間の比として読む。
+## 結果を JSON (既定 tmp/scenebench.json) に、上限ごとの部屋に入った直後の画面を tmp/scenebench-<上限>.png に書き、
+## 全部の上限を終えたら「scenebench OK」を出して quit(0) する。CI のソフトウェア描画の数字は実機の fps ではなく、
+## 変更の前後・上限の間の比として読む。
 
 ## AudioManager / GameState 準備・後始末を借りる検証の土台
 const HeadlessCheck := preload("res://scripts/dev/headless_check.gd")
@@ -23,16 +24,21 @@ const ScreenshotScript := preload("res://scripts/dev/screenshot.gd")
 const RobotRulesScript := preload("res://scripts/automation/robot_rules.gd")
 ## 本数の文字列の解析 (parse_counts と同じ形) を借りる
 const HairbenchScript := preload("res://scripts/dev/hairbench.gd")
+## 描く本数の上限の既定値 (DEFAULT_DRAW_BUDGET) を借りる
+const HairFieldScript := preload("res://scripts/hair_field.gd")
 
-## issue #56 で既定を上げる前の既定の毛の本数。変更の前後を同じ本数で比べるため、今の既定とは別に残す
-const PREVIOUS_DEFAULT_HAIR_COUNT: int = 12000
-## 既定の計測本数。変更の前後を比べる 2 点 (上げる前の既定と今の既定) に、既定の本数を決める時に見た目を比べた
-## 中間の点 (上げる前の 5 倍。床の地がまだ目立った本数) と、本数を増やした時の伸び方を見る点 (今の既定の 2 倍) を足した
-const DEFAULT_COUNTS: Array[int] = [
-	PREVIOUS_DEFAULT_HAIR_COUNT,
-	PREVIOUS_DEFAULT_HAIR_COUNT * 5,
-	MansionTuningScript.DEFAULT_HAIR_COUNT,
-	MansionTuningScript.DEFAULT_HAIR_COUNT * 2,
+## issue #56 で既定の毛の本数を上げる前に描いていた本数 (その頃は全部の毛を描いていた)。変更の前後を同じ描く本数で比べるため残す
+const BEFORE_ISSUE_56_DRAWN_COUNT: int = 12000
+## issue #65 で描く本数に上限を置く前に描いていた本数 (その頃の既定の毛の本数 120,000 本を全部描いていた)
+const BEFORE_ISSUE_65_DRAWN_COUNT: int = 120000
+## 既定の計測する描く本数の上限。issue #56・#65 の前に描いていた本数と今の既定の上限に、上限を決める時に比べた
+## 既定の上限の 2 倍と、hairbench が全部描けると確かめた本数を足した
+const DEFAULT_DRAW_BUDGETS: Array[int] = [
+	BEFORE_ISSUE_56_DRAWN_COUNT,
+	BEFORE_ISSUE_65_DRAWN_COUNT,
+	HairFieldScript.DEFAULT_DRAW_BUDGET,
+	HairFieldScript.DEFAULT_DRAW_BUDGET * 2,
+	HairbenchScript.FULL_DRAW_MAX_COUNT,
 ]
 ## JSON レポートの既定出力先 (Makefile の scenebench target が参照するパス)
 const DEFAULT_JSON_PATH: String = "tmp/scenebench.json"
@@ -41,8 +47,9 @@ const BENCH_SAVE_PATH: String = "user://scenebench_save_data.json"
 ## 屋敷を作り直した後、計測の前に進めるフレーム数 (screenshot.gd の撮影前の 4 フレームと揃え、
 ## パイプラインの生成を含む最初の重いフレームを計測から外すため倍にした)
 const WARMUP_FRAMES: int = 8
-## 1 つの場面で計るフレーム数 (ランナーのぶれを中央値で均すため。毛 24 万本で 1 フレーム 0.5 秒前後と見込み、
-## 4 本数 × 2 場面の合計が job の時間の上限に収まる数)
+## 1 つの場面で計るフレーム数 (ランナーのぶれを中央値で均すため。いちばん重い描く本数 1,000,000 本でも CI の実測
+## (run 45942145058) で 1 フレーム 1 秒前後で、全部の上限 × 2 場面を計っても screenshot-and-movie の job が 7 分前後で
+## 終わり、timeout-minutes に収まった数)
 const MEASURE_FRAMES: int = 20
 ## 掃除ロボットが動いている間の場面で、1 フレームごとに進める時計の秒数 (掃除ロボット 1 台が 1 秒に 1 本取るため、
 ## 持てる上限の台数で 1 フレームあたり 1 本前後を取る速さ)
@@ -80,13 +87,10 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 
-## 全本数のベンチマークを順に実行し、JSON 保存と終了コード出力を行う
+## 描く本数の上限ごとのベンチマークを順に実行し、JSON 保存と終了コード出力を行う
 func _run() -> void:
-	var raw_counts: String = OS.get_environment("SCENEBENCH_COUNTS")
-	var counts: Array[int] = (
-		DEFAULT_COUNTS.duplicate()
-		if raw_counts.strip_edges().is_empty()
-		else HairbenchScript.parse_counts(raw_counts)
+	var budgets: Array[int] = HairbenchScript.parse_counts(
+		OS.get_environment("SCENEBENCH_DRAW_BUDGETS"), DEFAULT_DRAW_BUDGETS
 	)
 	var json_path: String = HairbenchScript.env_or_default(
 		OS.get_environment("SCENEBENCH_JSON"), DEFAULT_JSON_PATH
@@ -113,8 +117,8 @@ func _run() -> void:
 		"results": results,
 	}
 	var failed: bool = false
-	for count: int in counts:
-		var entry: Dictionary = await _measure_count(main, game_state, count)
+	for budget: int in budgets:
+		var entry: Dictionary = await _measure_budget(main, game_state, budget)
 		results.append(entry)
 		if not HairbenchScript.write_json(json_path, report) or not bool(entry["ok"]):
 			failed = true
@@ -138,19 +142,29 @@ func _run() -> void:
 	quit(0)
 
 
-## count 本で屋敷を作り直し、2 つの場面を計って結果の辞書を返す
-func _measure_count(main: Node3D, game_state: Node, count: int) -> Dictionary:
+## 屋敷を組み直した後の本数が計測の前提に合うか: 置いた本数 placed が求めた本数 count と同じで、
+## 描いている本数 drawn が上限 budget を超えない時だけ true
+static func is_budget_entry_ok(placed: int, count: int, drawn: int, budget: int) -> bool:
+	return placed == count and drawn <= budget
+
+
+## 既定の毛の本数・描く本数の上限 budget で屋敷を作り直し、2 つの場面を計って結果の辞書を返す
+func _measure_budget(main: Node3D, game_state: Node, budget: int) -> Dictionary:
+	var count: int = MansionTuningScript.DEFAULT_HAIR_COUNT
 	var tuning: MansionTuning = MansionTuningScript.new()
 	tuning.hair_count = count
+	main.mansion_world.hair_draw_budget = budget
 	var rebuild_start: int = Time.get_ticks_usec()
 	game_state.apply_tuning_and_rebuild(tuning, false)
 	var rebuild_ms: float = float(Time.get_ticks_usec() - rebuild_start) / 1000.0
-	var placed: int = main.mansion_world.get_hair_field().get_remaining_count()
+	var hair_field: Node3D = main.mansion_world.get_hair_field()
+	var placed: int = hair_field.get_remaining_count()
+	var drawn: int = HairFieldScript.count_drawn_hairs(hair_field)
 
 	_stand_at_entrance(main, game_state)
 	await physics_frame
 	var enter_metrics: Dictionary = await _measure_frames(main, false)
-	var png_path: String = "tmp/scenebench-%d.png" % count
+	var png_path: String = "tmp/scenebench-%d.png" % budget
 	var save_status: Error = root.get_viewport().get_texture().get_image().save_png(png_path)
 	if save_status != OK:
 		push_error("scenebench PNG 保存失敗: %s (%s)" % [png_path, error_string(save_status)])
@@ -169,21 +183,23 @@ func _measure_count(main: Node3D, game_state: Node, count: int) -> Dictionary:
 	await physics_frame
 	var robots_metrics: Dictionary = await _measure_frames(main, true)
 
-	var ok: bool = placed == count and save_status == OK and robots_ok
+	var ok: bool = is_budget_entry_ok(placed, count, drawn, budget) and save_status == OK and robots_ok
 	print(
 		(
-			"scenebench count=%d placed=%d ok=%s rebuild_ms=%.1f enter_frame_ms=%.1f"
+			"scenebench budget=%d count=%d placed=%d drawn=%d ok=%s rebuild_ms=%.1f enter_frame_ms=%.1f"
 			+ " enter_primitives=%d robots_frame_ms=%.1f robots_advance_ms=%.2f"
 		)
 		% [
-			count, placed, str(ok), rebuild_ms,
+			budget, count, placed, drawn, str(ok), rebuild_ms,
 			float(enter_metrics["frame_ms"]["median"]), int(enter_metrics["primitives"]["median"]),
 			float(robots_metrics["frame_ms"]["median"]), float(robots_metrics["advance_ms"]["median"]),
 		]
 	)
 	return {
+		"draw_budget": budget,
 		"count": count,
 		"placed": placed,
+		"drawn": drawn,
 		"ok": ok,
 		# 作り直しは数十〜数百 ms で、1 回だけ計るため 0.1 ms より細かい桁は意味を持たない
 		"rebuild_ms": snappedf(rebuild_ms, 0.1),

@@ -140,9 +140,9 @@ func _verify_buy_use_and_sell(main: Node3D, game_state: Node) -> void:
 	await _checker.process_frame
 	var owned: OwnedTool = game_state.find_owned_tool(roller)
 	_check(
-		owned != null and owned.consumable_count == 20 and game_state.get_money() == 850
+		owned != null and owned.consumable_count == 20 and game_state.get_money() == 250
 		and roller_button.text.begins_with("レベルを上げる"),
-		"買うボタンで粘着ローラー (150 円・紙 20 枚) が持ち物に入り、ボタンがレベルを上げるに変わる",
+		"買うボタンで粘着ローラー (750 円・紙 20 枚) が持ち物に入り、ボタンがレベルを上げるに変わる",
 	)
 	main.close_tool_shop()
 	await _checker._press_physical_key(_select_key(roller))
@@ -174,7 +174,7 @@ func _verify_buy_use_and_sell(main: Node3D, game_state: Node) -> void:
 		result["surface_index"],
 		result["point"],
 		float(ToolCatalogScript.find_tool(roller)["radius_m"]),
-		int(ToolCatalogScript.find_tool(roller)["max_hairs"])
+		hair_field.get_surface_visible_instance_count(result["surface_index"]),
 	)
 	_check(
 		near_after.size() >= int(result["missed"]),
@@ -504,7 +504,7 @@ func _verify_edge_inputs(main: Node3D, game_state: Node) -> void:
 		tools.get_selected_tool_id() == roller,
 		"道具を買う画面を開いている間は数字キーで道具を持ち替えない",
 	)
-	game_state.save_data.building_progress.money = 1000
+	game_state.save_data.building_progress.money = 100000
 	main.tool_shop_panel.refresh(game_state, main.is_near_trader())
 	var level_before: int = owned.level
 	main.tool_shop_panel.get_tool_button(roller).pressed.emit()
@@ -512,7 +512,7 @@ func _verify_edge_inputs(main: Node3D, game_state: Node) -> void:
 	var audio_manager: AudioManagerScript = AudioManagerScript.resolve(_checker) as AudioManagerScript
 	_check(
 		owned.level == level_before + 1
-		and game_state.get_money() == 1000 - ToolRulesScript.level_up_price(roller, level_before)
+		and game_state.get_money() == 100000 - ToolRulesScript.level_up_price(roller, level_before)
 		and (
 			audio_manager == null
 			or audio_manager.get_last_sfx_event_name() == AudioCatalog.SFX_BUY_TOOL

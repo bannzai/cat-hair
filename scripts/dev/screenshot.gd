@@ -54,10 +54,6 @@ const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 
 ## screenshot 専用のセーブパス
 const TEST_SAVE_PATH: String = "user://screenshot_save_data.json"
-## 見た目の試作を撮る時の屋敷全体の毛の本数。既定の 4 部屋で 1 部屋 3 万本前後になり、量の多さが一目で分かる。
-## 屋敷は全部の毛を 1 本ずつ描くため (#9)、CI の lavapipe で 10 万本が 187 ms/frame (ADR 0002 の実測) を大きく
-## 超えない本数にした
-const LOOK_HAIR_COUNT: int = 120000
 ## 部屋に入った直後と自動化の絵で見下ろす角度 (rad)。床と家具の上の毛が画面の下半分を占める角度
 const LOOK_OVERVIEW_PITCH: float = -0.45
 ## 2 部屋目以降を撮る時に、部屋の中心から立つ位置までの水平距離 (部屋の幅に対する比率)。部屋の端の近くに立ち、
@@ -132,14 +128,12 @@ func _capture_scenes() -> bool:
 
 
 ## 見た目の試作の部屋を、部屋に入った直後・毛をつまんで引いている途中・自動化が進んだ後の 3 つの状態で撮る。
-## 毛の本数を LOOK_HAIR_COUNT にして屋敷を作り直す (保存はしない)。撮れたら true
+## 毛の本数を新しく始めた屋敷と同じ既定の本数 (MansionTuning の既定値) にして屋敷を作り直す (保存はしない)。撮れたら true
 func _capture_look_prototype(main: Node3D, game_state: Node) -> bool:
 	# マウスの検証が開いた開発者画面を閉じ、屋敷を歩いている時の画面にする
 	main.close_dev_panel()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-	var tuning: MansionTuning = MansionTuningScript.new()
-	tuning.hair_count = LOOK_HAIR_COUNT
-	game_state.apply_tuning_and_rebuild(tuning, false)
+	game_state.apply_tuning_and_rebuild(MansionTuningScript.new(), false)
 	var layout: MansionLayout = game_state.current_layout
 	var player: FirstPersonPlayer = main.get_node("Player")
 	var look_room: LookPrototypeRoom = main.look_room
@@ -281,13 +275,30 @@ func _capture_guide_toggle(main: Node3D) -> String:
 	return ""
 
 
+## 歩行中の目線と真下まで見た時の体の写り方を撮る
+func _capture_player_views(main: Node3D) -> bool:
+	Input.action_press("move_forward")
+	await physics_frame
+	await physics_frame
+	var walking_ok: bool = await _capture("tmp/screenshot-walking.png")
+	Input.action_release("move_forward")
+	set_pitch(main.player, -FirstPersonPlayer.MAX_PITCH_RADIANS)
+	var down_ok: bool = await _capture("tmp/screenshot-looking-down.png")
+	set_pitch(main.player, FirstPersonPlayer.INITIAL_PITCH_RADIANS)
+	return walking_ok and down_ok
+
+
 ## 屋敷に入った一人称プレイ画面 (部屋・家具・布・毛・画面の手・照準・残り本数と在庫・遊び始めの操作の案内の HUD)、
 ## 操作の案内の開閉、毛を引く場面、図鑑、開発者向け調整画面を順に撮る。撮れたら空文字、失敗したら理由を返す
 func _capture_mansion_scenes(main: Node3D) -> String:
 	main.enter_mansion()
 	if not await _capture("tmp/screenshot-mansion.png"):
 		return "屋敷の画面を保存できない"
-	var capture_error: String = await _capture_perf_overlay(main)
+	var capture_error: String = ""
+	if not await _capture_player_views(main):
+		capture_error = "歩行中または真下を見た画面を保存できない"
+	if capture_error.is_empty():
+		capture_error = await _capture_perf_overlay(main)
 	if capture_error.is_empty():
 		capture_error = await _capture_guide_toggle(main)
 	if capture_error.is_empty():
@@ -367,7 +378,7 @@ func _capture_tools(main: Node3D) -> String:
 	var game_state: Node = main.get_game_state()
 	var roller: StringName = ToolCatalogScript.TOOL_LINT_ROLLER
 	# 手に持つ 8 つの道具を全部持った時の右下の道具の枠の並びも同じ 1 枚で確かめる (大型の道具は後で撮る)。
-	# 所持金は 7 つの道具の値段の合計 (940 円) を足りる額で、HUD に 5 桁の所持金が出る見え方も撮れる額にする
+	# 所持金は 7 つの道具の値段の合計に足りる額で、HUD に 5 桁の所持金が出る見え方も撮れる額にする
 	game_state.save_data.building_progress.money = 100000
 	for tool_def: Dictionary in ToolCatalogScript.hand_held_tools():
 		if tool_def["id"] != ToolCatalogScript.TOOL_HAND:

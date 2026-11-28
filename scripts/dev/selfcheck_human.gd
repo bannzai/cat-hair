@@ -111,11 +111,17 @@ func _check_hand_view_shape_and_pinch() -> void:
 		and (forward_tips["thumb"] as Vector3).is_equal_approx(closed_tips["thumb"]),
 		"骨に設定した姿勢から順に辿って求めた指先も、閉じた時に触れ、手が返す指先の位置と一致する",
 	)
+	var forearm: int = skeleton.find_bone("forearm.R")
 	_check(
-		skeleton.get_bone_pose_scale(skeleton.find_bone("upper_arm.L")).x <= HIDDEN_SCALE_MAX
-		# 右腕は縮めていない (休みの姿勢の倍率 1)。0.5 は縮めた骨 (HIDDEN_SCALE_MAX 以下) と取り違えない中ほどの値
-		and skeleton.get_bone_pose_scale(skeleton.find_bone("upper_arm.R")).x > 0.5,
-		"画面の手は左腕の骨を縮めて隠し、右腕は縮めない",
+		skeleton.get_bone_pose_scale(skeleton.find_bone("clavicle.L")).x <= HIDDEN_SCALE_MAX
+		and skeleton.get_bone_pose_scale(skeleton.find_bone("hand.L.control")).x <= HIDDEN_SCALE_MAX
+		and skeleton.get_bone_pose_scale(skeleton.find_bone("clavicle.R")).x <= HIDDEN_SCALE_MAX
+		# 右の前腕と手は縮めない (休みの姿勢の倍率 1)。0.5 は縮めた骨 (HIDDEN_SCALE_MAX 以下) と取り違えない中ほどの値
+		and skeleton.get_bone_parent(forearm) == -1
+		and skeleton.get_bone_pose_scale(forearm).x > 0.5
+		and skeleton.get_bone_pose_scale(skeleton.find_bone("hand.R")).x > 0.5
+		and hand.get_node_or_null("Sleeve") is MeshInstance3D,
+		"画面の手は左腕・左手・右の上腕の骨を縮めて隠し、右の前腕を残して肩から肘を袖で結ぶ",
 	)
 	hand.set_pull_progress(1.0)
 	var pulled_tips: Dictionary = hand.get_fingertips()

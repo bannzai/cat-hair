@@ -393,17 +393,31 @@ func get_pluck_popup_text() -> String:
 func _process(delta: float) -> void:
 	if _is_playing and _game_state != null:
 		if auto_advance_time:
-			var earned: int = _game_state.advance_time(delta)
-			if earned > 0:
-				_show_popup("掃除代 +%d 円" % earned)
-				_play_sfx(AudioCatalog.SFX_EARN_MONEY)
-			big_tools.advance(delta)
+			_advance_play_time(delta)
 		_refresh_room_gauge()
 	if _pluck_popup_remaining <= 0.0:
 		return
 	_pluck_popup_remaining -= delta
 	if _pluck_popup_remaining <= 0.0:
 		pluck_popup_label.visible = false
+
+
+## 自動テストプレイの bot が、遊んだ時間・アンドロイド・猫と掃除ロボットの時計を delta_seconds 秒まとめて進める
+## (auto_advance_time と auto_advance_automation を false にして、毎フレームの時計の代わりに使う)
+func advance_play_clock(delta_seconds: float) -> void:
+	if _game_state == null:
+		return
+	_advance_play_time(delta_seconds)
+	_game_state.automation.advance(delta_seconds)
+
+
+## 遊んだ時間 (機嫌・掃除代・加工機) とアンドロイドを delta 秒進め、掃除代が入った時は知らせる
+func _advance_play_time(delta: float) -> void:
+	var earned: int = _game_state.advance_time(delta)
+	if earned > 0:
+		_show_popup("掃除代 +%d 円" % earned)
+		_play_sfx(AudioCatalog.SFX_EARN_MONEY)
+	big_tools.advance(delta)
 
 
 ## UI ルートに設定した既定テーマを返す (検証スクリプト用)

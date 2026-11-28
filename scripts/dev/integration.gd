@@ -26,6 +26,8 @@ const MansionTuningScript := preload("res://scripts/data/mansion_tuning.gd")
 const FirstPersonPlayerScript := preload("res://scripts/player/first_person_player.gd")
 ## 見た目の試作 (部屋・手) の入力統合テスト
 const IntegrationLook := preload("res://scripts/dev/integration_look.gd")
+## 既定の毛の本数で始めた屋敷の入力統合テスト
+const IntegrationDefaultCount := preload("res://scripts/dev/integration_default_count.gd")
 ## 手で毛を取る操作の入力統合テスト
 const IntegrationHand := preload("res://scripts/dev/integration_hand.gd")
 ## 手に持って使う道具とお金の入力統合テスト
@@ -34,6 +36,8 @@ const IntegrationTools := preload("res://scripts/dev/integration_tools.gd")
 const IntegrationAutomation := preload("res://scripts/dev/integration_automation.gd")
 ## 大型の道具の入力統合テスト
 const IntegrationBigTools := preload("res://scripts/dev/integration_big_tools.gd")
+## 屋敷に入った後の BGM の入力統合テスト
+const IntegrationMansionBGM := preload("res://scripts/dev/integration_mansion_bgm.gd")
 
 ## integration テスト専用のセーブパス
 const TEST_SAVE_PATH: String = "user://integration_save_data.json"
@@ -93,7 +97,9 @@ func _run() -> void:
 
 	await _verify_title_and_blocked_inputs(main)
 	await _verify_enter_movement_and_look(main)
+	IntegrationMansionBGM.verify_mansion_bgm(self, audio_manager)
 	await IntegrationLook.verify_look_prototype_room(self, main, game_state)
+	await IntegrationDefaultCount.run_all(self, main, game_state)
 	await _verify_dev_panel_keys_and_rebuild(main, game_state)
 	await IntegrationHand.run_all(self, main, game_state)
 	await IntegrationTools.run_all(self, main, game_state)

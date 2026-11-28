@@ -50,6 +50,17 @@ jobs:
         run: make integration GODOT="${{ steps.godot.outputs.godot }}"
       - name: Failure path of the check base
         run: make failure-path GODOT="${{ steps.godot.outputs.godot }}"
+      # bot が屋敷をはじめから遊び、節目までのゲーム内の時間を tmp/simulate.json に書く (artifact cat-hair-simulate)
+      - name: Simulate
+        run: make simulate GODOT="${{ steps.godot.outputs.godot }}"
+      - name: Upload simulate result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cat-hair-simulate
+          path: tmp/simulate.json
+          if-no-files-found: warn
+          retention-days: 7
       - name: Export desktop builds
         run: make build-all GODOT="${{ steps.godot.outputs.godot }}"
       # Web 版は配布しないが、.github/workflows/browser-session.yml (workflow_dispatch だけで動く) が同じ書き出しを使うため、
@@ -172,10 +183,14 @@ jobs:
         run: make screenshot GODOT="${{ steps.godot.outputs.godot }}"
       - name: Movie
         run: make movie GODOT="${{ steps.godot.outputs.godot }}"
+      - name: 毛を途中で離す・引き抜く操作の録画
+        run: make movie-pull GODOT="${{ steps.godot.outputs.godot }}"
       - name: Movie of the cleaning robots
         run: make movie-automation GODOT="${{ steps.godot.outputs.godot }}"
       - name: Hair benchmark
         run: make hairbench GODOT="${{ steps.godot.outputs.godot }}"
+      - name: Playtest movie
+        run: make playtest GODOT="${{ steps.godot.outputs.godot }}"
       - name: Mansion frame time benchmark
         run: make scenebench GODOT="${{ steps.godot.outputs.godot }}"
       - name: Upload screenshots and movie
@@ -190,7 +205,10 @@ jobs:
             tmp/scenebench-*.png
             tmp/scenebench.json
             tmp/movie.mp4
+            tmp/pull-*.png
+            tmp/movie-pull.mp4
             tmp/movie-automation.mp4
+            tmp/playtest.mp4
             tmp/*.log
           if-no-files-found: warn
           retention-days: 7

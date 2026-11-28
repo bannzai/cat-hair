@@ -180,6 +180,8 @@ func _check_mansion_builder_changes_and_large_scale() -> void:
 		"物の上限 200 個を組み立てられる",
 	)
 
+	preload("res://scripts/dev/selfcheck_entrance_furniture.gd").run(_checker, max_layout)
+
 	# 最小部屋幅 (4.0m) に 12 個配置し、家具外縁が壁内に収まり 9 個目以降が 1 周目と重ならないことを検証
 	var dense_tuning: MansionTuning = MansionTuningScript.new()
 	dense_tuning.room_count = 1

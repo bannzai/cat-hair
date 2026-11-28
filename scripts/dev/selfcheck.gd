@@ -2,7 +2,8 @@ extends "res://scripts/dev/headless_check.gd"
 ## 純粋なロジックとプロジェクト設定の検証 (headless)。ゲームのルールの計算を足したら、ここに検証を足す。
 ## 屋敷・セーブ・調整値の検証は scripts/dev/selfcheck_mansion.gd、手で毛を取るルールと毛の照会の検証は
 ## scripts/dev/selfcheck_hand.gd、道具・お金・機嫌と掃除代の検証は scripts/dev/selfcheck_tools.gd、猫と掃除ロボットの検証は
-## scripts/dev/selfcheck_automation.gd、大型の道具と加工の検証は scripts/dev/selfcheck_big_tools.gd に分割して実行する。
+## scripts/dev/selfcheck_automation.gd、大型の道具と加工の検証は scripts/dev/selfcheck_big_tools.gd、
+## 自動テストプレイの bot の方針の検証は scripts/dev/selfcheck_playtest_bot.gd に分割して実行する。
 ## 実行方法は AGENTS.md「検証方法」を参照。
 
 ## プロジェクト設定のメインシーンに入っているべきパス
@@ -51,8 +52,12 @@ const SelfcheckTools := preload("res://scripts/dev/selfcheck_tools.gd")
 const SelfcheckAutomation := preload("res://scripts/dev/selfcheck_automation.gd")
 ## 大型の道具 (吸引車・粘着シート・アンドロイド・加工機・ダンプカー) と加工の検証スイート
 const SelfcheckBigTools := preload("res://scripts/dev/selfcheck_big_tools.gd")
+## 自動テストプレイの bot の方針の検証スイート
+const SelfcheckPlaytestBot := preload("res://scripts/dev/selfcheck_playtest_bot.gd")
 ## 人の形 (画面の手と腕・買取業者の体) の検証スイート
 const SelfcheckHuman := preload("res://scripts/dev/selfcheck_human.gd")
+## 1 本ずつ描く毛の本数の上限と埋もれた毛の検証スイート
+const SelfcheckHairBudget := preload("res://scripts/dev/selfcheck_hair_budget.gd")
 
 
 ## 検証をすべて実行して終える
@@ -77,7 +82,9 @@ func _initialize() -> void:
 	SelfcheckTools.run_all(self)
 	SelfcheckAutomation.run_all(self)
 	SelfcheckBigTools.run_all(self)
+	SelfcheckPlaytestBot.run_all(self)
 	SelfcheckHuman.run_all(self)
+	SelfcheckHairBudget.run_all(self)
 	_finish()
 
 
@@ -120,11 +127,11 @@ func _check_project_settings() -> void:
 		"fps から 1 フレームの時間を出し、fps がまだ 0 の時は 0 にする",
 	)
 	_check_scenebench_summarize()
-	# 既定の毛の本数は issue #56 で決めた 120,000 本で、残り本数の表示では桁区切りで出る
+	# 既定の毛の本数は issue #65 で決めた 9,999,999 本で、残り本数の表示では桁区切りで出る
 	_check(
-		MansionTuningScript.DEFAULT_HAIR_COUNT == 120000
-		and MainScript.format_hair_count(MansionTuningScript.DEFAULT_HAIR_COUNT) == "120,000",
-		"既定の毛の本数が 120,000 で、表示が「120,000」 (実際: %d)" % MansionTuningScript.DEFAULT_HAIR_COUNT,
+		MansionTuningScript.DEFAULT_HAIR_COUNT == 9999999
+		and MainScript.format_hair_count(MansionTuningScript.DEFAULT_HAIR_COUNT) == "9,999,999",
+		"既定の毛の本数が 9,999,999 で、表示が「9,999,999」 (実際: %d)" % MansionTuningScript.DEFAULT_HAIR_COUNT,
 	)
 	var bus_layout: String = ProjectSettings.get_setting("audio/buses/default_bus_layout", "")
 	_check(
