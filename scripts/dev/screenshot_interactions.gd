@@ -20,6 +20,8 @@ static func _capture_picking(tree: SceneTree, main: Node3D, snapshot: Callable) 
 	for surface: StringName in [
 		MansionLayout.SURFACE_FLOOR, MansionLayout.SURFACE_SUIT, MansionLayout.SURFACE_SOFA,
 	]:
+		if not main.get_pluck_popup_text().is_empty():
+			await tree.create_timer(main.PLUCK_POPUP_SECONDS).timeout
 		if await HandAim.aim_at_first_room_hair(tree, main, surface) < 0:
 			push_error("撮影する %s の毛を狙えない" % surface)
 			return false

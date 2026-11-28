@@ -153,6 +153,8 @@ func _verify_tap(main: Node3D, game_state: Node) -> void:
 	_send_key(false)
 	await _checker.process_frame
 	_check(game_state.get_total_remaining_hairs() == before and main.tool_message_label.text.is_empty()
+		and main.get_pluck_popup_text().is_empty()
+		and not main.player.get_camera().get_node("PluckedHair").visible
 		and audio.get_sfx_play_count() == sounds_before + 1
 		and audio.get_last_sfx_event_name() == AudioCatalog.SFX_BUTTON,
 		"空振りでは本数と照準の文字が変わらず、成功音と異なる音が 1 回鳴る")

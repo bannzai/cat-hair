@@ -218,8 +218,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _can_talk_to_trader():
 			open_tool_shop()
 			get_viewport().set_input_as_handled()
-		elif hand != null:
-			hand.try_pluck(event)
+		elif hand != null and hand.enabled and hand.can_use_mouse():
+			if not hand.pluck_aimed():
+				pluck_popup_label.hide()
 	elif _is_key_press(event, TOGGLE_PERF_KEY):
 		if _is_playing:
 			perf_overlay.toggle()

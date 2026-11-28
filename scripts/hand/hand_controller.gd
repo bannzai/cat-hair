@@ -52,12 +52,13 @@ func setup(
 	_camera.add_child(_plucked)
 
 
-## マウスを捕捉したプレイ中の押下だけを受け付ける。キーの自動リピートは新たな押下に含めない。
-func try_pluck(event: InputEvent) -> void:
-	if not enabled or not can_use_mouse() or not event.is_action_pressed(ACTION_PLUCK):
-		return
-	if pluck_at(aim_target()) == 0:
-		_play_sfx(AudioCatalog.SFX_BUTTON)
+## 照準にある毛を取り、空振りでは前に取った毛を隠して短い音を鳴らす。
+func pluck_aimed() -> bool:
+	if pluck_at(aim_target()) > 0:
+		return true
+	_plucked.hide()
+	_play_sfx(AudioCatalog.SFX_BUTTON)
+	return false
 
 
 ## 今の照準に取れる毛があるか。案内と取得処理で同じ半径を使う。
