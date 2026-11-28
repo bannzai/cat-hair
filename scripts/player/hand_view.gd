@@ -1,7 +1,8 @@
 extends Node3D
 ## 画面に映る自分の右手と腕。体の右肩から袖で腕を結び、つまんだ毛の先端に親指と人差し指を合わせる。
-## 手と前腕は既製の 3D モデル (OpenGameArt の CC0 の腕の模型。指の骨付き。変換は scripts/assets/convert_models.py、
-## 出典は assets/CREDITS.md) の右腕で、肩から肘は袖 (基本の形) で結ぶ。モデルの左腕と右の上腕は骨を縮めて隠す。
+## 手は既製の 3D モデル (OpenGameArt の CC0 の腕の模型。指の骨付き。変換は scripts/assets/convert_models.py、
+## 出典は assets/CREDITS.md) の右手で、肩から肘の袖と肘から手首の前腕は基本の形で結ぶ (モデルの前腕は手と一緒に
+## 動く硬い棒で、毛へ伸ばした手を肩からの視線の上で覆ったため。PR #69 の撮影)。モデルの腕と左手は骨を縮めて隠す。
 ## 局所座標では手のひらを下 (-Y)・指先を奥 (-Z)・親指を左 (-X) に向け、指の付け根 (人差し指と小指の付け根の中点) を
 ## 原点に置き、手首から肘の側を手前 (+Z) に伸ばす。
 ## 腕の寸法・角度は、床と縦面の撮影で根元と指先を同時に追えるよう調整した値。
@@ -31,15 +32,11 @@ const FINGER_OPEN_RAD: float = 0.55
 const SKIN_COLOR: Color = Color(0.93, 0.74, 0.62)
 ## 袖の色
 const SLEEVE_COLOR: Color = Color(0.25, 0.32, 0.45)
-## 袖の太さ (半径 m)。大人の上腕の太さ (周り 25〜30 cm) に袖のゆとりを足した見当
-const SLEEVE_RADIUS_M: float = 0.042
 ## 人差し指と小指の付け根の間の幅 (m)。大人の手の指の付け根の並び (人差し指から小指の中心まで) 5〜6 cm の見当で、
 ## モデルをこの幅になるよう縦横の釣り合いを保って縮める
 const KNUCKLE_SPAN_M: float = 0.055
 ## 右手の手首の骨の名前
 const WRIST_BONE: String = "hand.R"
-## 右の前腕の骨の名前 (付け根が肘。袖をここまで結ぶ)
-const FOREARM_BONE: String = "forearm.R"
 ## 右手の人差し指の付け根の骨の名前 (つまむ時に回す)
 const INDEX_ROOT_BONE: String = "f_index.01.R"
 ## 右手の人差し指の先の骨の名前
@@ -50,8 +47,8 @@ const PINKY_ROOT_BONE: String = "f_pinky.01.R"
 const THUMB_ROOT_BONE: String = "thumb.01.R"
 ## 右手の親指の先の骨の名前
 const THUMB_TIP_BONE: String = "thumb.03.R"
-## 隠す骨。左の鎖骨 (子の三角筋・上腕・前腕も縮む)、左手 (腕の骨とは別の操作用の骨の下にある)、右の鎖骨 (前腕は
-## 縮める前に根の骨へ付け替えて残す。肩から肘は袖で結ぶ)
+## 隠す骨。左右の鎖骨 (子の三角筋・上腕・前腕も縮む) と左手 (腕の骨とは別の操作用の骨の下にある)。右手も操作用の骨の
+## 下にあり、鎖骨を縮めても残る
 const HIDDEN_BONES: Array[String] = ["clavicle.L", "hand.L.control", "clavicle.R"]
 ## 隠す骨の縮め方。0 にすると骨の行列が逆にできず警告が出る場合があるため、見えないほど小さい値にする
 const HIDDEN_BONE_SCALE: float = 0.0001
@@ -73,12 +70,14 @@ var _current_turns: Dictionary = {}
 var _index_tip: Node3D
 ## 親指の先の位置の目印
 var _thumb_tip: Node3D
-## 肘の位置 (手の局所座標。前腕の骨の付け根)
-var _elbow: Vector3 = Vector3.ZERO
+## 手首の位置 (手の局所座標。手の骨の付け根)
+var _wrist: Vector3 = Vector3.ZERO
 ## 体に追従する腕の付け根。
 var _shoulder: Node3D
 ## 肩と肘の間を覆う袖。
 var _sleeve: MeshInstance3D
+## 肘から手首までの前腕。
+var _forearm: MeshInstance3D
 ## 抜いた直後だけ指先に残す毛。
 var _plucked: MeshInstance3D
 ## 抜いた毛を見せてから手を下ろすアニメーション。
@@ -231,9 +230,13 @@ func _process(_delta: float) -> void:
 	_pose_arm()
 
 
-## 肩から肘 (モデルの前腕の付け根) まで袖で結ぶ。前腕と手はモデルのまま手と一緒に動く
+## 手首から肩への途中に肘の曲がりを残し、どの面でも腕が途中で切れないようにする
 func _pose_arm() -> void:
-	HumanParts.pose_limb(_sleeve, to_local(_shoulder.global_position), _elbow)
+	var shoulder: Vector3 = to_local(_shoulder.global_position)
+	var elbow: Vector3 = shoulder.lerp(_wrist, 0.51)
+	elbow += global_basis.inverse() * _shoulder.global_basis * Vector3(0.11, -0.08, 0.02)
+	HumanParts.pose_limb(_sleeve, shoulder, elbow)
+	HumanParts.pose_limb(_forearm, elbow, _wrist)
 
 
 ## 現在の引いている進み具合を返す
@@ -258,12 +261,6 @@ func _build() -> void:
 	_skeleton = model.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
 	for mesh_node: Node in model.find_children("*", "MeshInstance3D", true, false):
 		(mesh_node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# 右の前腕を根の骨へ付け替え、休みの姿勢を付け替える前の位置のままにする (鎖骨を縮めても前腕と手が残る)
-	var forearm: int = _skeleton.find_bone(FOREARM_BONE)
-	var forearm_rest: Transform3D = _skeleton.get_bone_global_rest(forearm)
-	_skeleton.set_bone_parent(forearm, -1)
-	_skeleton.set_bone_rest(forearm, forearm_rest)
-	_skeleton.set_bone_pose(forearm, forearm_rest)
 	for bone_name: String in HIDDEN_BONES:
 		_skeleton.set_bone_pose_scale(_skeleton.find_bone(bone_name), Vector3.ONE * HIDDEN_BONE_SCALE)
 
@@ -286,15 +283,21 @@ func _build() -> void:
 		_skeleton_to_hand
 		* FurnitureModels.transform_to_ancestor(_skeleton, model).affine_inverse()
 	)
-	_elbow = _skeleton_to_hand * forearm_rest.origin
+	_wrist = _skeleton_to_hand * _bone_head(WRIST_BONE)
 
+	var skin: StandardMaterial3D = StandardMaterial3D.new()
+	skin.albedo_color = SKIN_COLOR
+	skin.roughness = 0.8
 	var sleeve: StandardMaterial3D = StandardMaterial3D.new()
 	sleeve.albedo_color = SLEEVE_COLOR
-	# 布の袖で、光沢の無い粗さ
 	sleeve.roughness = 0.9
-	# 袖は肩につなぐまで、肘から手前 (+Z) へ大人の上腕の長さ (肩から肘まで 25〜30 cm) の見当の 0.25 m 伸ばしておく
+	# 袖と前腕の太さと、肩につなぐまでの仮の長さは、肩から伸ばす腕にした時 (PR #80) の値のまま
 	_sleeve = HumanParts.add_limb(
-		self, "Sleeve", _elbow, _elbow + Vector3(0.0, 0.0, 0.25), SLEEVE_RADIUS_M, sleeve, false
+		self, "Sleeve", _wrist + Vector3(0.0, 0.006, 0.065), _wrist + Vector3(0.0, 0.02, 0.335),
+		0.042, sleeve, false
+	)
+	_forearm = HumanParts.add_limb(
+		self, "Forearm", _wrist, _wrist + Vector3(0.0, 0.006, 0.085), 0.026, skin, false
 	)
 	_index_tip = Node3D.new()
 	_index_tip.name = "IndexTip"
