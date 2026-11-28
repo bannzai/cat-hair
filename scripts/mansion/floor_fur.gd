@@ -11,9 +11,13 @@ const FULL_DENSITY: float = 14000.0
 ## 毛を 1 本取るたびに全員の位置を更新せず、1 cm 分薄くなったときに山の形を更新する。
 const DEPTH_STEP: float = 0.01
 
+## 毛を置く床の範囲。ワールド座標の X と Z を使う。
 var _bounds: Rect2
+## 床を覆う格子の X 方向と Z 方向の頂点数。
 var _grid: Vector2i
+## 毛が最も厚い状態の各頂点の高さ (m)。同じ Z の頂点を X 順に並べている。
 var _heights: PackedFloat32Array
+## 残り本数に応じて、最も厚い状態から毛の層を床の中へ沈めた距離 (m)。
 var _depth: float
 
 
@@ -143,6 +147,7 @@ func hit_distance(from: Vector3, dir: Vector3, limit: float, floor_distance: flo
 	return floor_distance
 
 
+## 埋もれた毛の面積当たりの本数を、床の中へ層を沈める距離 (m) に換算する。
 func _depth_for(buried: int) -> float:
 	var fullness: float = clampf(float(buried) / (_bounds.get_area() * FULL_DENSITY), 0.0, 1.0)
 	return snappedf((1.0 - fullness) * MAX_HEIGHT, DEPTH_STEP)
@@ -156,8 +161,11 @@ func _sample(p: Vector2) -> float:
 	var cell: Vector2i = Vector2i(grid_pos).clamp(Vector2i.ZERO, _grid - Vector2i(2, 2))
 	var t: Vector2 = grid_pos - Vector2(cell)
 	var i: int = cell.y * _grid.x + cell.x
-	var b: float = _heights[i + 1]
-	var c: float = _heights[i + _grid.x]
+	var next_x_height: float = _heights[i + 1]
+	var next_z_height: float = _heights[i + _grid.x]
 	if t.x + t.y <= 1.0:
-		return _heights[i] * (1.0 - t.x - t.y) + b * t.x + c * t.y
-	return _heights[i + _grid.x + 1] * (t.x + t.y - 1.0) + b * (1.0 - t.y) + c * (1.0 - t.x)
+		return _heights[i] * (1.0 - t.x - t.y) + next_x_height * t.x + next_z_height * t.y
+	return (
+		_heights[i + _grid.x + 1] * (t.x + t.y - 1.0)
+		+ next_x_height * (1.0 - t.y) + next_z_height * (1.0 - t.x)
+	)

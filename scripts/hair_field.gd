@@ -616,6 +616,7 @@ func _add_hair(
 	return hair_id
 
 
+## 床から毛を取ったり猫が毛を落としたりしたとき、山の厚みを埋もれた本数と合わせる。
 func _update_floor_fur(surface_index: int) -> void:
 	var fur: FloorFur = _surfaces[surface_index].get("fur")
 	if fur != null:

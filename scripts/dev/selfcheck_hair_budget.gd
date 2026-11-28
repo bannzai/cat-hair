@@ -38,6 +38,7 @@ static func run_all(checker: SceneTree) -> void:
 	suite._check_group_counts_over_budget()
 	suite._check_remove_refills_until_buried_runs_out()
 	suite._check_floor_fur_after_cleaning()
+	suite._check_floor_fur_density_limits()
 	suite._check_plucked_spot_stays_clear()
 	suite._check_refill_on_tiny_surface()
 	suite._check_add_and_remove_buried()
@@ -98,6 +99,43 @@ func _check_floor_fur_after_cleaning() -> void:
 	field.free()
 	reloaded.free()
 	bare.free()
+
+
+## 層が床下に隠れる最少の本数と、層が最も厚くなる本数を超えた側で、毛の根元と照準の当たる高さを確かめる。
+func _check_floor_fur_density_limits() -> void:
+	var bare: Node3D = _make_floor_with_buried(0)
+	var one: Node3D = _make_floor_with_buried(1)
+	var layer: FloorFur = one.get_child(0).get_child(0) as FloorFur
+	_check(layer != null and not layer.visible and _same_floor_roots_and_hits(one, bare),
+		"埋もれた毛が 1 本の層は床の下に隠れ、各根元と照準の交点は裸の床と一致する")
+	one.free()
+	bare.free()
+	var full: Node3D = _make_floor_with_buried(56000)
+	# 1 本だけ超えた場合と、厚みの丸め幅を十分に超えた場合の両方で飽和を確かめる。
+	for buried: int in [56001, 112000]:
+		var extra: Node3D = _make_floor_with_buried(buried)
+		_check(_same_floor_roots_and_hits(extra, full),
+			"埋もれた毛が %d 本の床は、飽和する 56,000 本の床と各根元・照準の交点が一致する" % buried)
+		extra.free()
+	full.free()
+
+
+## 同じ種の床どうしで、各毛の姿勢と、その真上から狙ったときの表面の交点が一致するか。
+static func _same_floor_roots_and_hits(actual: Node3D, expected: Node3D) -> bool:
+	var slots: int = expected.get_surface_visible_instance_count(0)
+	if slots == 0 or actual.get_surface_visible_instance_count(0) != slots:
+		return false
+	for slot: int in range(slots):
+		var hair_id: int = expected.get_hair_id_at_slot(0, slot)
+		var pose: Transform3D = expected.get_hair_transform(hair_id)
+		if not pose.is_equal_approx(actual.get_hair_transform(hair_id)):
+			return false
+		var eye: Vector3 = pose.origin + Vector3.UP
+		var hit: Dictionary = actual.intersect_surfaces(eye, Vector3.DOWN, 2.0)
+		var target: Dictionary = expected.intersect_surfaces(eye, Vector3.DOWN, 2.0)
+		if hit.is_empty() or target.is_empty() or not hit["point"].is_equal_approx(target["point"]):
+			return false
+	return true
 
 
 ## 検証結果を selfcheck 本体へ記録する
