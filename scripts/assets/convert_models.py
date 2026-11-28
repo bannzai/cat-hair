@@ -11,8 +11,10 @@ AGENTS.md「検証方法」)。書き出した glb は assets/models/ に commit
 どちらも、読んだモデルの骨・メッシュ・材質・画像の一覧を標準出力に出す (ゲーム側の骨の名前・大きさを決める材料)。
 """
 import os
+import re
 import sys
 
+import bmesh
 import bpy
 
 # steve_npc1.blend の材質ごとに貼る画像 (zip の中のファイル名)。この blend は古い Blender の材質の形式で画像を
@@ -35,6 +37,8 @@ BUYER_FLAT_COLORS = {
     "mouth2.000": FACE_SKIN_COLOR,
     "eye.000": EYE_COLOR,
 }
+# 右手の骨の名前 (Rigify の名前。手首・手のひら・指)。腕のメッシュはこの骨に最も強く結び付いた頂点だけを残す
+RIGHT_HAND_BONE = re.compile(r"^(hand|palm_[a-z]+|thumb\.\d+|f_[a-z]+\.\d+)\.R$")
 # 腕の肌の粗さ。人の肌は薄く艶があり、布 (0.8) より少しだけ光を返す見当
 SKIN_ROUGHNESS = 0.65
 # 立ち姿として固める動きの名前と、その動きの中の時刻 (frame)。steve_npc1.blend の動きの一覧 (ACTION の行) の、
@@ -134,6 +138,30 @@ def attach_skin_texture(texture_path: str) -> None:
         print("ATTACH", material.name, image.name)
 
 
+def keep_only_right_hand() -> None:
+    """腕のメッシュから、右手 (手のひら・指) の骨に最も強く結び付いた頂点だけを残し、腕と左手の頂点を消す。
+    ゲームは右手だけを見せ、肩から手首は基本の形の袖と前腕で結ぶ。骨を縮めて隠すと、2 つの骨にまたがる肘と手首の肌が
+    離れた 2 点の間に引き伸ばされ、手から細い棘が伸びて見えた (PR #69 の df6437b・3e12482 の撮影 pull-suit-pinch)"""
+    for obj in [candidate for candidate in bpy.data.objects if candidate.type == "MESH"]:
+        names = {group.index: group.name for group in obj.vertex_groups}
+        mesh = obj.data
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        deform = bm.verts.layers.deform.active
+        doomed = []
+        for vert in bm.verts:
+            weights = vert[deform] if deform is not None else {}
+            strongest = max(weights.items(), key=lambda item: item[1])[0] if len(weights) else None
+            if strongest is None or not RIGHT_HAND_BONE.match(names.get(strongest, "")):
+                doomed.append(vert)
+        print("KEEP_RIGHT_HAND", obj.name, "removed", len(doomed))
+        bmesh.ops.delete(bm, geom=doomed, context="VERTS")
+        bm.to_mesh(mesh)
+        bm.free()
+        mesh.update()
+        print("KEEP_RIGHT_HAND", obj.name, "kept", len(mesh.vertices))
+
+
 def export_glb(out_path: str) -> None:
     """場面を glb に書き出す (画像は glb の中に入れる。動きは入れない)"""
     bpy.ops.export_scene.gltf(
@@ -152,6 +180,7 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         bpy.ops.import_scene.fbx(filepath=args[2])
         attach_skin_texture(args[3])
+        keep_only_right_hand()
     elif kind == "buyer":
         bake_standing_pose()
         assign_buyer_materials(args[2])
