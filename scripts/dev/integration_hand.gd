@@ -469,6 +469,7 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 	var rest: Transform3D = shoulder.global_transform.affine_inverse() * hand_view.global_transform
 	var detached_hair: MeshInstance3D = hand_view.get_node("PluckedHair")
 	var arm_radius: float = 0.0
+	var widest_part: String = ""
 	for part: MeshInstance3D in hand_view.find_children("*", "MeshInstance3D", true, false):
 		if not part.visible:
 			continue
@@ -476,9 +477,13 @@ func _verify_release_midway_and_pluck(main: Node3D, game_state: Node) -> void:
 		var vertices: PackedVector3Array = part.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 		for vertex: Vector3 in vertices:
 			var point: Vector3 = to_player * vertex
-			arm_radius = maxf(arm_radius, Vector2(point.x, point.z).length())
+			var radius: float = Vector2(point.x, point.z).length()
+			if radius > arm_radius:
+				arm_radius = radius
+				widest_part = part.name
 	_check(arm_radius <= FirstPersonPlayer.CAPSULE_RADIUS_M,
-		"腕を下ろした時は指先から袖まで壁際で当たり判定に収まる (実際 %.3f m)" % arm_radius)
+		"腕を下ろした時は指先から袖まで壁際で当たり判定に収まる (実際 %.3f m、最も外は %s)"
+		% [arm_radius, widest_part])
 
 	var audio_manager: AudioManagerScript = AudioManagerScript.resolve(_checker) as AudioManagerScript
 	var sound_count: int = audio_manager.get_sfx_play_count()
