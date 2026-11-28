@@ -64,10 +64,10 @@ static func _counts(rows: Array) -> Array[PackedInt32Array]:
 
 ## 同じ種と描画枠で床の毛を置く。埋もれた本数だけを変えて、掃除の途中と再読み込みした時の形を比べる。
 static func _make_floor_with_buried(buried: int) -> Node3D:
-	var field: Node3D = HairFieldScript.new()
+	var field := HairFieldScript.new()
 	field.draw_budget = 256
 	field.add_oriented_surface("floor", Transform3D.IDENTITY, Vector2(2, 2), 1.0, [], true)
-	field.populate_with_group_counts(_counts([[field.draw_budget + buried, 0, 0]]))
+	field.populate_with_group_counts(_counts([PackedInt32Array([field.draw_budget + buried, 0, 0])]))
 	return field
 
 
